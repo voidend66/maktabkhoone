@@ -1,0 +1,221 @@
+import React, { useState } from 'react';
+import { AppProvider, useApp } from './context/AppContext';
+import { Navbar } from './components/Navbar';
+import { MainLibrary } from './components/MainLibrary';
+import { BookDetailModal } from './components/BookDetailModal';
+import { MyBooksAndProfile } from './components/MyBooksAndProfile';
+import { LendingRequests } from './components/LendingRequests';
+import { ReadingLeague } from './components/ReadingLeague';
+import { SiteRulesPage } from './components/SiteRulesPage';
+import { SiteBenefitsSection } from './components/SiteBenefitsSection';
+import { AdminPanel } from './components/AdminPanel';
+import { RegisterModal } from './components/RegisterModal';
+import { LoginModal } from './components/LoginModal';
+import { ForgotPasswordModal } from './components/ForgotPasswordModal';
+import { Book } from './types';
+import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck } from 'lucide-react';
+import { houseLogoImg } from './components/MaktabKhanehBranding';
+
+function MainAppContent() {
+  const { requestBookLoan, currentUser, resetToDefaults } = useApp();
+  const [activeTab, setActiveTab] = useState<string>('library');
+  const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
+
+  // Modals
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+
+  // Toast Notification
+  const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+
+  const showToast = (text: string, type: 'success' | 'error' = 'success') => {
+    setToastMessage({ type, text });
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 4000);
+  };
+
+  const handleRequestLoan = (bookId: string) => {
+    if (!currentUser) {
+      setShowLoginModal(true);
+      showToast('جهت ثبت درخواست امانت ابتدا باید وارد حساب کاربری شوید.', 'error');
+      return;
+    }
+
+    const res = requestBookLoan(bookId);
+    if (res.success) {
+      showToast(res.message, 'success');
+      setSelectedBookForDetail(null);
+      setActiveTab('requests'); // Switch to requests tab so user sees their active request!
+    } else {
+      showToast(res.message, 'error');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Vazirmatn',sans-serif] dir-rtl">
+      {/* Toast Notification Alert */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 animate-in slide-in-from-bottom-5 duration-300">
+          <div
+            className={`p-4 rounded-2xl shadow-2xl border flex items-center gap-3 text-xs font-bold max-w-md ${
+              toastMessage.type === 'success'
+                ? 'bg-emerald-900 text-white border-emerald-700'
+                : 'bg-rose-900 text-white border-rose-700'
+            }`}
+          >
+            {toastMessage.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+            ) : (
+              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+            )}
+            <span>{toastMessage.text}</span>
+          </div>
+        </div>
+      )}
+
+      {/* Main Navbar */}
+      <Navbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        onOpenLogin={() => setShowLoginModal(true)}
+        onOpenRegister={() => setShowRegisterModal(true)}
+        onOpenPrintModal={() => setActiveTab('league')}
+      />
+
+      {/* Main Body Content Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+        {activeTab === 'library' && (
+          <MainLibrary
+            onSelectBook={(book) => setSelectedBookForDetail(book)}
+            onRequestLoan={handleRequestLoan}
+            onNavigateAddBooks={() => setActiveTab('my_books')}
+            onNavigateBenefits={() => setActiveTab('benefits')}
+          />
+        )}
+
+        {activeTab === 'league' && <ReadingLeague />}
+
+        {activeTab === 'benefits' && (
+          <SiteBenefitsSection
+            onNavigateLibrary={() => setActiveTab('library')}
+            onNavigateRules={() => setActiveTab('rules')}
+          />
+        )}
+
+        {activeTab === 'rules' && <SiteRulesPage />}
+
+        {activeTab === 'my_books' && (
+          <MyBooksAndProfile
+            onSelectBook={(book) => setSelectedBookForDetail(book)}
+            onRequestLoan={handleRequestLoan}
+          />
+        )}
+
+        {activeTab === 'requests' && <LendingRequests />}
+
+        {activeTab === 'profile' && (
+          <MyBooksAndProfile
+            onSelectBook={(book) => setSelectedBookForDetail(book)}
+            onRequestLoan={handleRequestLoan}
+          />
+        )}
+
+        {activeTab === 'admin' && <AdminPanel />}
+      </main>
+
+      {/* Book Detail Modal */}
+      {selectedBookForDetail && (
+        <BookDetailModal
+          book={selectedBookForDetail}
+          onClose={() => setSelectedBookForDetail(null)}
+          onRequestLoan={handleRequestLoan}
+        />
+      )}
+
+      {/* Auth Modals */}
+      {showLoginModal && (
+        <LoginModal
+          onClose={() => setShowLoginModal(false)}
+          onOpenRegister={() => {
+            setShowLoginModal(false);
+            setShowRegisterModal(true);
+          }}
+          onOpenForgotPassword={() => {
+            setShowLoginModal(false);
+            setShowForgotPasswordModal(true);
+          }}
+        />
+      )}
+
+      {showRegisterModal && (
+        <RegisterModal
+          onClose={() => setShowRegisterModal(false)}
+          onOpenLogin={() => {
+            setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+          onOpenRules={() => {
+            setShowRegisterModal(false);
+            setActiveTab('rules');
+          }}
+        />
+      )}
+
+      {showForgotPasswordModal && (
+        <ForgotPasswordModal
+          onClose={() => setShowForgotPasswordModal(false)}
+          onOpenLogin={() => {
+            setShowForgotPasswordModal(false);
+            setShowLoginModal(true);
+          }}
+        />
+      )}
+
+      {/* Footer */}
+      <footer className="no-print bg-slate-900 text-slate-400 py-8 border-t border-slate-800 mt-auto text-xs">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-right">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 via-sky-600 to-amber-400 p-0.5 shadow-md overflow-hidden shrink-0">
+              <img
+                src={houseLogoImg}
+                alt="لوگوی مکتب خونه"
+                className="w-full h-full object-cover rounded-lg bg-white"
+              />
+            </div>
+            <div>
+              <span className="text-white font-black text-sm block">سامانه امانت کتاب «مکتب خونه» 🎒</span>
+              <span className="text-[11px] text-cyan-400 font-bold">• هر کتاب، یک سفر • هر امانت، یک اعتماد •</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setActiveTab('rules')}
+              className="text-xs text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1"
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              قوانین و مقررات سایت
+            </button>
+            <span>•</span>
+            <button
+              onClick={resetToDefaults}
+              className="text-[11px] text-slate-500 hover:text-slate-300 underline"
+            >
+              بازنشانی داده‌های اولیه (Reset Demo)
+            </button>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AppProvider>
+      <MainAppContent />
+    </AppProvider>
+  );
+}
