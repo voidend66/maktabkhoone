@@ -24,6 +24,9 @@ const DEFAULT_WEBHOOK_URL =
   process.env.BALE_WEBHOOK_URL ||
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
+const SERVER_VERSION = '2.4.0';
+const BUILD_DATE = '2026-08-26';
+
 // پورت سرور: در صورت تعریف در متغیر محیطی PORT استفاده می‌شود (مثلاً 8098 روی سرور شما)
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -596,6 +599,25 @@ async function startServer() {
         message: err.message,
       });
     }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API ۶: دریافت نسخه و وضعیت سرور (GET /api/version و /version)
+   * --------------------------------------------------------------------------
+   */
+  app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
+    res.json({
+      success: true,
+      app: 'MaktabKhaneh',
+      version: SERVER_VERSION,
+      build_date: BUILD_DATE,
+      port: PORT,
+      bot_username: BOT_USERNAME,
+      webhook_url: DEFAULT_WEBHOOK_URL,
+      uptime_seconds: Math.floor(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
   });
 
   /**

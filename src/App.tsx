@@ -11,8 +11,9 @@ import { SiteBenefitsSection } from './components/SiteBenefitsSection';
 import { AdminPanel } from './components/AdminPanel';
 import { BaleOtpModal } from './components/BaleOtpModal';
 import { Book } from './types';
-import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
+import { APP_VERSION, APP_BUILD_DATE } from './version';
 
 function MainAppContent() {
   const { requestBookLoan, currentUser, resetToDefaults } = useApp();
@@ -158,7 +159,16 @@ function MainAppContent() {
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-4 flex-wrap justify-center">
+            <span
+              id="app-version-badge"
+              className="text-[11px] bg-slate-800 text-cyan-300 font-mono px-2.5 py-1 rounded-lg border border-slate-700 flex items-center gap-1.5"
+              title={`تاریخ بیلد: ${APP_BUILD_DATE}`}
+            >
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              نسخه سامانه: v{APP_VERSION}
+            </span>
+            <span>•</span>
             <button
               onClick={() => setActiveTab('rules')}
               className="text-xs text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1"

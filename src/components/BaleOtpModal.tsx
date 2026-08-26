@@ -19,6 +19,7 @@ import {
   HelpCircle
 } from 'lucide-react';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
+import { APP_VERSION } from '../version';
 
 interface BaleOtpModalProps {
   onClose: () => void;
@@ -284,6 +285,9 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
                 <h3 className="font-black text-base text-white">ورود و ثبت‌نام در مکتب‌خونه 🎒</h3>
                 <span className="text-[10px] bg-emerald-400 text-emerald-950 px-2 py-0.5 rounded-full font-black">
                   با پیام‌رسان بله
+                </span>
+                <span className="text-[9px] bg-slate-800/80 text-emerald-300 px-1.5 py-0.5 rounded font-mono">
+                  v{APP_VERSION}
                 </span>
               </div>
               <p className="text-xs text-emerald-100 font-medium">
