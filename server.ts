@@ -24,7 +24,8 @@ const DEFAULT_WEBHOOK_URL =
   process.env.BALE_WEBHOOK_URL ||
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
-const PORT = 3000;
+// پورت سرور: در صورت تعریف در متغیر محیطی PORT استفاده می‌شود (مثلاً 8098 روی سرور شما)
+const PORT = Number(process.env.PORT) || 3000;
 
 /**
  * ساختار داده نشست احراز هویت OTP
