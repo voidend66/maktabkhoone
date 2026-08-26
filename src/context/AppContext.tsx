@@ -30,6 +30,7 @@ interface AppContextType {
   setCurrentUser: (user: User | null) => void;
   registerUser: (data: RegistrationInput) => { success: boolean; message: string; user?: User };
   loginUser: (phone: string, pass: string) => { success: boolean; message: string; user?: User };
+  loginWithOtpPhone: (phone: string) => { success: boolean; message: string; user: User };
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string) => void;
@@ -388,6 +389,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setCurrentUser(user);
     return { success: true, message: `خوش آمدید ${user.name}`, user };
+  };
+
+  // Login via verified Bale OTP (creates user if not exists or logs in)
+  const loginWithOtpPhone = (phone: string) => {
+    const cleanDigits = phone.replace(/\D/g, '');
+    const user = users.find((u) => {
+      const uClean = u.phone.replace(/\D/g, '');
+      return uClean === cleanDigits || u.phone === phone || uClean.endsWith(cleanDigits.slice(-10));
+    });
+
+    if (user) {
+      setCurrentUser(user);
+      return { success: true, message: `خوش آمدید ${user.name}! احراز هویت با پیام‌رسان بله موفقیت‌آمیز بود.`, user };
+    }
+
+    // Auto-create an approved student user if not in database
+    const newUser: User = {
+      id: `u_bale_${Date.now()}`,
+      name: `کاربر بله (${phone.slice(-4)})`,
+      phone: phone,
+      className: 'کلاس ۱/۱',
+      role: 'student',
+      rating: 5,
+      ratingsCount: 1,
+      booksContributedCount: 0,
+      booksReadCount: 0,
+      medals: [],
+      joinedDate: '۱۴۰۳/۰۶/۰۱',
+      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+      status: 'approved'
+    };
+
+    setUsers((prev) => [...prev, newUser]);
+    setCurrentUser(newUser);
+    return { success: true, message: `حساب شما با شماره ${phone} تایید و ایجاد شد!`, user: newUser };
   };
 
   // Admin Approve User
@@ -811,6 +847,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCurrentUser,
         registerUser,
         loginUser,
+        loginWithOtpPhone,
         resetPasswordWithSMS,
         approveUser,
         rejectUser,

@@ -1,18 +1,20 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, LogIn, Phone, Lock, AlertCircle } from 'lucide-react';
+import { X, LogIn, Phone, Lock, AlertCircle, Bot, Sparkles } from 'lucide-react';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 
 interface LoginModalProps {
   onClose: () => void;
   onOpenRegister: () => void;
   onOpenForgotPassword: () => void;
+  onOpenBaleOtp?: () => void;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onOpenRegister,
-  onOpenForgotPassword
+  onOpenForgotPassword,
+  onOpenBaleOtp
 }) => {
   const { loginUser } = useApp();
 
@@ -63,8 +65,34 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <MaktabKhanehLogo size="sm" showSlogan={true} />
         </div>
 
+        {/* Quick Bale OTP Action Banner */}
+        {onOpenBaleOtp && (
+          <div className="p-3 mx-6 mt-4 bg-gradient-to-r from-emerald-50 to-teal-50 border-2 border-emerald-300 rounded-2xl flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div className="text-right">
+                <span className="text-xs font-black text-emerald-950 block">ورود بدون رمز با پیام‌رسان بله</span>
+                <span className="text-[10px] text-emerald-700 font-medium">دریافت کد تایید OTP با بات @Maktabkunebot</span>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onOpenBaleOtp();
+              }}
+              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black rounded-xl shadow-xs transition shrink-0 flex items-center gap-1 cursor-pointer"
+            >
+              <Sparkles className="w-3 h-3 text-amber-300" />
+              <span>ورود با بله</span>
+            </button>
+          </div>
+        )}
+
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 pt-3 space-y-4">
           {errorMessage && (
             <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-2">
               <AlertCircle className="w-4 h-4 shrink-0" />
@@ -124,10 +152,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white font-black text-xs rounded-xl shadow-md shadow-cyan-600/20 transition flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white font-black text-xs rounded-xl shadow-md shadow-cyan-600/20 transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <LogIn className="w-4 h-4 text-amber-300" />
-              <span>ورود به سامانه مکتب خونه</span>
+              <span>ورود با رمز عبور</span>
             </button>
           </div>
 
@@ -146,4 +174,5 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     </div>
   );
 };
+
 

@@ -9,9 +9,7 @@ import { ReadingLeague } from './components/ReadingLeague';
 import { SiteRulesPage } from './components/SiteRulesPage';
 import { SiteBenefitsSection } from './components/SiteBenefitsSection';
 import { AdminPanel } from './components/AdminPanel';
-import { RegisterModal } from './components/RegisterModal';
-import { LoginModal } from './components/LoginModal';
-import { ForgotPasswordModal } from './components/ForgotPasswordModal';
+import { BaleOtpModal } from './components/BaleOtpModal';
 import { Book } from './types';
 import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
@@ -21,10 +19,8 @@ function MainAppContent() {
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
 
-  // Modals
-  const [showLoginModal, setShowLoginModal] = useState(false);
-  const [showRegisterModal, setShowRegisterModal] = useState(false);
-  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  // Unified Auth Modal (Login / Register via Bale)
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -38,7 +34,7 @@ function MainAppContent() {
 
   const handleRequestLoan = (bookId: string) => {
     if (!currentUser) {
-      setShowLoginModal(true);
+      setShowAuthModal(true);
       showToast('جهت ثبت درخواست امانت ابتدا باید وارد حساب کاربری شوید.', 'error');
       return;
     }
@@ -79,8 +75,9 @@ function MainAppContent() {
       <Navbar
         activeTab={activeTab}
         setActiveTab={setActiveTab}
-        onOpenLogin={() => setShowLoginModal(true)}
-        onOpenRegister={() => setShowRegisterModal(true)}
+        onOpenAuth={() => setShowAuthModal(true)}
+        onOpenLogin={() => setShowAuthModal(true)}
+        onOpenRegister={() => setShowAuthModal(true)}
         onOpenPrintModal={() => setActiveTab('league')}
       />
 
@@ -134,41 +131,12 @@ function MainAppContent() {
         />
       )}
 
-      {/* Auth Modals */}
-      {showLoginModal && (
-        <LoginModal
-          onClose={() => setShowLoginModal(false)}
-          onOpenRegister={() => {
-            setShowLoginModal(false);
-            setShowRegisterModal(true);
-          }}
-          onOpenForgotPassword={() => {
-            setShowLoginModal(false);
-            setShowForgotPasswordModal(true);
-          }}
-        />
-      )}
-
-      {showRegisterModal && (
-        <RegisterModal
-          onClose={() => setShowRegisterModal(false)}
-          onOpenLogin={() => {
-            setShowRegisterModal(false);
-            setShowLoginModal(true);
-          }}
-          onOpenRules={() => {
-            setShowRegisterModal(false);
-            setActiveTab('rules');
-          }}
-        />
-      )}
-
-      {showForgotPasswordModal && (
-        <ForgotPasswordModal
-          onClose={() => setShowForgotPasswordModal(false)}
-          onOpenLogin={() => {
-            setShowForgotPasswordModal(false);
-            setShowLoginModal(true);
+      {/* Auth Modal (Login / Register via Bale) */}
+      {showAuthModal && (
+        <BaleOtpModal
+          onClose={() => setShowAuthModal(false)}
+          onSuccessLogin={(phone) => {
+            showToast(`خوش آمدید! ورود با شماره ${phone} با موفقیت انجام شد.`, 'success');
           }}
         />
       )}

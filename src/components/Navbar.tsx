@@ -23,17 +23,21 @@ import {
 interface NavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  onOpenLogin: () => void;
-  onOpenRegister: () => void;
-  onOpenPrintModal: () => void;
+  onOpenAuth?: () => void;
+  onOpenLogin?: () => void;
+  onOpenRegister?: () => void;
+  onOpenPrintModal?: () => void;
+  onOpenBaleOtp?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   activeTab,
   setActiveTab,
+  onOpenAuth,
   onOpenLogin,
   onOpenRegister,
-  onOpenPrintModal
+  onOpenPrintModal,
+  onOpenBaleOtp
 }) => {
   const { currentUser, setCurrentUser, users, switchUserRoleDemo, requests } = useApp();
 
@@ -268,18 +272,13 @@ export const Navbar: React.FC<NavbarProps> = ({
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <button
-                  onClick={onOpenLogin}
-                  className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black text-cyan-900 bg-cyan-50 hover:bg-cyan-100 border border-cyan-300 rounded-xl transition flex items-center gap-1.5 shadow-xs active:scale-95"
+                  id="navbar-auth-btn"
+                  onClick={onOpenAuth || onOpenLogin || onOpenBaleOtp}
+                  className="px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-700 hover:from-emerald-700 hover:to-sky-800 rounded-xl shadow-md shadow-emerald-700/20 transition flex items-center gap-2 active:scale-95 cursor-pointer"
+                  title="ورود و ثبت‌نام با پیام‌رسان بله"
                 >
-                  <LogIn className="w-5 h-5 text-cyan-600 shrink-0" />
-                  <span className="font-extrabold">ورود به حساب</span>
-                </button>
-                <button
-                  onClick={onOpenRegister}
-                  className="px-3 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black text-white bg-gradient-to-r from-cyan-600 to-sky-700 hover:from-cyan-700 hover:to-sky-800 rounded-xl shadow-md shadow-cyan-600/20 transition flex items-center gap-1.5 active:scale-95"
-                >
-                  <UserPlus className="w-5 h-5 shrink-0" />
-                  <span className="hidden xs:inline">ثبت‌نام</span>
+                  <LogIn className="w-4 h-4 text-emerald-200 shrink-0" />
+                  <span className="font-extrabold">ورود و ثبت‌نام</span>
                 </button>
               </div>
             )}
