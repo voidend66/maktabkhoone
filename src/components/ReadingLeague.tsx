@@ -104,229 +104,246 @@ export const ReadingLeague: React.FC = () => {
         )}
       </div>
 
-      {/* Podium Top 3 Students */}
-      <div className="space-y-4">
-        <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
-          <Trophy className="w-5 h-5 text-amber-500" />
-          <span>سکوی افتخار کتاب‌خوانان برتر این هفته</span>
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
-          {/* 2nd Place */}
-          {topContributors[1] && (
-            <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xs text-center space-y-3 relative order-2 md:order-1">
-              <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-slate-300 text-slate-900 text-xs font-black px-3 py-1 rounded-full shadow-xs">
-                مقام دوم 🥈
-              </span>
-              <img
-                src={topContributors[1].avatar}
-                alt={topContributors[1].name}
-                className="w-16 h-16 rounded-full object-cover mx-auto ring-4 ring-slate-200"
-              />
-              <div>
-                <h4 className="font-bold text-slate-900 text-base">{topContributors[1].name}</h4>
-                <p className="text-xs text-slate-500">{topContributors[1].className}</p>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
-                <span>📚 {topContributors[1].booksContributedCount} کتاب</span>
-                <span>⭐ {topContributors[1].rating}</span>
-              </div>
-            </div>
-          )}
-
-          {/* 1st Place */}
-          {topContributors[0] && (
-            <div className="bg-gradient-to-b from-amber-500/10 via-white to-amber-500/20 rounded-3xl p-6 border-2 border-amber-400 shadow-lg text-center space-y-3 relative order-1 md:order-2 scale-105">
-              <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-amber-400 text-slate-950 text-xs font-black px-4 py-1 rounded-full shadow-md flex items-center gap-1">
-                <Crown className="w-3.5 h-3.5" /> مقام اول 🥇
-              </span>
-              <img
-                src={topContributors[0].avatar}
-                alt={topContributors[0].name}
-                className="w-20 h-20 rounded-full object-cover mx-auto ring-4 ring-amber-400 shadow-md"
-              />
-              <div>
-                <h4 className="font-black text-slate-900 text-lg">{topContributors[0].name}</h4>
-                <p className="text-xs text-amber-800 font-bold">{topContributors[0].className}</p>
-              </div>
-              <div className="bg-amber-100/80 p-3 rounded-2xl border border-amber-200 flex justify-around text-xs font-bold text-slate-900">
-                <span>📚 {topContributors[0].booksContributedCount} کتاب</span>
-                <span>📖 {topContributors[0].booksReadCount} مطالعه</span>
-                <span>⭐ {topContributors[0].rating}</span>
-              </div>
-            </div>
-          )}
-
-          {/* 3rd Place */}
-          {topContributors[2] && (
-            <div className="bg-white rounded-3xl p-6 border-2 border-amber-200 shadow-xs text-center space-y-3 relative order-3">
-              <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-amber-700 text-white text-xs font-black px-3 py-1 rounded-full shadow-xs">
-                مقام سوم 🥉
-              </span>
-              <img
-                src={topContributors[2].avatar}
-                alt={topContributors[2].name}
-                className="w-16 h-16 rounded-full object-cover mx-auto ring-4 ring-amber-200"
-              />
-              <div>
-                <h4 className="font-bold text-slate-900 text-base">{topContributors[2].name}</h4>
-                <p className="text-xs text-slate-500">{topContributors[2].className}</p>
-              </div>
-              <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
-                <span>📚 {topContributors[2].booksContributedCount} کتاب</span>
-                <span>⭐ {topContributors[2].rating}</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Detailed Top 1 to 5 Ranking Tables */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Table 1: Most Contributed */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-            <BookOpen className="w-5 h-5 text-indigo-600" />
-            <h4 className="font-bold text-slate-900 text-sm">
-              بیشترین اشتراک کتاب (نفر ۱ تا ۵)
-            </h4>
+      {/* Podium & Ranking Tables */}
+      {studentUsers.length === 0 ? (
+        <div className="bg-white rounded-3xl p-10 sm:p-14 text-center border-2 border-dashed border-amber-300 space-y-4 shadow-sm max-w-2xl mx-auto">
+          <div className="w-20 h-20 rounded-3xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center shadow-inner">
+            <Trophy className="w-10 h-10" />
           </div>
+          <h3 className="font-black text-slate-900 text-lg sm:text-xl">
+            لیگ کتابخوانی در حال آماده‌سازی و شروع است! 🏆
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+            به محض اینکه دانش‌آموزان ثبت‌نام کرده و اولین کتاب‌ها را امانت بگیرند و به اشتراک بگذارند، رتبه‌بندی و قهرمانان هفتگی در این بخش نمایش داده خواهند شد.
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Podium Top 3 Students */}
+          <div className="space-y-4">
+            <h3 className="text-lg font-black text-slate-900 flex items-center gap-2">
+              <Trophy className="w-5 h-5 text-amber-500" />
+              <span>سکوی افتخار کتاب‌خوانان برتر این هفته</span>
+            </h3>
 
-          <div className="space-y-2">
-            {topContributors.slice(0, 5).map((u, idx) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
-                      idx === 0
-                        ? 'bg-amber-400 text-slate-950'
-                        : idx === 1
-                        ? 'bg-slate-300 text-slate-950'
-                        : idx === 2
-                        ? 'bg-amber-700 text-white'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {idx + 1}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pt-4">
+              {/* 2nd Place */}
+              {topContributors[1] && (
+                <div className="bg-white rounded-3xl p-6 border-2 border-slate-200 shadow-xs text-center space-y-3 relative order-2 md:order-1">
+                  <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-slate-300 text-slate-900 text-xs font-black px-3 py-1 rounded-full shadow-xs">
+                    مقام دوم 🥈
                   </span>
                   <img
-                    src={u.avatar}
-                    alt={u.name}
-                    className="w-8 h-8 rounded-full object-cover"
+                    src={topContributors[1].avatar}
+                    alt={topContributors[1].name}
+                    className="w-16 h-16 rounded-full object-cover mx-auto ring-4 ring-slate-200"
                   />
                   <div>
-                    <div className="font-bold text-slate-800">{u.name}</div>
-                    <div className="text-[10px] text-slate-400">{u.className}</div>
+                    <h4 className="font-bold text-slate-900 text-base">{topContributors[1].name}</h4>
+                    <p className="text-xs text-slate-500">{topContributors[1].className}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
+                    <span>📚 {topContributors[1].booksContributedCount} کتاب</span>
+                    <span>⭐ {topContributors[1].rating}</span>
                   </div>
                 </div>
+              )}
 
-                <span className="font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-xl">
-                  {u.booksContributedCount} جلد
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Table 2: Most Read */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-            <Trophy className="w-5 h-5 text-amber-500" />
-            <h4 className="font-bold text-slate-900 text-sm">
-              بیشترین امانت و مطالعه (نفر ۱ تا ۵)
-            </h4>
-          </div>
-
-          <div className="space-y-2">
-            {topReaders.slice(0, 5).map((u, idx) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-amber-200 transition text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
-                      idx === 0
-                        ? 'bg-amber-400 text-slate-950'
-                        : idx === 1
-                        ? 'bg-slate-300 text-slate-950'
-                        : idx === 2
-                        ? 'bg-amber-700 text-white'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {idx + 1}
+              {/* 1st Place */}
+              {topContributors[0] && (
+                <div className="bg-gradient-to-b from-amber-500/10 via-white to-amber-500/20 rounded-3xl p-6 border-2 border-amber-400 shadow-lg text-center space-y-3 relative order-1 md:order-2 scale-105">
+                  <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-amber-400 text-slate-950 text-xs font-black px-4 py-1 rounded-full shadow-md flex items-center gap-1">
+                    <Crown className="w-3.5 h-3.5" /> مقام اول 🥇
                   </span>
                   <img
-                    src={u.avatar}
-                    alt={u.name}
-                    className="w-8 h-8 rounded-full object-cover"
+                    src={topContributors[0].avatar}
+                    alt={topContributors[0].name}
+                    className="w-20 h-20 rounded-full object-cover mx-auto ring-4 ring-amber-400 shadow-md"
                   />
                   <div>
-                    <div className="font-bold text-slate-800">{u.name}</div>
-                    <div className="text-[10px] text-slate-400">{u.className}</div>
+                    <h4 className="font-black text-slate-900 text-lg">{topContributors[0].name}</h4>
+                    <p className="text-xs text-amber-800 font-bold">{topContributors[0].className}</p>
+                  </div>
+                  <div className="bg-amber-100/80 p-3 rounded-2xl border border-amber-200 flex justify-around text-xs font-bold text-slate-900">
+                    <span>📚 {topContributors[0].booksContributedCount} کتاب</span>
+                    <span>📖 {topContributors[0].booksReadCount} مطالعه</span>
+                    <span>⭐ {topContributors[0].rating}</span>
                   </div>
                 </div>
+              )}
 
-                <span className="font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl">
-                  {u.booksReadCount} جلد
-                </span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Table 3: Highest Reputation Lenders */}
-        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
-          <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
-            <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
-            <h4 className="font-bold text-slate-900 text-sm">
-              خوش‌قول‌ترین امانت‌داران (امتیاز از ۵)
-            </h4>
-          </div>
-
-          <div className="space-y-2">
-            {topRatedUsers.slice(0, 5).map((u, idx) => (
-              <div
-                key={u.id}
-                className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition text-xs"
-              >
-                <div className="flex items-center gap-3">
-                  <span
-                    className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
-                      idx === 0
-                        ? 'bg-amber-400 text-slate-950'
-                        : idx === 1
-                        ? 'bg-slate-300 text-slate-950'
-                        : idx === 2
-                        ? 'bg-amber-700 text-white'
-                        : 'bg-slate-200 text-slate-700'
-                    }`}
-                  >
-                    {idx + 1}
+              {/* 3rd Place */}
+              {topContributors[2] && (
+                <div className="bg-white rounded-3xl p-6 border-2 border-amber-200 shadow-xs text-center space-y-3 relative order-3">
+                  <span className="absolute -top-3 right-1/2 translate-x-1/2 bg-amber-700 text-white text-xs font-black px-3 py-1 rounded-full shadow-xs">
+                    مقام سوم 🥉
                   </span>
                   <img
-                    src={u.avatar}
-                    alt={u.name}
-                    className="w-8 h-8 rounded-full object-cover"
+                    src={topContributors[2].avatar}
+                    alt={topContributors[2].name}
+                    className="w-16 h-16 rounded-full object-cover mx-auto ring-4 ring-amber-200"
                   />
                   <div>
-                    <div className="font-bold text-slate-800">{u.name}</div>
-                    <div className="text-[10px] text-slate-400">{u.className}</div>
+                    <h4 className="font-bold text-slate-900 text-base">{topContributors[2].name}</h4>
+                    <p className="text-xs text-slate-500">{topContributors[2].className}</p>
+                  </div>
+                  <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
+                    <span>📚 {topContributors[2].booksContributedCount} کتاب</span>
+                    <span>⭐ {topContributors[2].rating}</span>
                   </div>
                 </div>
-
-                <span className="font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-xl flex items-center gap-1">
-                  ⭐ {u.rating}
-                </span>
-              </div>
-            ))}
+              )}
+            </div>
           </div>
-        </div>
-      </div>
+
+          {/* Detailed Top 1 to 5 Ranking Tables */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* Table 1: Most Contributed */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                <BookOpen className="w-5 h-5 text-indigo-600" />
+                <h4 className="font-bold text-slate-900 text-sm">
+                  بیشترین اشتراک کتاب (نفر ۱ تا ۵)
+                </h4>
+              </div>
+
+              <div className="space-y-2">
+                {topContributors.slice(0, 5).map((u, idx) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition text-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950'
+                            : idx === 2
+                            ? 'bg-amber-700 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <img
+                        src={u.avatar}
+                        alt={u.name}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="font-bold text-slate-800">{u.name}</div>
+                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                      </div>
+                    </div>
+
+                    <span className="font-black text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-xl">
+                      {u.booksContributedCount} جلد
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Table 2: Most Read */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                <Trophy className="w-5 h-5 text-amber-500" />
+                <h4 className="font-bold text-slate-900 text-sm">
+                  بیشترین امانت و مطالعه (نفر ۱ تا ۵)
+                </h4>
+              </div>
+
+              <div className="space-y-2">
+                {topReaders.slice(0, 5).map((u, idx) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-amber-200 transition text-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950'
+                            : idx === 2
+                            ? 'bg-amber-700 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <img
+                        src={u.avatar}
+                        alt={u.name}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="font-bold text-slate-800">{u.name}</div>
+                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                      </div>
+                    </div>
+
+                    <span className="font-black text-amber-700 bg-amber-50 px-2.5 py-1 rounded-xl">
+                      {u.booksReadCount} جلد
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Table 3: Highest Reputation Lenders */}
+            <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
+                <Star className="w-5 h-5 text-amber-400 fill-amber-400" />
+                <h4 className="font-bold text-slate-900 text-sm">
+                  خوش‌قول‌ترین امانت‌داران (امتیاز از ۵)
+                </h4>
+              </div>
+
+              <div className="space-y-2">
+                {topRatedUsers.slice(0, 5).map((u, idx) => (
+                  <div
+                    key={u.id}
+                    className="flex items-center justify-between p-3 rounded-2xl bg-slate-50 border border-slate-100 hover:border-indigo-200 transition text-xs"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span
+                        className={`w-6 h-6 rounded-full text-xs font-extrabold flex items-center justify-center ${
+                          idx === 0
+                            ? 'bg-amber-400 text-slate-950'
+                            : idx === 1
+                            ? 'bg-slate-300 text-slate-950'
+                            : idx === 2
+                            ? 'bg-amber-700 text-white'
+                            : 'bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <img
+                        src={u.avatar}
+                        alt={u.name}
+                        className="w-8 h-8 rounded-full object-cover"
+                      />
+                      <div>
+                        <div className="font-bold text-slate-800">{u.name}</div>
+                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                      </div>
+                    </div>
+
+                    <span className="font-black text-amber-600 bg-amber-50 px-2.5 py-1 rounded-xl flex items-center gap-1">
+                      ⭐ {u.rating}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Printable Board Poster Modal */}
       {showPrintModal && (

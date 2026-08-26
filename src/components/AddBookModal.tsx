@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { BookCondition } from '../types';
 import { CATEGORIES } from '../data/mockData';
-import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload } from 'lucide-react';
+import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
 
 interface AddBookModalProps {
   onClose: () => void;
@@ -29,20 +30,31 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
   const [uploadedCover, setUploadedCover] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError('حجم فایل عکس باید کمتر از ۵ مگابایت باشد.');
+      if (file.size > 10 * 1024 * 1024) {
+        setError('حجم فایل عکس باید کمتر از ۱۰ مگابایت باشد.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setUploadedCover(reader.result as string);
-        setError('');
-      };
-      reader.readAsDataURL(file);
+
+      setIsUploading(true);
+      setError('');
+
+      try {
+        const uploadRes = await api.uploadImage(file);
+        if (uploadRes.success && uploadRes.fileUrl) {
+          setUploadedCover(uploadRes.fileUrl);
+        } else {
+          setError(uploadRes.message || 'خطا در آپلود عکس روی سرور');
+        }
+      } catch (err: any) {
+        setError(err.message || 'خطا در برقراری ارتباط با سرور آپلود');
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -166,14 +178,19 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
             </label>
 
             {/* File upload input */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <label className="cursor-pointer px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-xs flex items-center gap-2 transition">
-                <Upload className="w-4 h-4" />
-                <span>انتخاب فایل عکس از سیستم / گوشی</span>
+                {isUploading ? (
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                <span>{isUploading ? 'در حال آپلود روی سرور...' : 'انتخاب و آپلود عکس جلد'}</span>
                 <input
                   type="file"
                   accept="image/*"
                   onChange={handleFileUpload}
+                  disabled={isUploading}
                   className="hidden"
                 />
               </label>
@@ -181,10 +198,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
               {uploadedCover ? (
                 <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-xl border border-emerald-200 text-xs font-bold">
                   <img src={uploadedCover} alt="uploaded cover" className="w-8 h-8 rounded-lg object-cover" />
-                  <span>عکس سفارشی شما انتخاب شد</span>
+                  <span>تصویر با موفقیت در سرور ذخیره شد</span>
                 </div>
               ) : (
-                <span className="text-xs text-slate-500">فایلی انتخاب نشده است</span>
+                <span className="text-xs text-slate-500">{isUploading ? 'لطفاً شکیبا باشید...' : 'فایلی انتخاب نشده است'}</span>
               )}
             </div>
 

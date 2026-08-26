@@ -54,51 +54,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   return (
     <header className="relative lg:sticky lg:top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
-      {/* Demo Persona Quick Switcher Banner */}
-      <div className="bg-slate-900 text-slate-200 text-[10px] sm:text-xs py-1 px-3 sm:px-4">
-        <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-1.5">
-          <div className="flex items-center gap-1.5">
-            <span className="bg-cyan-500/20 text-cyan-400 text-[9px] sm:text-[10px] px-1.5 py-0.5 rounded-full font-bold">
-              حالت آزمایشی (Demo)
-            </span>
-            <span className="hidden sm:inline text-slate-300">
-              جابجایی بین اکانت‌های کاربر جهت تست سریع سامانه:
-            </span>
-          </div>
-
-          <div className="flex items-center gap-1 sm:gap-1.5 overflow-x-auto py-0.5 scrollbar-none">
-            {users.slice(0, 5).map((u) => (
-              <button
-                key={u.id}
-                onClick={() => switchUserRoleDemo(u.id)}
-                className={`px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md transition text-[10px] sm:text-xs flex items-center gap-1 whitespace-nowrap ${
-                  currentUser?.id === u.id
-                    ? 'bg-cyan-600 text-white font-bold ring-1 ring-cyan-400'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-              >
-                <img
-                  src={u.avatar}
-                  alt={u.name}
-                  className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full object-cover"
-                />
-                <span>{u.name}</span>
-                {u.role === 'admin' && (
-                  <span className="text-[9px] bg-amber-500/30 text-amber-300 px-1 rounded">
-                    مدیر
-                  </span>
-                )}
-                {u.status === 'pending' && (
-                  <span className="text-[9px] bg-amber-500 text-slate-950 font-bold px-1 rounded">
-                    در انتظار
-                  </span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
       {/* Main Navigation */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between py-1.5 sm:py-3 gap-2 sm:gap-4">

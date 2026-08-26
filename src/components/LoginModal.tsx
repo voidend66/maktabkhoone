@@ -18,22 +18,33 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 }) => {
   const { loginUser } = useApp();
 
-  const [phone, setPhone] = useState('09123456789'); // Demo default
-  const [password, setPassword] = useState('123'); // Demo default
+  const [phone, setPhone] = useState('');
+  const [password, setPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!phone.trim() || !password.trim()) {
       setErrorMessage('لطفاً شماره تلفن همراه و رمز عبور را وارد کنید.');
       return;
     }
 
-    const res = loginUser(phone.trim(), password.trim());
-    if (res.success) {
-      onClose();
-    } else {
-      setErrorMessage(res.message);
+    setIsSubmitting(true);
+    setErrorMessage('');
+
+    try {
+      const res = await loginUser(phone.trim(), password.trim());
+      if (res.success) {
+        onClose();
+      } else {
+        setErrorMessage(res.message);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'خطا در برقراری ارتباط با سرور');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -143,10 +154,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 required
               />
             </div>
-          </div>
-
-          <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-950 font-medium">
-            💡 <strong>اکانت‌های آزمایشی:</strong> شماره 09123456789 و رمز 123 (کاربر: حسن) یا 09121112233 و رمز admin (مدیر سایت مکتب خونه).
           </div>
 
           <div className="pt-2">

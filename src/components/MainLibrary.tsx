@@ -254,12 +254,33 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
       </div>
 
       {/* Book Cards Grid */}
-      {filteredBooks.length === 0 ? (
+      {books.length === 0 ? (
+        <div className="bg-white rounded-3xl p-10 sm:p-16 text-center border-2 border-dashed border-cyan-300 space-y-4 shadow-sm max-w-2xl mx-auto">
+          <div className="w-20 h-20 rounded-3xl bg-gradient-to-br from-cyan-100 to-sky-200 text-cyan-700 mx-auto flex items-center justify-center shadow-inner">
+            <BookOpen className="w-10 h-10" />
+          </div>
+          <h3 className="font-black text-slate-900 text-lg sm:text-xl">
+            هنوز کتابی در کتابخانه مکتب‌خانه ثبت نشده است! 📚
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-600 max-w-md mx-auto leading-relaxed">
+            اولین نفری باشید که کتاب‌های خوانده‌شده و جذاب خود را با همکلاسی‌هایتان به اشتراک می‌گذارد و در لیگ کتابخوانی مدال افتخار دریافت می‌کند.
+          </p>
+          <div className="pt-2 flex flex-wrap items-center justify-center gap-3">
+            <button
+              onClick={onNavigateAddBooks}
+              className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white font-black text-xs sm:text-sm rounded-2xl shadow-lg shadow-cyan-600/20 transition flex items-center gap-2"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>+ افزودن اولین کتاب به گنجینه</span>
+            </button>
+          </div>
+        </div>
+      ) : filteredBooks.length === 0 ? (
         <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 space-y-3">
           <div className="w-16 h-16 rounded-2xl bg-amber-50 text-amber-500 mx-auto flex items-center justify-center">
             <BookOpen className="w-8 h-8" />
           </div>
-          <h3 className="font-bold text-slate-800 text-base">کتابی با این مشخصات یافت نشد!</h3>
+          <h3 className="font-bold text-slate-800 text-base">کتابی با این مشخصات فیلتر یافت نشد!</h3>
           <p className="text-xs text-slate-500 max-w-md mx-auto">
             می‌توانید عبارت جستجو را تغییر دهید یا فیلتر دسته‌بندی را روی «همه تصنیف‌ها» بگذارید.
           </p>

@@ -1,10 +1,24 @@
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
+import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
+import multer from 'multer';
+import { dbService } from './server/db';
+import { isAdminPhone } from './src/data/mockData';
+import {
+  User,
+  Book,
+  LendingRequest,
+  SchoolClass,
+  MutualFeedback,
+  BankCardInfo,
+  RegistrationInput,
+  NewBookInput
+} from './src/types';
 
-// بارگذاری متغیرهای محیطی
+// Load environment variables
 dotenv.config();
 
 /**
@@ -19,52 +33,69 @@ const BOT_USERNAME = 'Maktabkunebot';
 const BALE_API_BASE_URL = `https://tapi.bale.ai/bot${BALE_BOT_TOKEN}`;
 const BALE_DEEP_LINK_BASE = `https://ble.ir/${BOT_USERNAME}`;
 
-// آدرس وبهوک پیش‌فرض روی دامنه HTTPS
+// Webhook URL
 const DEFAULT_WEBHOOK_URL =
   process.env.BALE_WEBHOOK_URL ||
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
-const SERVER_VERSION = '2.4.0';
+const SERVER_VERSION = '3.0.0';
 const BUILD_DATE = '2026-08-26';
-
-// پورت سرور: در صورت تعریف در متغیر محیطی PORT استفاده می‌شود (مثلاً 8098 روی سرور شما)
 const PORT = Number(process.env.PORT) || 3000;
+
+// Ensure upload directory exists
+const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
+
+// Multer Storage Configuration
+const storage = multer.diskStorage({
+  destination: (_req, _file, cb) => {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname) || '.jpg';
+    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(6).toString('hex');
+    cb(null, `img-${uniqueSuffix}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  fileFilter: (_req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('فقط فایل‌های تصویری (JPEG, PNG, WebP) مجاز هستند.'));
+    }
+  }
+});
 
 /**
  * ساختار داده نشست احراز هویت OTP
  */
 export interface OtpSession {
-  sessionId: string; // شناسه یکتای نشست
-  phoneNumber: string; // شماره تلفن نرمال‌شده (مثلاً 989123456789)
-  originalPhone: string; // شماره وارد شده توسط کاربر (مثلاً 09123456789)
-  otpCode: string; // کد تایید ۵ رقمی تصادفی
-  createdAt: number; // زمان ایجاد (میلی‌ثانیه)
-  expiresAt: number; // زمان انقضا (۵ دقیقه بعد)
-  chatId?: number | string; // شناسه چت کاربر در بله
+  sessionId: string;
+  phoneNumber: string;
+  originalPhone: string;
+  otpCode: string;
+  createdAt: number;
+  expiresAt: number;
+  chatId?: number | string;
   status:
-    | 'PENDING_START' // در انتظار کلیک روی لینک بله و ارسال /start
-    | 'STARTED' // کاربر دستور /start را ارسال کرده و دکمه ارسال شماره برایش نمایش داده شده
-    | 'CODE_SENT' // شماره کاربر تایید و کد ۵ رقمی در بله ارسال شد
-    | 'VERIFIED' // کد در سایت با موفقیت تایید شد
-    | 'PHONE_MISMATCH' // شماره حساب بله کاربر با شماره وارد شده در سایت یکسان نبود
-    | 'EXPIRED'; // زمان نشست منقضی شد
-  attempts: number; // تعداد دفعات تلاش برای ورود کد
-  verifiedAt?: number; // زمان تایید نهایی
+    | 'PENDING_START'
+    | 'STARTED'
+    | 'CODE_SENT'
+    | 'VERIFIED'
+    | 'PHONE_MISMATCH'
+    | 'EXPIRED';
+  attempts: number;
+  verifiedAt?: number;
 }
 
-/**
- * حافظه موقت نگهداری نشست‌ها (In-Memory Session Store)
- */
 const otpSessions = new Map<string, OtpSession>();
-
-// نقشه کمکی برای یافتن سریع نشست فعال بر اساس chatId
 const chatToSessionMap = new Map<string | number, string>();
-
-/**
- * ============================================================================
- * توابع کمکی (Helper Functions)
- * ============================================================================
- */
 
 /**
  * تبدیل ارقام فارسی و عربی به انگلیسی
@@ -77,27 +108,22 @@ export function toEnglishDigits(str: string): string {
 }
 
 /**
- * نرمال‌سازی شماره موبایل به فرمت استاندارد 989123456789
- * ورودی‌های مختلف: 0912..., +98912..., 0098912..., 912...
+ * نرمال‌سازی شماره موبایل
  */
 export function normalizePhoneNumber(phone: string): string | null {
   if (!phone) return null;
   let cleaned = toEnglishDigits(phone).replace(/[\s\-\(\)\+]/g, '');
 
-  // حذف پیشوندهای بین‌المللی 00 یا +
   if (cleaned.startsWith('0098')) {
     cleaned = cleaned.substring(2);
   } else if (cleaned.startsWith('098')) {
     cleaned = cleaned.substring(1);
   } else if (cleaned.startsWith('09')) {
-    // 09123456789 -> 989123456789
     cleaned = '98' + cleaned.substring(1);
   } else if (cleaned.startsWith('9') && cleaned.length === 10) {
-    // 9123456789 -> 989123456789
     cleaned = '98' + cleaned;
   }
 
-  // بررسی اعتبار نهایی شماره موبایل ایران (۱۲ رقم: 989XXXXXXXXX)
   const iranMobileRegex = /^989\d{9}$/;
   if (iranMobileRegex.test(cleaned)) {
     return cleaned;
@@ -114,9 +140,7 @@ export function generateOtpCode(): string {
   return randomNum.toString();
 }
 
-/**
- * پاکسازی دوره‌ای نشست‌های منقضی‌شده (هر ۶۰ ثانیه)
- */
+// Clean up expired sessions periodically
 setInterval(() => {
   const now = Date.now();
   for (const [sessionId, session] of otpSessions.entries()) {
@@ -133,13 +157,7 @@ setInterval(() => {
 }, 60 * 1000);
 
 /**
- * ============================================================================
- * کلاینت ارتباط با API پیام‌رسان بله (Bale Bot API Client)
- * ============================================================================
- */
-
-/**
- * ارسال درخواست به متدهای API بله
+ * کلاینت ارتباط با API پیام‌رسان بله
  */
 async function callBaleApi(method: string, payload: Record<string, any> = {}) {
   const url = `${BALE_API_BASE_URL}/${method}`;
@@ -151,18 +169,13 @@ async function callBaleApi(method: string, payload: Record<string, any> = {}) {
       },
       body: JSON.stringify(payload),
     });
-
-    const data = await response.json();
-    return data;
+    return await response.json();
   } catch (error) {
     console.error(`[Bale API Error] Failed to call ${method}:`, error);
     return { ok: false, error };
   }
 }
 
-/**
- * متد کمکی برای ارسال پیام متنی با کیبورد دلخواه در بله
- */
 async function sendBaleMessage(
   chatId: number | string,
   text: string,
@@ -176,9 +189,6 @@ async function sendBaleMessage(
   });
 }
 
-/**
- * تنظیم وبهوک در سرورهای بله (Set Webhook)
- */
 export async function setBaleWebhook(webhookUrl: string) {
   console.log(`🌐 [Bale Webhook] در حال تنظیم Webhook روی آدرس: ${webhookUrl}`);
   const result = await callBaleApi('setWebhook', { url: webhookUrl });
@@ -186,25 +196,17 @@ export async function setBaleWebhook(webhookUrl: string) {
   return result;
 }
 
-/**
- * دریافت اطلاعات وبهوک جاری از بله (Get Webhook Info)
- */
 export async function getBaleWebhookInfo() {
   return await callBaleApi('getWebhookInfo');
 }
 
-/**
- * ============================================================================
- * منطق پردازش پیام‌های دریافتی از طریق Webhook
- * ============================================================================
- */
 export async function handleIncomingBaleMessage(message: any) {
   const chatId = message.chat?.id || message.from?.id;
   if (!chatId) return;
 
   const text = (message.text || '').trim();
 
-  // ۱) پردازش دستور /start (ورود با شناسه نشست: /start SESSION_ID)
+  // 1. /start
   if (text.startsWith('/start')) {
     const parts = text.split(/\s+/);
     const passedSessionId = parts.length > 1 ? parts[1].trim() : null;
@@ -230,7 +232,6 @@ export async function handleIncomingBaleMessage(message: any) {
         `🔐 شما درخواست دریافت کد تایید برای شماره <code>${targetSession.originalPhone}</code> را ثبت کرده‌اید.\n\n` +
         `📲 جهت تایید هویت و دریافت کد ۵ رقمی، لطفاً روی دکمه زیر (<b>ارسال شماره همراه من</b>) کلیک کنید:`;
 
-      // ارسال کیبورد دکمه اشتراک‌گذاری شماره همراه (request_contact)
       await sendBaleMessage(chatId, welcomeText, {
         keyboard: [
           [
@@ -256,7 +257,7 @@ export async function handleIncomingBaleMessage(message: any) {
     }
   }
 
-  // ۲) پردازش دریافت آبجکت Contact (اشتراک‌گذاری شماره همراه)
+  // 2. Contact object received
   if (message.contact) {
     const contact = message.contact;
     const rawContactPhone = contact.phone_number || '';
@@ -274,12 +275,10 @@ export async function handleIncomingBaleMessage(message: any) {
       return;
     }
 
-    // تطابق شماره ارسال شده در بله با شماره ثبت‌شده در سایت
     if (
       normalizedContactPhone &&
       normalizedContactPhone === session.phoneNumber
     ) {
-      // ✅ شماره مطابقت دارد -> ارسال کد تایید ۵ رقمی به کاربر در بله
       session.status = 'CODE_SENT';
 
       const successOtpText =
@@ -293,7 +292,6 @@ export async function handleIncomingBaleMessage(message: any) {
         remove_keyboard: true,
       });
     } else {
-      // ❌ عدم تطابق شماره
       session.status = 'PHONE_MISMATCH';
 
       const mismatchText =
@@ -308,7 +306,7 @@ export async function handleIncomingBaleMessage(message: any) {
     return;
   }
 
-  // ۳) پیام‌های متفرقه دیگر
+  // 3. Fallback message
   const helpText =
     `🎒 <b>بات احراز هویت «مکتب‌خونه»</b>\n\n` +
     `برای ورود یا ثبت‌نام، ابتدا شماره همراه خود را در سایت وارد نمایید و سپس روی پیوند ورود به بله کلیک کنید.`;
@@ -324,7 +322,7 @@ export async function handleIncomingBaleMessage(message: any) {
 async function startServer() {
   const app = express();
 
-  // فعال‌سازی CORS برای تمام درخواست‌ها
+  // CORS
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -338,24 +336,64 @@ async function startServer() {
     next();
   });
 
-  // فعال‌سازی پارسر JSON و Urlencoded با سقف مناسب
-  app.use(express.json({ limit: '10mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+  // Body parsers
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+  // Static serving for uploaded files on disk
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   /**
    * --------------------------------------------------------------------------
-   * Webhook API: دریافت آپدیت‌های ارسالی از پیام‌رسان بله (POST /api/bale-webhook)
+   * API: آپلود مستقیم فایل تصویر بر روی سرور و بازگرداندن URL واقعی
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/upload', upload.single('file'), (req: Request, res: Response): any => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ success: false, message: 'هیچ فایلی ارسال نشده است.' });
+      }
+
+      const fileUrl = `/uploads/${req.file.filename}`;
+      return res.json({
+        success: true,
+        message: 'تصویر با موفقیت روی سرور بارگذاری شد.',
+        fileUrl,
+        filename: req.file.filename,
+        size: req.file.size
+      });
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      return res.status(500).json({ success: false, message: err.message || 'خطا در بارگذاری فایل' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: دریافت کل اطلاعات اولیه از دیتابیس SQLite (Bootstrap)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/bootstrap', (_req: Request, res: Response) => {
+    try {
+      const data = dbService.getBootstrapData();
+      res.json({ success: true, data });
+    } catch (err: any) {
+      console.error('Bootstrap error:', err);
+      res.status(500).json({ success: false, message: 'خطا در خواندن داده‌ها از دیتابیس' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * Webhook API: دریافت آپدیت‌های ارسالی از پیام‌رسان بله
    * --------------------------------------------------------------------------
    */
   app.post('/api/bale-webhook', async (req: Request, res: Response): Promise<void> => {
-    // پاسخ فوری 200 OK به سرور بله جهت جلوگیری از تکرار درخواست
     res.status(200).json({ ok: true });
-
     try {
       const update = req.body;
       if (!update) return;
 
-      // پردازش پیام دریافتی (مستقیم یا داخل message)
       if (update.message) {
         await handleIncomingBaleMessage(update.message);
       } else if (update.edited_message) {
@@ -368,7 +406,7 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۱: ثبت درخواست کد تایید (POST /api/request-otp)
+   * API: ثبت درخواست کد تایید OTP
    * --------------------------------------------------------------------------
    */
   app.post('/api/request-otp', (req: Request, res: Response): any => {
@@ -382,7 +420,6 @@ async function startServer() {
         });
       }
 
-      // نرمال‌سازی شماره موبایل
       const normalized = normalizePhoneNumber(phone);
       if (!normalized) {
         return res.status(400).json({
@@ -391,13 +428,11 @@ async function startServer() {
         });
       }
 
-      // تولید شناسه نشست و کد ۵ رقمی
       const sessionId = crypto.randomBytes(12).toString('hex');
       const otpCode = generateOtpCode();
       const now = Date.now();
-      const expiresAt = now + 5 * 60 * 1000; // ۵ دقیقه
+      const expiresAt = now + 5 * 60 * 1000;
 
-      // ایجاد و ذخیره نشست در حافظه
       const session: OtpSession = {
         sessionId,
         phoneNumber: normalized,
@@ -411,7 +446,6 @@ async function startServer() {
 
       otpSessions.set(sessionId, session);
 
-      // لینک‌های اتصال به بات بله
       const baleLink = `${BALE_DEEP_LINK_BASE}?start=${sessionId}`;
       const baleWebLink = `https://web.bale.ai/#/im?p=@${BOT_USERNAME}&start=${sessionId}`;
 
@@ -423,9 +457,8 @@ async function startServer() {
         bale_link: baleLink,
         bale_web_link: baleWebLink,
         bot_username: BOT_USERNAME,
-        expires_in: 300, // ثانیه
-        message:
-          'درخواست با موفقیت ثبت شد. لطفاً وارد ربات بله شوید و شماره خود را ارسال کنید.',
+        expires_in: 300,
+        message: 'درخواست با موفقیت ثبت شد. لطفاً وارد ربات بله شوید و شماره خود را ارسال کنید.',
       });
     } catch (error) {
       console.error('Error in /api/request-otp:', error);
@@ -438,7 +471,7 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۲: تایید کد OTP وارد شده توسط کاربر (POST /api/verify-otp)
+   * API: تایید کد OTP
    * --------------------------------------------------------------------------
    */
   app.post('/api/verify-otp', (req: Request, res: Response): any => {
@@ -457,12 +490,10 @@ async function startServer() {
       if (!session) {
         return res.status(404).json({
           success: false,
-          message:
-            'نشست احراز هویت یافت نشد یا منقضی شده است. لطفاً مجدداً شماره خود را وارد نمایید.',
+          message: 'نشست احراز هویت یافت نشد یا منقضی شده است.',
         });
       }
 
-      // بررسی انقضای زمان
       if (Date.now() > session.expiresAt) {
         session.status = 'EXPIRED';
         return res.status(400).json({
@@ -471,18 +502,15 @@ async function startServer() {
         });
       }
 
-      // افزایش شمارنده تلاش‌ها جهت جلوگیری از Brute-force
       session.attempts += 1;
       if (session.attempts > 5) {
         otpSessions.delete(session_id);
         return res.status(429).json({
           success: false,
-          message:
-            'تعداد دفعات ورود اشتباه بیش از حد مجاز بود. لطفاً مجدداً درخواست ارسال کنید.',
+          message: 'تعداد دفعات ورود اشتباه بیش از حد مجاز بود. لطفاً مجدداً درخواست ارسال کنید.',
         });
       }
 
-      // تبدیل رقم‌های ورودی به انگلیسی و مقایسه
       const cleanUserOtp = toEnglishDigits(String(user_otp)).trim();
 
       if (cleanUserOtp !== session.otpCode) {
@@ -492,11 +520,9 @@ async function startServer() {
         });
       }
 
-      // ✅ تایید موفقیت‌آمیز کد
       session.status = 'VERIFIED';
       session.verifiedAt = Date.now();
 
-      // ساخت توکن احراز هویت
       const authToken = crypto
         .createHmac('sha256', 'maktabkhaneh_secret_key')
         .update(`${session.phoneNumber}_${session.verifiedAt}`)
@@ -521,7 +547,7 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۳: بررسی وضعیت لحظه‌ای نشست (GET /api/otp-status/:sessionId)
+   * API: وضعیت لحظه‌ای نشست OTP
    * --------------------------------------------------------------------------
    */
   app.get('/api/otp-status/:sessionId', (req: Request, res: Response): any => {
@@ -551,7 +577,567 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۴: تنظیم دستی یا خودکار Webhook بله (POST /api/set-bale-webhook)
+   * API: ورود و لاگین با کد بله (ذخیره یا خواندن مستقیم از SQLite)
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/auth/bale-login', (req: Request, res: Response): any => {
+    try {
+      const { phone } = req.body || {};
+      if (!phone) {
+        return res.status(400).json({ success: false, message: 'شماره تلفن الزامی است.' });
+      }
+
+      const isSystemAdmin = isAdminPhone(phone);
+      let user = dbService.getUserByPhone(phone);
+
+      if (user) {
+        if (isSystemAdmin && (user.role !== 'admin' || user.status !== 'approved')) {
+          user = dbService.updateUser(user.id, { role: 'admin', status: 'approved' })!;
+        }
+        return res.json({
+          success: true,
+          message: isSystemAdmin ? 'خوش آمدید مدیر گرامی! دسترسی مدیریت فعال گردید.' : `خوش آمدید ${user.name}`,
+          user
+        });
+      }
+
+      // Create new user in SQLite
+      const newUser: User = {
+        id: isSystemAdmin ? `u_admin_${Date.now()}` : `u_bale_${Date.now()}`,
+        name: isSystemAdmin ? 'مدیر سامانه مکتب‌خانه' : `کاربر بله (${phone.slice(-4)})`,
+        phone: phone.trim(),
+        className: isSystemAdmin ? 'مدیریت کتابخانه' : 'کلاس ۱/۱',
+        role: isSystemAdmin ? 'admin' : 'student',
+        rating: 5,
+        ratingsCount: 1,
+        booksContributedCount: 0,
+        booksReadCount: 0,
+        medals: isSystemAdmin ? [
+          {
+            id: 'm_admin_crown',
+            title: 'راهبر کتابخانه',
+            icon: '👑',
+            description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
+            color: 'bg-amber-100 text-amber-800 border-amber-300'
+          }
+        ] : [],
+        joinedDate: new Date().toLocaleDateString('fa-IR'),
+        avatar: isSystemAdmin
+          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
+          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+        status: 'approved'
+      };
+
+      const savedUser = dbService.createUser(newUser);
+      return res.json({
+        success: true,
+        message: isSystemAdmin
+          ? `خوش آمدید مدیر گرامی! حساب مدیریت با شماره ${phone} با موفقیت فعال شد.`
+          : `حساب شما با شماره ${phone} با موفقیت ایجاد شد.`,
+        user: savedUser
+      });
+    } catch (err: any) {
+      console.error('Bale Login Error:', err);
+      return res.status(500).json({ success: false, message: 'خطا در ورود با بله' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: لاگین با رمز عبور و شماره تلفن
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/auth/login', (req: Request, res: Response): any => {
+    try {
+      const { phone, password } = req.body || {};
+      if (!phone || !password) {
+        return res.status(400).json({ success: false, message: 'شماره تلفن و رمز عبور الزامی است.' });
+      }
+
+      const isSystemAdmin = isAdminPhone(phone);
+      let user = dbService.getUserByPhone(phone);
+
+      if (!user) {
+        if (isSystemAdmin) {
+          const newAdmin: User = {
+            id: `u_admin_${Date.now()}`,
+            name: 'مدیر سامانه مکتب‌خانه',
+            phone: phone.trim(),
+            className: 'مدیریت کتابخانه',
+            role: 'admin',
+            password: password,
+            rating: 5.0,
+            ratingsCount: 1,
+            booksContributedCount: 0,
+            booksReadCount: 0,
+            medals: [
+              {
+                id: 'm_admin_crown',
+                title: 'راهبر کتابخانه',
+                icon: '👑',
+                description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
+                color: 'bg-amber-100 text-amber-800 border-amber-300'
+              }
+            ],
+            joinedDate: new Date().toLocaleDateString('fa-IR'),
+            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            status: 'approved'
+          };
+          const savedAdmin = dbService.createUser(newAdmin);
+          return res.json({ success: true, message: 'خوش آمدید مدیر گرامی! حساب مدیریت شما فعال شد.', user: savedAdmin });
+        }
+        return res.status(404).json({ success: false, message: 'کاربری با این شماره تلفن یافت نشد.' });
+      }
+
+      if (user.password && user.password !== password) {
+        return res.status(400).json({ success: false, message: 'رمز عبور وارد شده نادرست است.' });
+      }
+
+      if (isSystemAdmin && (user.role !== 'admin' || user.status !== 'approved')) {
+        user = dbService.updateUser(user.id, { role: 'admin', status: 'approved' })!;
+      }
+
+      return res.json({ success: true, message: `خوش آمدید ${user.name}`, user });
+    } catch (err: any) {
+      console.error('Login Error:', err);
+      return res.status(500).json({ success: false, message: 'خطای سرور در احراز هویت.' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: ثبت‌نام کامل دانش‌آموز به همراه کتاب‌های اولیه
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/auth/register', (req: Request, res: Response): any => {
+    try {
+      const data = req.body as RegistrationInput;
+      if (!data || !data.phone || !data.name) {
+        return res.status(400).json({ success: false, message: 'اطلاعات نام و شماره تلفن الزامی است.' });
+      }
+
+      const existing = dbService.getUserByPhone(data.phone);
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'این شماره تلفن قبلاً در سامانه ثبت شده است.' });
+      }
+
+      const isAdmin = isAdminPhone(data.phone);
+      if (!isAdmin && (!data.initialBooks || data.initialBooks.length < 3)) {
+        return res.status(400).json({
+          success: false,
+          message: 'جهت تکمیل ثبت‌نام، باید حداقل ۳ جلد کتاب جهت اشتراک‌گذاری معرفی کنید.'
+        });
+      }
+
+      const newUserId = `u_${Date.now()}`;
+      const newUser: User = {
+        id: newUserId,
+        name: data.name.trim(),
+        className: isAdmin ? 'مدیریت سامانه مکتب‌خانه' : data.className,
+        phone: data.phone.trim(),
+        avatar: data.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
+        status: isAdmin ? 'approved' : 'pending',
+        role: isAdmin ? 'admin' : 'student',
+        password: data.password,
+        rating: 5.0,
+        ratingsCount: 0,
+        booksContributedCount: (data.initialBooks || []).length,
+        booksReadCount: 0,
+        medals: isAdmin ? [
+          {
+            id: 'm_admin_crown',
+            title: 'راهبر کتابخانه',
+            icon: '👑',
+            description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
+            color: 'bg-amber-100 text-amber-800 border-amber-300'
+          }
+        ] : [
+          {
+            id: 'm_starter',
+            title: 'عضو جدید کتابخانه',
+            icon: '🌱',
+            description: 'ثبت‌نام و مشارکت ۳ کتاب در گنجینه مکتب‌خانه',
+            color: 'bg-emerald-100 text-emerald-800 border-emerald-300'
+          }
+        ],
+        joinedDate: new Date().toLocaleDateString('fa-IR')
+      };
+
+      dbService.createUser(newUser);
+
+      // Add initial books
+      if (data.initialBooks && data.initialBooks.length > 0) {
+        data.initialBooks.forEach((b, index) => {
+          const book: Book = {
+            id: `b_${Date.now()}_${index}`,
+            title: b.title,
+            author: b.author,
+            ownerId: newUserId,
+            ownerName: data.name,
+            ownerClass: newUser.className,
+            ownerAvatar: newUser.avatar,
+            coverImage: b.coverImage || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600',
+            category: b.category,
+            condition: b.condition,
+            description: b.description || 'معرفی شده توسط کاربر هنگام ثبت‌نام اولیه',
+            status: 'available',
+            rating: 5.0,
+            reviewsCount: 0,
+            reviews: [],
+            addedDate: new Date().toLocaleDateString('fa-IR')
+          };
+          dbService.createBook(book);
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: isAdmin
+          ? 'حساب مدیریت شما با موفقیت ایجاد و فعال شد!'
+          : 'ثبت‌نام شما با موفقیت انجام شد! حساب شما پس از بررسی و تایید توسط مسئول کتابخانه فعال خواهد شد.',
+        user: newUser
+      });
+    } catch (err: any) {
+      console.error('Register Error:', err);
+      return res.status(500).json({ success: false, message: 'خطا در ثبت‌نام کاربر.' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: کاربران (Users)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/users', (_req: Request, res: Response) => {
+    res.json({ success: true, users: dbService.getAllUsers() });
+  });
+
+  app.post('/api/users/:id/approve', (req: Request, res: Response): any => {
+    const user = dbService.updateUser(req.params.id, { status: 'approved' });
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+    res.json({ success: true, user });
+  });
+
+  app.post('/api/users/:id/reject', (req: Request, res: Response): any => {
+    const user = dbService.updateUser(req.params.id, { status: 'rejected' });
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+    res.json({ success: true, user });
+  });
+
+  app.post('/api/users/:id/suspend', (req: Request, res: Response): any => {
+    const { reason } = req.body;
+    const user = dbService.updateUser(req.params.id, {
+      status: 'suspended',
+      suspensionReason: reason || 'تخلف در رعایت قوانین امانت کتاب'
+    });
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+    res.json({ success: true, user });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: کتاب‌ها (Books)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/books', (_req: Request, res: Response) => {
+    res.json({ success: true, books: dbService.getAllBooks() });
+  });
+
+  app.post('/api/books', (req: Request, res: Response): any => {
+    try {
+      const bookData = req.body as Book;
+      if (!bookData || !bookData.title || !bookData.author || !bookData.ownerId) {
+        return res.status(400).json({ success: false, message: 'اطلاعات کامل کتاب الزامی است.' });
+      }
+
+      const bookId = bookData.id || `b_${Date.now()}`;
+      const newBook: Book = {
+        ...bookData,
+        id: bookId,
+        addedDate: bookData.addedDate || new Date().toLocaleDateString('fa-IR'),
+        status: 'available',
+        rating: 5.0,
+        reviewsCount: 0,
+        reviews: []
+      };
+
+      const created = dbService.createBook(newBook);
+      res.json({ success: true, book: created });
+    } catch (err: any) {
+      console.error('Create Book Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ثبت کتاب.' });
+    }
+  });
+
+  app.put('/api/books/:id', (req: Request, res: Response): any => {
+    const updated = dbService.updateBook(req.params.id, req.body);
+    if (!updated) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+    res.json({ success: true, book: updated });
+  });
+
+  app.delete('/api/books/:id', (req: Request, res: Response): any => {
+    const success = dbService.deleteBook(req.params.id);
+    res.json({ success });
+  });
+
+  app.post('/api/books/:id/review', (req: Request, res: Response): any => {
+    const { review } = req.body;
+    if (!review) return res.status(400).json({ success: false, message: 'نظر الزامی است.' });
+    const updated = dbService.addBookReview(req.params.id, review);
+    if (!updated) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+    res.json({ success: true, book: updated });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: درخواست‌های امانت (Lending Requests)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/requests', (_req: Request, res: Response) => {
+    res.json({ success: true, requests: dbService.getAllRequests() });
+  });
+
+  app.post('/api/requests', (req: Request, res: Response): any => {
+    try {
+      const { bookId, borrowerId } = req.body;
+      const book = dbService.getBookById(bookId);
+      const borrower = dbService.getUserById(borrowerId);
+
+      if (!book || !borrower) {
+        return res.status(404).json({ success: false, message: 'کتاب یا کاربر متقاضی یافت نشد.' });
+      }
+
+      if (book.ownerId === borrower.id) {
+        return res.status(400).json({ success: false, message: 'شما مالک این کتاب هستید و نمی‌توانید آن را از خود به امانت بگیرید.' });
+      }
+
+      const reqId = `req_${Date.now()}`;
+      const newReq: LendingRequest = {
+        id: reqId,
+        bookId: book.id,
+        bookTitle: book.title,
+        bookCover: book.coverImage,
+        ownerId: book.ownerId,
+        ownerName: book.ownerName,
+        ownerClass: book.ownerClass,
+        borrowerId: borrower.id,
+        borrowerName: borrower.name,
+        borrowerClass: borrower.className,
+        borrowerPhone: borrower.phone,
+        status: 'pending',
+        createdAt: new Date().toLocaleDateString('fa-IR'),
+        feeAmount: 10000,
+        paymentStatus: 'pending'
+      };
+
+      const created = dbService.createRequest(newReq);
+      res.json({ success: true, request: created });
+    } catch (err: any) {
+      console.error('Create Request Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ثبت درخواست امانت.' });
+    }
+  });
+
+  app.post('/api/requests/:id/accept', (req: Request, res: Response): any => {
+    const { pickupLocation, pickupTime, pickupShift } = req.body;
+    const now = Date.now();
+    const deadline = new Date(now + 3 * 60 * 60 * 1000).toLocaleTimeString('fa-IR', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'payment_pending',
+      pickupLocation,
+      pickupTime,
+      pickupShift,
+      acceptedAt: new Date().toLocaleDateString('fa-IR'),
+      paymentStatus: 'pending',
+      paymentDeadline: `ساعت ${deadline} (مهلت ۳ ساعته)`
+    });
+
+    if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/reject', (req: Request, res: Response): any => {
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (reqItem) {
+      dbService.updateBook(reqItem.bookId, { status: 'available' });
+    }
+    const updated = dbService.updateRequest(req.params.id, { status: 'rejected' });
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/payment-proof', (req: Request, res: Response): any => {
+    const { trackingCode, paymentDate, receiptImage } = req.body;
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'payment_proof_submitted',
+      paymentStatus: 'proof_submitted',
+      paymentProof: {
+        trackingCode,
+        paymentDate,
+        receiptImage,
+        submittedAt: new Date().toLocaleDateString('fa-IR') + ' - ' + new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
+      }
+    });
+    if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/approve-payment', (req: Request, res: Response): any => {
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'payment_completed',
+      paymentStatus: 'paid',
+      paidAt: new Date().toLocaleDateString('fa-IR')
+    });
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/handover', (req: Request, res: Response): any => {
+    const { role } = req.body; // 'borrower' or 'owner'
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    const now = new Date();
+    const returnDueDate = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000).toLocaleDateString('fa-IR');
+
+    dbService.updateBook(reqItem.bookId, {
+      status: 'borrowed',
+      borrowerId: reqItem.borrowerId,
+      borrowerName: reqItem.borrowerName,
+      estimatedReturnDate: returnDueDate
+    });
+
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'handover_confirmed',
+      handoverConfirmedAt: now.toLocaleDateString('fa-IR') + ' ساعت ' + now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
+      handoverConfirmedByRole: role || 'borrower',
+      is12hGraceConfirmed: true,
+      dueDate: returnDueDate
+    });
+
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/return-and-feedback', (req: Request, res: Response): any => {
+    const { feedback } = req.body;
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    // Mark book as available again
+    dbService.updateBook(reqItem.bookId, {
+      status: 'available',
+      borrowerId: undefined,
+      borrowerName: undefined,
+      estimatedReturnDate: undefined
+    });
+
+    // Record feedback if provided
+    if (feedback) {
+      dbService.createFeedback(feedback);
+    }
+
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'returned',
+      borrowerFeedbackGiven: true
+    });
+
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/report-damage', (req: Request, res: Response): any => {
+    const { borrowerId, damageReason } = req.body;
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    dbService.updateBook(reqItem.bookId, {
+      isDamaged: true,
+      damageDescription: damageReason
+    });
+
+    dbService.updateUser(borrowerId, {
+      status: 'suspended',
+      suspensionReason: `خسارت به کتاب «${reqItem.bookTitle}»: ${damageReason}`
+    });
+
+    const updated = dbService.updateRequest(req.params.id, {
+      isDamagedReported: true,
+      damageNotes: damageReason
+    });
+
+    res.json({ success: true, request: updated });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: کلاس‌ها (School Classes)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/classes', (_req: Request, res: Response) => {
+    res.json({ success: true, classes: dbService.getAllClasses() });
+  });
+
+  app.post('/api/classes', (req: Request, res: Response): any => {
+    const { name, grade, isExternal } = req.body;
+    if (!name || !grade) return res.status(400).json({ success: false, message: 'نام و پایه کلاس الزامی است.' });
+    const newClass: SchoolClass = {
+      id: `c_${Date.now()}`,
+      name,
+      grade,
+      isExternal: Boolean(isExternal)
+    };
+    const created = dbService.createClass(newClass);
+    res.json({ success: true, class: created });
+  });
+
+  app.delete('/api/classes/:id', (req: Request, res: Response): any => {
+    const success = dbService.deleteClass(req.params.id);
+    res.json({ success });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: نظرات و امتیازدهی‌ها (Feedbacks)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/feedbacks', (_req: Request, res: Response) => {
+    res.json({ success: true, feedbacks: dbService.getAllFeedbacks() });
+  });
+
+  app.post('/api/feedbacks', (req: Request, res: Response): any => {
+    const fb = req.body as MutualFeedback;
+    if (!fb || !fb.fromUserId || !fb.toUserId) {
+      return res.status(400).json({ success: false, message: 'اطلاعات نظر ناقص است.' });
+    }
+    const created = dbService.createFeedback(fb);
+    res.json({ success: true, feedback: created });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: شماره کارت و حساب بانکی مکتب‌خانه
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/bank-card', (_req: Request, res: Response) => {
+    res.json({ success: true, bankCardInfo: dbService.getBankCardInfo() });
+  });
+
+  app.put('/api/bank-card', (req: Request, res: Response): any => {
+    const { cardNumber, cardHolderName, bankName } = req.body;
+    if (!cardNumber || !cardHolderName) {
+      return res.status(400).json({ success: false, message: 'شماره کارت و نام دارنده الزامی است.' });
+    }
+    const saved = dbService.setBankCardInfo({ cardNumber, cardHolderName, bankName: bankName || 'بانک ملی ایران' });
+    res.json({ success: true, bankCardInfo: saved });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: تنظیم وب‌هوک بله
    * --------------------------------------------------------------------------
    */
   app.post('/api/set-bale-webhook', async (req: Request, res: Response): Promise<void> => {
@@ -573,7 +1159,7 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۵: بررسی وضعیت سلامت بات و Webhook بله (GET /api/bale-bot-status)
+   * API: بررسی وضعیت بات بله
    * --------------------------------------------------------------------------
    */
   app.get('/api/bale-bot-status', async (_req: Request, res: Response): Promise<void> => {
@@ -603,7 +1189,7 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۶: دریافت نسخه و وضعیت سرور (GET /api/version و /version)
+   * API: دریافت نسخه و وضعیت سرور
    * --------------------------------------------------------------------------
    */
   app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
@@ -615,16 +1201,14 @@ async function startServer() {
       port: PORT,
       bot_username: BOT_USERNAME,
       webhook_url: DEFAULT_WEBHOOK_URL,
+      database: 'SQLite (Native DatabaseSync)',
       uptime_seconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
     });
   });
 
   /**
-   * --------------------------------------------------------------------------
-   * Fallback اختصاصی برای مسیرهای نامعتبر /api/* (همیشه خروجی JSON بازمی‌گرداند)
-   * جلوگیری از بازگشت خروجی HTML <pre> و ایجاد خطای JSON.parse در فرانت‌اند
-   * --------------------------------------------------------------------------
+   * Fallback JSON for unknown API routes
    */
   app.all('/api/*', (req: Request, res: Response) => {
     res.status(404).json({
@@ -634,9 +1218,7 @@ async function startServer() {
   });
 
   /**
-   * --------------------------------------------------------------------------
-   * اتصال Vite Middleware در حالت توسعه یا فایل‌های استاتیک در حالت تولید
-   * --------------------------------------------------------------------------
+   * Vite middleware in development or static index in production
    */
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
@@ -652,25 +1234,25 @@ async function startServer() {
     });
   }
 
-  // راه‌اندازی سرور روی پورت 3000 و هوست 0.0.0.0
+  // Bind to port 3000 and 0.0.0.0
   app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 سرور مکتب‌خونه با موفقیت روی پورت ${PORT} اجرا شد.`);
-    console.log(`🔗 آدرس محلی: http://localhost:${PORT}`);
+    console.log(`🚀 سرور مکتب‌خونه با پایگاه داده SQLite و آپلود فایل روی پورت ${PORT} اجرا شد.`);
+    console.log(`📁 مسیر ذخیره دائمی دیتابیس: ${path.join(process.cwd(), 'data', 'maktabkhune.db')}`);
+    console.log(`🖼️ مسیر ذخیره فایل‌های آپلودی: ${UPLOADS_DIR}`);
     console.log(`🤖 متصل به بات بله: @${BOT_USERNAME}`);
-    console.log(`🌐 حالت فعال: Webhook (${DEFAULT_WEBHOOK_URL})`);
+    console.log(`🌐 وب‌هوک: ${DEFAULT_WEBHOOK_URL}`);
 
-    // تلاش برای ثبت خودکار Webhook در سرورهای بله هنگام استارت سرور
     try {
       if (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.startsWith('https://')) {
         await setBaleWebhook(DEFAULT_WEBHOOK_URL);
       }
     } catch (webhookErr) {
-      console.warn('⚠️ توجه: امکان ثبت خودکار Webhook در استارت اولیه وجود نداشت:', webhookErr);
+      console.warn('⚠️ توجه: ثبت وب‌هوک در استارت:', webhookErr);
     }
   });
 }
 
-// استارت اپلیکیشن
+// Start application
 startServer().catch((err) => {
   console.error('خطای بحرانی در اجرای سرور:', err);
 });

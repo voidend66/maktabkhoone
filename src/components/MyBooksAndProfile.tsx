@@ -58,11 +58,18 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
               className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl object-cover ring-4 ring-cyan-500 shadow-md"
             />
             <div className="space-y-1">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-2xl font-black text-slate-900">{currentUser.name}</h1>
-                <span className="bg-cyan-100 text-cyan-900 text-xs font-bold px-3 py-1 rounded-full">
-                  کلاس {currentUser.className} 🎒
-                </span>
+                {currentUser.role === 'admin' ? (
+                  <span className="bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black px-3 py-1 rounded-full flex items-center gap-1 shadow-2xs">
+                    <span>👑</span>
+                    <span>مدیر و راهبر سامانه</span>
+                  </span>
+                ) : (
+                  <span className="bg-cyan-100 text-cyan-900 text-xs font-bold px-3 py-1 rounded-full">
+                    کلاس {currentUser.className} 🎒
+                  </span>
+                )}
               </div>
 
               <p className="text-xs text-slate-500 flex items-center gap-3 flex-wrap">

@@ -5,6 +5,7 @@ import { CATEGORIES } from '../data/mockData';
 import { FANTASY_AVATARS } from '../utils/avatars';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 import { RulesModal } from './RulesModal';
+import { api } from '../services/api';
 import {
   X,
   UserPlus,
@@ -20,7 +21,8 @@ import {
   ShieldCheck,
   Upload,
   Image as ImageIcon,
-  FileText
+  FileText,
+  Loader2
 } from 'lucide-react';
 
 interface RegisterModalProps {
@@ -30,7 +32,7 @@ interface RegisterModalProps {
 }
 
 export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLogin, onOpenRules }) => {
-  const { registerUser, schoolClasses } = useApp();
+  const { registerUser, schoolClasses, users } = useApp();
 
   // Step 1: Personal info & avatar, Step 2: Initial Books
   const [step, setStep] = useState<1 | 2>(1);
@@ -81,20 +83,32 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
 
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Handle Photo Upload
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle Photo Upload directly to SQLite / disk storage
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setErrorMessage('حجم عکس باید کمتر از ۵ مگابایت باشد.');
+      if (file.size > 10 * 1024 * 1024) {
+        setErrorMessage('حجم عکس باید کمتر از ۱۰ مگابایت باشد.');
         return;
       }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setBookCoverImage(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      setIsUploading(true);
+      setErrorMessage('');
+
+      try {
+        const uploadRes = await api.uploadImage(file);
+        if (uploadRes.success && uploadRes.fileUrl) {
+          setBookCoverImage(uploadRes.fileUrl);
+        } else {
+          setErrorMessage(uploadRes.message || 'خطا در آپلود عکس روی سرور');
+        }
+      } catch (err: any) {
+        setErrorMessage(err.message || 'خطا در آپلود فایل');
+      } finally {
+        setIsUploading(false);
+      }
     }
   };
 
@@ -110,6 +124,17 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
 
     if (phone.length < 10) {
       setErrorMessage('لطفاً شماره تلفن همراه معتبر (والدین/دانش‌آموز) وارد کنید.');
+      return;
+    }
+
+    const cleanInputPhone = phone.replace(/\D/g, '');
+    const alreadyExists = users.some((u) => {
+      const uClean = u.phone.replace(/\D/g, '');
+      return uClean === cleanInputPhone || u.phone === phone.trim() || (cleanInputPhone.length >= 10 && uClean.endsWith(cleanInputPhone.slice(-10)));
+    });
+
+    if (alreadyExists) {
+      setErrorMessage('این شماره تلفن قبلاً در سامانه ثبت‌نام کرده است. لطفاً از بخش «ورود به حساب» وارد شوید.');
       return;
     }
 
@@ -160,26 +185,35 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
     setInitialBooks((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const handleFinalRegister = () => {
+  const handleFinalRegister = async () => {
     if (initialBooks.length < 3) {
       setErrorMessage('طبق قوانین مکتب‌خانه، حتماً باید حداقل ۳ جلد کتاب جهت معرفی به سیستم وارد کنید.');
       return;
     }
 
-    const res = registerUser({
-      name: name.trim(),
-      className,
-      phone: phone.trim(),
-      password: password.trim(),
-      avatar,
-      agreedToRules: true,
-      initialBooks
-    });
+    setIsSubmitting(true);
+    setErrorMessage('');
 
-    if (res.success) {
-      setSuccessMessage(res.message);
-    } else {
-      setErrorMessage(res.message);
+    try {
+      const res = await registerUser({
+        name: name.trim(),
+        className,
+        phone: phone.trim(),
+        password: password.trim(),
+        avatar,
+        agreedToRules: true,
+        initialBooks
+      });
+
+      if (res.success) {
+        setSuccessMessage(res.message);
+      } else {
+        setErrorMessage(res.message);
+      }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'خطا در ثبت‌نام');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 

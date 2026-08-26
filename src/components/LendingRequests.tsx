@@ -3,6 +3,7 @@ import { useApp } from '../context/AppContext';
 import { LendingRequest } from '../types';
 import { MutualFeedbackModal } from './MutualFeedbackModal';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
+import { api } from '../services/api';
 import {
   ArrowLeftRight,
   Inbox,
@@ -21,7 +22,9 @@ import {
   Home,
   CreditCard,
   AlertTriangle,
-  FileCheck
+  FileCheck,
+  Upload,
+  Loader2
 } from 'lucide-react';
 
 export const LendingRequests: React.FC = () => {
@@ -57,7 +60,33 @@ export const LendingRequests: React.FC = () => {
     new Date().toLocaleDateString('fa-IR') + ' - ساعت ' + new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
   );
   const [receiptImage, setReceiptImage] = useState('');
+  const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
+  const [receiptUploadError, setReceiptUploadError] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
+
+  const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 10 * 1024 * 1024) {
+        setReceiptUploadError('حجم فایل فیش باید کمتر از ۱۰ مگابایت باشد.');
+        return;
+      }
+      setIsUploadingReceipt(true);
+      setReceiptUploadError('');
+      try {
+        const res = await api.uploadImage(file);
+        if (res.success && res.fileUrl) {
+          setReceiptImage(res.fileUrl);
+        } else {
+          setReceiptUploadError(res.message || 'خطا در بارگذاری فیش');
+        }
+      } catch (err: any) {
+        setReceiptUploadError(err.message || 'خطا در ارتباط با سرور آپلود');
+      } finally {
+        setIsUploadingReceipt(false);
+      }
+    }
+  };
 
   if (!currentUser) {
     return (
@@ -505,17 +534,39 @@ export const LendingRequests: React.FC = () => {
                           />
                         </div>
 
-                        <div className="sm:col-span-2">
-                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            لینک یا تصویر فیش واریزی (اختیاری):
+                        <div className="sm:col-span-2 space-y-2">
+                          <label className="block text-[11px] font-bold text-slate-700">
+                            تصویر / اسکرین‌شات فیش واریز:
                           </label>
-                          <input
-                            type="text"
-                            value={receiptImage}
-                            onChange={(e) => setReceiptImage(e.target.value)}
-                            placeholder="آدرس اینترنتی تصویر فیش یا آپلود عکس"
-                            className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900"
-                          />
+
+                          <div className="flex items-center gap-3 flex-wrap">
+                            <label className="cursor-pointer px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition">
+                              {isUploadingReceipt ? (
+                                <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
+                              ) : (
+                                <Upload className="w-4 h-4 text-emerald-700" />
+                              )}
+                              <span>{isUploadingReceipt ? 'در حال آپلود فیش روی سرور...' : 'بارگذاری عکس فیش از گوشی / کامپیوتر'}</span>
+                              <input
+                                type="file"
+                                accept="image/*"
+                                onChange={handleReceiptUpload}
+                                disabled={isUploadingReceipt}
+                                className="hidden"
+                              />
+                            </label>
+
+                            {receiptImage && (
+                              <div className="flex items-center gap-2 bg-emerald-100 text-emerald-900 px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-300">
+                                <img src={receiptImage} alt="receipt preview" className="w-8 h-8 rounded-lg object-cover" />
+                                <span>فیش با موفقیت در سرور ذخیره شد</span>
+                              </div>
+                            )}
+                          </div>
+
+                          {receiptUploadError && (
+                            <p className="text-[11px] text-rose-600 font-bold">{receiptUploadError}</p>
+                          )}
                         </div>
                       </div>
 

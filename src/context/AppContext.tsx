@@ -1,23 +1,25 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import {
   User,
   Book,
   LendingRequest,
-  RegistrationInput,
-  BookCondition,
-  RequestStatus,
   SchoolClass,
   MutualFeedback,
-  BankCardInfo,
-  PaymentProof
+  BookCondition,
+  RequestStatus,
+  RegistrationInput,
+  BankCardInfo
 } from '../types';
-import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES } from '../data/mockData';
+import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
+import { api } from '../services/api';
 
 const INITIAL_BANK_CARD: BankCardInfo = {
   cardNumber: '6037-9918-9876-5432',
-  cardHolderName: 'پارسا فیض (مدیر مکتب خونه)',
+  cardHolderName: 'پارسا فیض (مدیر و راهبر مکتب‌خانه)',
   bankName: 'بانک ملی ایران'
 };
+
+const LOCAL_STORAGE_KEY_CURRENT_USER = 'school_lib_curr_user_v3';
 
 interface AppContextType {
   currentUser: User | null;
@@ -27,22 +29,24 @@ interface AppContextType {
   schoolClasses: SchoolClass[];
   feedbacks: MutualFeedback[];
   bankCardInfo: BankCardInfo;
-  setCurrentUser: (user: User | null) => void;
-  registerUser: (data: RegistrationInput) => { success: boolean; message: string; user?: User };
-  loginUser: (phone: string, pass: string) => { success: boolean; message: string; user?: User };
-  loginWithOtpPhone: (phone: string) => { success: boolean; message: string; user: User };
+  isLoading: boolean;
+  loginUser: (phone: string, pass: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  loginWithBale: (phone: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  logoutUser: () => void;
+  registerUser: (data: RegistrationInput) => Promise<{ success: boolean; message: string; user?: User }>;
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string) => void;
-  addBook: (bookData: {
+  addBook: (book: {
     title: string;
     author: string;
     category: string;
     condition: BookCondition;
     coverImage: string;
     description: string;
-  }) => Book;
-  requestBookLoan: (bookId: string) => { success: boolean; message: string };
+  }) => Promise<Book>;
+  deleteBook: (bookId: string) => void;
+  requestBookLoan: (bookId: string) => Promise<{ success: boolean; message: string }>;
   acceptLoanRequest: (
     requestId: string,
     pickupLocation: string,
@@ -50,132 +54,36 @@ interface AppContextType {
     pickupShift?: 'morning' | 'afternoon' | 'evening_home'
   ) => void;
   rejectLoanRequest: (requestId: string) => void;
-  reportDamageAndSuspendUser: (requestId: string, borrowerId: string, reason: string) => void;
   submitPaymentProof: (
     requestId: string,
     proof: { trackingCode: string; paymentDate: string; receiptImage?: string }
   ) => void;
   verifyPaymentByAdmin: (requestId: string, isApproved: boolean, rejectionReason?: string) => void;
-  updateBankCardInfo: (info: BankCardInfo) => void;
   confirmHandover: (requestId: string, confirmedByRole?: string) => void;
   completeReturnAndSubmitFeedback: (
     requestId: string,
     feedback: { punctuality: number; condition: number; behavior: number; reliability: number; comment: string }
   ) => void;
-  addBookReview: (bookId: string, rating: number, comment: string) => void;
-  deleteBook: (bookId: string) => void;
+  reportDamageAndSuspendUser: (requestId: string, borrowerId: string, reason: string) => void;
   addSchoolClass: (classData: { name: string; grade: string; isExternal?: boolean }) => void;
   updateSchoolClass: (id: string, name: string, grade: string) => void;
   deleteSchoolClass: (id: string) => void;
+  addBookReview: (bookId: string, rating: number, comment: string) => void;
+  updateBankCardInfo: (info: BankCardInfo) => void;
   resetToDefaults: () => void;
-  switchUserRoleDemo: (userId: string) => void;
+  refreshData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
-const LOCAL_STORAGE_KEY_USERS = 'school_lib_users_v2';
-const LOCAL_STORAGE_KEY_BOOKS = 'school_lib_books_v2';
-const LOCAL_STORAGE_KEY_REQUESTS = 'school_lib_requests_v2';
-const LOCAL_STORAGE_KEY_CLASSES = 'school_lib_classes_v2';
-const LOCAL_STORAGE_KEY_FEEDBACKS = 'school_lib_feedbacks_v2';
-const LOCAL_STORAGE_KEY_CURRENT_USER = 'school_lib_curr_user_v2';
-
-export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [users, setUsers] = useState<User[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_USERS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((u: any) => ({
-            ...u,
-            medals: Array.isArray(u.medals) ? u.medals : [],
-            booksReadCount: typeof u.booksReadCount === 'number' ? u.booksReadCount : 0,
-            booksContributedCount: typeof u.booksContributedCount === 'number' ? u.booksContributedCount : 0,
-            rating: typeof u.rating === 'number' ? u.rating : 5.0,
-            ratingsCount: typeof u.ratingsCount === 'number' ? u.ratingsCount : 0,
-            status: u.status || 'approved',
-            role: u.role || 'student'
-          }));
-        }
-      }
-    } catch (e) {
-      console.error('Error loading users from localStorage:', e);
-    }
-    return INITIAL_USERS;
-  });
-
-  const [books, setBooks] = useState<Book[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_BOOKS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((b: any) => ({
-            ...b,
-            reviews: Array.isArray(b.reviews) ? b.reviews : [],
-            status: b.status || 'available',
-            rating: typeof b.rating === 'number' ? b.rating : 5.0,
-            reviewsCount: typeof b.reviewsCount === 'number' ? b.reviewsCount : 0
-          }));
-        }
-      }
-    } catch (e) {
-      console.error('Error loading books from localStorage:', e);
-    }
-    return INITIAL_BOOKS;
-  });
-
-  const [requests, setRequests] = useState<LendingRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_REQUESTS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading requests from localStorage:', e);
-    }
-    return INITIAL_REQUESTS;
-  });
-
-  const [schoolClasses, setSchoolClasses] = useState<SchoolClass[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_CLASSES);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading schoolClasses from localStorage:', e);
-    }
-    return INITIAL_CLASSES;
-  });
-
-  const [feedbacks, setFeedbacks] = useState<MutualFeedback[]>(() => {
-    try {
-      const saved = localStorage.getItem(LOCAL_STORAGE_KEY_FEEDBACKS);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch (e) {
-      console.error('Error loading feedbacks from localStorage:', e);
-    }
-    return [];
-  });
-
-  const [bankCardInfo, setBankCardInfo] = useState<BankCardInfo>(() => {
-    try {
-      const saved = localStorage.getItem('school_lib_bank_card_v2');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-    } catch (e) {
-      console.error('Error loading bank card info:', e);
-    }
-    return INITIAL_BANK_CARD;
-  });
+export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const [isLoading, setIsLoading] = useState(true);
+  const [users, setUsers] = useState<User[]>([]);
+  const [books, setBooks] = useState<Book[]>([]);
+  const [requests, setRequests] = useState<LendingRequest[]>([]);
+  const [schoolClasses, setSchoolClasses] = useState<SchoolClass[]>([]);
+  const [feedbacks, setFeedbacks] = useState<MutualFeedback[]>([]);
+  const [bankCardInfo, setBankCardInfo] = useState<BankCardInfo>(INITIAL_BANK_CARD);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -183,59 +91,79 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (saved) {
         const parsed = JSON.parse(saved);
         if (parsed && typeof parsed === 'object' && parsed.id) {
-          return {
-            ...parsed,
-            medals: Array.isArray(parsed.medals) ? parsed.medals : [],
-            booksReadCount: typeof parsed.booksReadCount === 'number' ? parsed.booksReadCount : 0,
-            booksContributedCount: typeof parsed.booksContributedCount === 'number' ? parsed.booksContributedCount : 0,
-            rating: typeof parsed.rating === 'number' ? parsed.rating : 5.0,
-            ratingsCount: typeof parsed.ratingsCount === 'number' ? parsed.ratingsCount : 0,
-            status: parsed.status || 'approved',
-            role: parsed.role || 'student'
-          };
+          return parsed;
         }
       }
     } catch (e) {
       console.error('Error loading currentUser from localStorage:', e);
     }
-    return INITIAL_USERS[1];
+    return null;
   });
 
-  // Sync to local storage
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_USERS, JSON.stringify(users));
-  }, [users]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_BOOKS, JSON.stringify(books));
-  }, [books]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_REQUESTS, JSON.stringify(requests));
-  }, [requests]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_CLASSES, JSON.stringify(schoolClasses));
-  }, [schoolClasses]);
-
-  useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEY_FEEDBACKS, JSON.stringify(feedbacks));
-  }, [feedbacks]);
-
-  useEffect(() => {
-    localStorage.setItem('school_lib_bank_card_v2', JSON.stringify(bankCardInfo));
-  }, [bankCardInfo]);
-
-  const updateBankCardInfo = (info: BankCardInfo) => {
-    setBankCardInfo(info);
+  // Fetch initial data from SQLite backend
+  const refreshData = async () => {
     try {
-      localStorage.setItem('school_lib_bank_card_v2', JSON.stringify(info));
-    } catch (e) {
-      console.error('Error saving bank card info:', e);
+      const data = await api.getBootstrap();
+      if (data) {
+        setUsers(data.users || []);
+        setBooks(data.books || []);
+        setRequests(data.requests || []);
+        setSchoolClasses(data.schoolClasses || []);
+        setFeedbacks(data.feedbacks || []);
+        if (data.bankCardInfo) {
+          setBankCardInfo(data.bankCardInfo);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load bootstrap data from SQLite:', err);
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const submitPaymentProof = (
+  useEffect(() => {
+    refreshData();
+  }, []);
+
+  // Sync currentUser with users list from SQLite
+  useEffect(() => {
+    if (currentUser && users.length > 0) {
+      const fresh = users.find((u) => u.id === currentUser.id);
+      if (fresh) {
+        if (
+          fresh.status !== currentUser.status ||
+          fresh.role !== currentUser.role ||
+          fresh.rating !== currentUser.rating ||
+          fresh.booksReadCount !== currentUser.booksReadCount ||
+          fresh.booksContributedCount !== currentUser.booksContributedCount
+        ) {
+          setCurrentUser(fresh);
+        }
+      }
+    }
+  }, [users, currentUser]);
+
+  // Persist currentUser to localStorage
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
+    }
+  }, [currentUser]);
+
+  // Bank Card Info
+  const updateBankCardInfo = async (info: BankCardInfo) => {
+    setBankCardInfo(info);
+    try {
+      await api.updateBankCard(info);
+    } catch (e) {
+      console.error('Error updating bank card on server:', e);
+    }
+  };
+
+  // Payment Proof Submission
+  const submitPaymentProof = async (
     requestId: string,
     proof: { trackingCode: string; paymentDate: string; receiptImage?: string }
   ) => {
@@ -264,9 +192,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : r
       )
     );
+
+    try {
+      await api.submitPaymentProof(requestId, proof.trackingCode, proof.paymentDate, proof.receiptImage);
+    } catch (e) {
+      console.error('Error submitting payment proof to server:', e);
+    }
   };
 
-  const verifyPaymentByAdmin = (requestId: string, isApproved: boolean, rejectionReason?: string) => {
+  // Admin verifies payment
+  const verifyPaymentByAdmin = async (requestId: string, isApproved: boolean, rejectionReason?: string) => {
     const formattedNow = new Date().toLocaleString('fa-IR', {
       year: 'numeric',
       month: '2-digit',
@@ -300,148 +235,90 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         }
       })
     );
+
+    try {
+      if (isApproved) {
+        await api.approvePayment(requestId);
+      }
+    } catch (e) {
+      console.error('Error approving payment on server:', e);
+    }
   };
 
-  useEffect(() => {
-    if (currentUser) {
-      localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(currentUser));
-    } else {
-      localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
+  // Register User
+  const registerUser = async (data: RegistrationInput) => {
+    try {
+      const res = await api.register(data);
+      if (res.success && res.user) {
+        // Refresh users & books from SQLite
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ثبت‌نام' };
     }
-  }, [currentUser]);
-
-  // Register user
-  const registerUser = (data: RegistrationInput) => {
-    // Check if phone already registered
-    const existing = users.find((u) => u.phone === data.phone);
-    if (existing) {
-      return { success: false, message: 'این شماره تلفن قبلاً در سامانه ثبت شده است.' };
-    }
-
-    if (data.initialBooks.length < 3) {
-      return { success: false, message: 'جهت تکمیل ثبت‌نام، باید حداقل ۳ جلد کتاب جهت اشتراک‌گذاری معرفی کنید.' };
-    }
-
-    const newUserId = `user_${Date.now()}`;
-    const newUser: User = {
-      id: newUserId,
-      name: data.name,
-      className: data.className,
-      phone: data.phone,
-      avatar: data.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
-      status: 'pending', // Pending admin approval!
-      role: 'student',
-      password: data.password,
-      rating: 5.0,
-      ratingsCount: 0,
-      booksContributedCount: data.initialBooks.length,
-      booksReadCount: 0,
-      medals: [
-        {
-          id: 'm_starter',
-          title: 'عضو جدید کتابخانه',
-          icon: '🌱',
-          description: 'پیوستن به جامعه کتابخوانی مدرسه',
-          color: 'bg-emerald-100 text-emerald-800 border-emerald-300'
-        }
-      ],
-      joinedDate: new Date().toLocaleDateString('fa-IR')
-    };
-
-    // Add initial books
-    const createdBooks: Book[] = data.initialBooks.map((b, idx) => ({
-      id: `b_${Date.now()}_${idx}`,
-      title: b.title,
-      author: b.author,
-      ownerId: newUserId,
-      ownerName: data.name,
-      ownerClass: data.className,
-      ownerAvatar: newUser.avatar,
-      coverImage: b.coverImage || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600',
-      category: b.category,
-      condition: b.condition,
-      description: b.description,
-      status: 'available',
-      rating: 5.0,
-      reviewsCount: 0,
-      reviews: [],
-      addedDate: new Date().toLocaleDateString('fa-IR')
-    }));
-
-    setUsers((prev) => [...prev, newUser]);
-    setBooks((prev) => [...prev, ...createdBooks]);
-
-    return {
-      success: true,
-      message: 'ثبت‌نام شما با موفقیت انجام شد! حساب شما پس از بررسی و تایید توسط مسئول کتابخانه فعال خواهد شد.',
-      user: newUser
-    };
   };
 
-  // Login
-  const loginUser = (phone: string, pass: string) => {
-    const user = users.find((u) => u.phone === phone);
-    if (!user) {
-      return { success: false, message: 'کاربری با این شماره تلفن یافت نشد.' };
+  // Login User
+  const loginUser = async (phone: string, pass: string) => {
+    try {
+      const res = await api.login(phone, pass);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ورود به سامانه' };
     }
-    if (user.password && user.password !== pass) {
-      return { success: false, message: 'رمز عبور وارد شده اشتباه است.' };
-    }
-    setCurrentUser(user);
-    return { success: true, message: `خوش آمدید ${user.name}`, user };
   };
 
-  // Login via verified Bale OTP (creates user if not exists or logs in)
-  const loginWithOtpPhone = (phone: string) => {
-    const cleanDigits = phone.replace(/\D/g, '');
-    const user = users.find((u) => {
-      const uClean = u.phone.replace(/\D/g, '');
-      return uClean === cleanDigits || u.phone === phone || uClean.endsWith(cleanDigits.slice(-10));
-    });
-
-    if (user) {
-      setCurrentUser(user);
-      return { success: true, message: `خوش آمدید ${user.name}! احراز هویت با پیام‌رسان بله موفقیت‌آمیز بود.`, user };
+  // Login With Bale OTP
+  const loginWithBale = async (phone: string) => {
+    try {
+      const res = await api.baleLogin(phone);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در احراز هویت بله' };
     }
+  };
 
-    // Auto-create an approved student user if not in database
-    const newUser: User = {
-      id: `u_bale_${Date.now()}`,
-      name: `کاربر بله (${phone.slice(-4)})`,
-      phone: phone,
-      className: 'کلاس ۱/۱',
-      role: 'student',
-      rating: 5,
-      ratingsCount: 1,
-      booksContributedCount: 0,
-      booksReadCount: 0,
-      medals: [],
-      joinedDate: '۱۴۰۳/۰۶/۰۱',
-      avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
-      status: 'approved'
-    };
-
-    setUsers((prev) => [...prev, newUser]);
-    setCurrentUser(newUser);
-    return { success: true, message: `حساب شما با شماره ${phone} تایید و ایجاد شد!`, user: newUser };
+  // Logout User
+  const logoutUser = () => {
+    setCurrentUser(null);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
   };
 
   // Admin Approve User
-  const approveUser = (userId: string) => {
+  const approveUser = async (userId: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, status: 'approved' as const } : u))
     );
+    try {
+      await api.approveUser(userId);
+    } catch (e) {
+      console.error('Error approving user on server:', e);
+    }
   };
 
   // Admin Reject User
-  const rejectUser = (userId: string) => {
+  const rejectUser = async (userId: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, status: 'rejected' as const } : u))
     );
+    try {
+      await api.rejectUser(userId);
+    } catch (e) {
+      console.error('Error rejecting user on server:', e);
+    }
   };
 
   // Add a book
-  const addBook = (bookData: {
+  const addBook = async (bookData: {
     title: string;
     author: string;
     category: string;
@@ -472,11 +349,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     setBooks((prev) => [newBook, ...prev]);
 
-    // Update user contributed count
     setUsers((prev) =>
       prev.map((u) =>
         u.id === currentUser.id
-          ? { ...u, booksContributedCount: u.booksContributedCount + 1 }
+          ? { ...u, booksContributedCount: (u.booksContributedCount || 0) + 1 }
           : u
       )
     );
@@ -484,15 +360,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (currentUser) {
       setCurrentUser({
         ...currentUser,
-        booksContributedCount: currentUser.booksContributedCount + 1
+        booksContributedCount: (currentUser.booksContributedCount || 0) + 1
       });
+    }
+
+    try {
+      await api.createBook(newBook);
+    } catch (e) {
+      console.error('Error adding book to SQLite:', e);
     }
 
     return newBook;
   };
 
   // Request Book Loan
-  const requestBookLoan = (bookId: string) => {
+  const requestBookLoan = async (bookId: string) => {
     if (!currentUser) {
       return { success: false, message: 'لطفا ابتدا وارد حساب کاربری خود شوید.' };
     }
@@ -513,40 +395,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return { success: false, message: 'این کتاب در حال حاضر در دست امانت یا درخواست‌شده است.' };
     }
 
-    const newRequest: LendingRequest = {
-      id: `req_${Date.now()}`,
-      bookId: book.id,
-      bookTitle: book.title,
-      bookCover: book.coverImage,
-      ownerId: book.ownerId,
-      ownerName: book.ownerName,
-      ownerClass: book.ownerClass,
-      borrowerId: currentUser.id,
-      borrowerName: currentUser.name,
-      borrowerClass: currentUser.className,
-      borrowerPhone: currentUser.phone,
-      status: 'pending',
-      createdAt: new Date().toLocaleString('fa-IR', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    };
-
-    setRequests((prev) => [newRequest, ...prev]);
-
-    // Mark book status as requested
-    setBooks((prev) =>
-      prev.map((b) => (b.id === bookId ? { ...b, status: 'requested' } : b))
-    );
-
-    return { success: true, message: `درخواست امانت کتاب "${book.title}" برای ${book.ownerName} ارسال شد.` };
+    try {
+      const res = await api.createRequest(bookId, currentUser.id);
+      if (res.success && res.request) {
+        setRequests((prev) => [res.request, ...prev]);
+        setBooks((prev) =>
+          prev.map((b) => (b.id === bookId ? { ...b, status: 'requested' } : b))
+        );
+        return { success: true, message: `درخواست امانت کتاب "${book.title}" برای ${book.ownerName} ارسال شد.` };
+      }
+      return { success: false, message: res.message || 'خطا در ثبت درخواست' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ثبت درخواست امانت' };
+    }
   };
 
-  // Accept loan request & set time/location with half-day shift window
-  const acceptLoanRequest = (
+  // Accept loan request
+  const acceptLoanRequest = async (
     requestId: string,
     pickupLocation: string,
     pickupTime: string,
@@ -568,15 +433,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : r
       )
     );
+
+    try {
+      await api.acceptRequest(requestId, pickupLocation, pickupTime, pickupShift);
+    } catch (e) {
+      console.error('Error accepting request on server:', e);
+    }
   };
 
-
-
   // Reject loan request
-  const rejectLoanRequest = (requestId: string) => {
+  const rejectLoanRequest = async (requestId: string) => {
     const req = requests.find((r) => r.id === requestId);
     if (req) {
-      // Free up book
       setBooks((prev) =>
         prev.map((b) => (b.id === req.bookId ? { ...b, status: 'available' } : b))
       );
@@ -584,10 +452,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setRequests((prev) =>
       prev.map((r) => (r.id === requestId ? { ...r, status: 'rejected' } : r))
     );
+
+    try {
+      await api.rejectRequest(requestId);
+    } catch (e) {
+      console.error('Error rejecting request on server:', e);
+    }
   };
 
   // Report damage and suspend user account
-  const reportDamageAndSuspendUser = (requestId: string, borrowerId: string, reason: string) => {
+  const reportDamageAndSuspendUser = async (requestId: string, borrowerId: string, reason: string) => {
     setUsers((prev) =>
       prev.map((u) =>
         u.id === borrowerId
@@ -626,10 +500,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         )
       );
     }
+
+    try {
+      await api.reportDamage(requestId, borrowerId, reason);
+    } catch (e) {
+      console.error('Error reporting damage on server:', e);
+    }
   };
 
-  // Confirm handover at school with 12h half-day retroactive confirmation
-  const confirmHandover = (requestId: string, confirmedByRole: string = 'parent_student') => {
+  // Confirm handover
+  const confirmHandover = async (requestId: string, confirmedByRole: string = 'parent_student') => {
     const req = requests.find((r) => r.id === requestId);
     if (!req) return;
 
@@ -667,6 +547,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : b
       )
     );
+
+    try {
+      await api.confirmHandover(requestId, confirmedByRole);
+    } catch (e) {
+      console.error('Error confirming handover on server:', e);
+    }
   };
 
   // Reset Password with SMS check
@@ -683,15 +569,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return { success: true, message: 'رمز عبور شما با موفقیت تغییر کرد. اکنون می‌توانید وارد شوید.' };
   };
 
-  // Complete Return & submit mutual feedback survey with 4 criteria
-  const completeReturnAndSubmitFeedback = (
+  // Complete Return & submit mutual feedback survey
+  const completeReturnAndSubmitFeedback = async (
     requestId: string,
     feedback: { punctuality: number; condition: number; behavior: number; reliability: number; comment: string }
   ) => {
     const req = requests.find((r) => r.id === requestId);
     if (!req) return;
 
-    // Calculate score from 4 criteria
     const avgFeedbackScore =
       (feedback.punctuality + feedback.condition + feedback.behavior + feedback.reliability) / 4;
 
@@ -720,27 +605,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === targetUserId) {
-          const newCount = u.ratingsCount + 1;
+          const newCount = (u.ratingsCount || 0) + 1;
           const newRating = parseFloat(
-            ((u.rating * u.ratingsCount + avgFeedbackScore) / newCount).toFixed(1)
+            (((u.rating || 5.0) * (u.ratingsCount || 0) + avgFeedbackScore) / newCount).toFixed(1)
           );
           return {
             ...u,
             rating: newRating,
             ratingsCount: newCount,
-            booksReadCount: u.id === req.borrowerId ? u.booksReadCount + 1 : u.booksReadCount
+            booksReadCount: u.id === req.borrowerId ? (u.booksReadCount || 0) + 1 : u.booksReadCount
           };
         }
         return u;
       })
     );
 
-    // Mark request as returned
     setRequests((prev) =>
       prev.map((r) => (r.id === requestId ? { ...r, status: 'returned' } : r))
     );
 
-    // Make book available again
     setBooks((prev) =>
       prev.map((b) =>
         b.id === req.bookId
@@ -748,10 +631,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           : b
       )
     );
+
+    try {
+      await api.returnAndFeedback(requestId, newMutualFeedback);
+    } catch (e) {
+      console.error('Error returning book on server:', e);
+    }
   };
 
   // School Classes Management
-  const addSchoolClass = (classData: { name: string; grade: string; isExternal?: boolean }) => {
+  const addSchoolClass = async (classData: { name: string; grade: string; isExternal?: boolean }) => {
     const newClass: SchoolClass = {
       id: `class_${Date.now()}`,
       name: classData.name,
@@ -759,6 +648,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       isExternal: classData.isExternal
     };
     setSchoolClasses((prev) => [...prev, newClass]);
+    try {
+      await api.createClass(classData.name, classData.grade, classData.isExternal);
+    } catch (e) {
+      console.error('Error creating class on server:', e);
+    }
   };
 
   const updateSchoolClass = (id: string, name: string, grade: string) => {
@@ -767,12 +661,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     );
   };
 
-  const deleteSchoolClass = (id: string) => {
+  const deleteSchoolClass = async (id: string) => {
     setSchoolClasses((prev) => prev.filter((c) => c.id !== id));
+    try {
+      await api.deleteClass(id);
+    } catch (e) {
+      console.error('Error deleting class on server:', e);
+    }
   };
 
   // Add review & star rating to a book
-  const addBookReview = (bookId: string, rating: number, comment: string) => {
+  const addBookReview = async (bookId: string, rating: number, comment: string) => {
     if (!currentUser) return;
 
     const newReview = {
@@ -803,35 +702,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         return b;
       })
     );
-  };
 
-  // Delete book (owner or admin)
-  const deleteBook = (bookId: string) => {
-    setBooks((prev) => prev.filter((b) => b.id !== bookId));
-  };
-
-  // Reset to initial mock data
-  const resetToDefaults = () => {
-    setUsers(INITIAL_USERS);
-    setBooks(INITIAL_BOOKS);
-    setRequests(INITIAL_REQUESTS);
-    setSchoolClasses(INITIAL_CLASSES);
-    setFeedbacks([]);
-    setCurrentUser(INITIAL_USERS[1]);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_USERS);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_BOOKS);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_REQUESTS);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_CLASSES);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_FEEDBACKS);
-    localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
-  };
-
-  // Switch demo persona
-  const switchUserRoleDemo = (userId: string) => {
-    const found = users.find((u) => u.id === userId);
-    if (found) {
-      setCurrentUser(found);
+    try {
+      await api.reviewBook(bookId, newReview);
+    } catch (e) {
+      console.error('Error submitting review to server:', e);
     }
+  };
+
+  // Delete book
+  const deleteBook = async (bookId: string) => {
+    setBooks((prev) => prev.filter((b) => b.id !== bookId));
+    try {
+      await api.deleteBook(bookId);
+    } catch (e) {
+      console.error('Error deleting book from server:', e);
+    }
+  };
+
+  // Reset to initial clean state
+  const resetToDefaults = () => {
+    setUsers([]);
+    setBooks([]);
+    setRequests([]);
+    setSchoolClasses([]);
+    setFeedbacks([]);
+    setCurrentUser(null);
+    localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
   };
 
   return (
@@ -844,30 +741,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         schoolClasses,
         feedbacks,
         bankCardInfo,
-        setCurrentUser,
-        registerUser,
+        isLoading,
         loginUser,
-        loginWithOtpPhone,
+        loginWithBale,
+        logoutUser,
+        registerUser,
         resetPasswordWithSMS,
         approveUser,
         rejectUser,
         addBook,
+        deleteBook,
         requestBookLoan,
         acceptLoanRequest,
         rejectLoanRequest,
-        reportDamageAndSuspendUser,
         submitPaymentProof,
         verifyPaymentByAdmin,
-        updateBankCardInfo,
         confirmHandover,
         completeReturnAndSubmitFeedback,
-        addBookReview,
-        deleteBook,
+        reportDamageAndSuspendUser,
         addSchoolClass,
         updateSchoolClass,
         deleteSchoolClass,
+        addBookReview,
+        updateBankCardInfo,
         resetToDefaults,
-        switchUserRoleDemo
+        refreshData
       }}
     >
       {children}

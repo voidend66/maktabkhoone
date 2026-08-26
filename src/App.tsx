@@ -166,7 +166,7 @@ function MainAppContent() {
               title={`تاریخ بیلد: ${APP_BUILD_DATE}`}
             >
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-              نسخه سامانه: v{APP_VERSION}
+              نسخه سامانه: v{APP_VERSION} (فاز عملیاتی)
             </span>
             <span>•</span>
             <button
@@ -175,13 +175,6 @@ function MainAppContent() {
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               قوانین و مقررات سایت
-            </button>
-            <span>•</span>
-            <button
-              onClick={resetToDefaults}
-              className="text-[11px] text-slate-500 hover:text-slate-300 underline"
-            >
-              بازنشانی داده‌های اولیه (Reset Demo)
             </button>
           </div>
         </div>
