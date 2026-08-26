@@ -1,4 +1,3 @@
-import { DatabaseSync } from 'node:sqlite';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -18,131 +17,101 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
-const DB_PATH = path.join(DATA_DIR, 'maktabkhune.db');
+const DB_FILE = path.join(DATA_DIR, 'maktabkhune.json');
+const DB_BACKUP = path.join(DATA_DIR, 'maktabkhune.json.bak');
 
-// Initialize native SQLite connection
-const db = new DatabaseSync(DB_PATH);
+interface DatabaseSchema {
+  users: User[];
+  books: Book[];
+  requests: LendingRequest[];
+  schoolClasses: SchoolClass[];
+  feedbacks: MutualFeedback[];
+  settings: Record<string, string>;
+}
 
-// Enable WAL mode for better concurrency
-db.exec('PRAGMA journal_mode = WAL;');
-db.exec('PRAGMA synchronous = NORMAL;');
+// In-memory data store with disk persistence
+let memoryDb: DatabaseSchema = {
+  users: [],
+  books: [],
+  requests: [],
+  schoolClasses: [],
+  feedbacks: [],
+  settings: {}
+};
 
-// Initialize Tables
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    className TEXT NOT NULL,
-    phone TEXT NOT NULL UNIQUE,
-    avatar TEXT,
-    status TEXT NOT NULL,
-    role TEXT NOT NULL,
-    password TEXT,
-    rating REAL DEFAULT 5.0,
-    ratingsCount INTEGER DEFAULT 0,
-    booksContributedCount INTEGER DEFAULT 0,
-    booksReadCount INTEGER DEFAULT 0,
-    medals TEXT,
-    joinedDate TEXT,
-    suspensionReason TEXT,
-    activeLoanCount INTEGER DEFAULT 0
-  );
+/**
+ * Persist database to disk atomically
+ */
+function saveToDisk() {
+  try {
+    const jsonStr = JSON.stringify(memoryDb, null, 2);
+    const tempFile = `${DB_FILE}.tmp`;
+    fs.writeFileSync(tempFile, jsonStr, 'utf-8');
+    fs.renameSync(tempFile, DB_FILE);
 
-  CREATE TABLE IF NOT EXISTS books (
-    id TEXT PRIMARY KEY,
-    title TEXT NOT NULL,
-    author TEXT NOT NULL,
-    ownerId TEXT NOT NULL,
-    ownerName TEXT NOT NULL,
-    ownerClass TEXT NOT NULL,
-    ownerAvatar TEXT,
-    coverImage TEXT NOT NULL,
-    category TEXT NOT NULL,
-    condition TEXT NOT NULL,
-    description TEXT,
-    status TEXT NOT NULL,
-    borrowerId TEXT,
-    borrowerName TEXT,
-    rating REAL DEFAULT 5.0,
-    reviewsCount INTEGER DEFAULT 0,
-    reviews TEXT,
-    addedDate TEXT,
-    estimatedReturnDate TEXT,
-    isDamaged INTEGER DEFAULT 0,
-    damageDescription TEXT
-  );
+    // Keep a backup occasionally
+    try {
+      fs.copyFileSync(DB_FILE, DB_BACKUP);
+    } catch {
+      // ignore backup errors
+    }
+  } catch (error) {
+    console.error('Error persisting database to disk:', error);
+  }
+}
 
-  CREATE TABLE IF NOT EXISTS lending_requests (
-    id TEXT PRIMARY KEY,
-    bookId TEXT NOT NULL,
-    bookTitle TEXT NOT NULL,
-    bookCover TEXT,
-    ownerId TEXT NOT NULL,
-    ownerName TEXT NOT NULL,
-    ownerClass TEXT,
-    borrowerId TEXT NOT NULL,
-    borrowerName TEXT NOT NULL,
-    borrowerClass TEXT,
-    borrowerPhone TEXT,
-    status TEXT NOT NULL,
-    pickupLocation TEXT,
-    pickupTime TEXT,
-    pickupShift TEXT,
-    handoverWindow TEXT,
-    handoverConfirmedAt TEXT,
-    handoverConfirmedByRole TEXT,
-    is12hGraceConfirmed INTEGER DEFAULT 0,
-    createdAt TEXT NOT NULL,
-    acceptedAt TEXT,
-    ownerFeedbackGiven INTEGER DEFAULT 0,
-    borrowerFeedbackGiven INTEGER DEFAULT 0,
-    feeAmount INTEGER DEFAULT 10000,
-    paymentStatus TEXT,
-    paymentDeadline TEXT,
-    paidAt TEXT,
-    paymentProof TEXT,
-    dueDate TEXT,
-    extensionStatus TEXT,
-    extensionCount INTEGER DEFAULT 0,
-    extensionRequestedAt TEXT,
-    isDamagedReported INTEGER DEFAULT 0,
-    damageNotes TEXT
-  );
+/**
+ * Load database from disk or initialize
+ */
+function loadFromDisk(): boolean {
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      const content = fs.readFileSync(DB_FILE, 'utf-8');
+      if (content.trim()) {
+        const parsed = JSON.parse(content);
+        memoryDb = {
+          users: Array.isArray(parsed.users) ? parsed.users : [],
+          books: Array.isArray(parsed.books) ? parsed.books : [],
+          requests: Array.isArray(parsed.requests) ? parsed.requests : [],
+          schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
+          feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
+          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {}
+        };
+        return true;
+      }
+    }
+  } catch (error) {
+    console.error('Error reading primary database file, checking backup...', error);
+    try {
+      if (fs.existsSync(DB_BACKUP)) {
+        const backupContent = fs.readFileSync(DB_BACKUP, 'utf-8');
+        const parsed = JSON.parse(backupContent);
+        memoryDb = {
+          users: Array.isArray(parsed.users) ? parsed.users : [],
+          books: Array.isArray(parsed.books) ? parsed.books : [],
+          requests: Array.isArray(parsed.requests) ? parsed.requests : [],
+          schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
+          feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
+          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {}
+        };
+        return true;
+      }
+    } catch (bErr) {
+      console.error('Backup load also failed, initializing empty db', bErr);
+    }
+  }
+  return false;
+}
 
-  CREATE TABLE IF NOT EXISTS school_classes (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    grade TEXT NOT NULL,
-    isExternal INTEGER DEFAULT 0
-  );
+// Initial load
+loadFromDisk();
 
-  CREATE TABLE IF NOT EXISTS feedbacks (
-    id TEXT PRIMARY KEY,
-    requestId TEXT NOT NULL,
-    fromUserId TEXT NOT NULL,
-    fromUserName TEXT NOT NULL,
-    toUserId TEXT NOT NULL,
-    toUserName TEXT NOT NULL,
-    role TEXT NOT NULL,
-    punctualityScore REAL DEFAULT 5.0,
-    conditionScore REAL DEFAULT 5.0,
-    behaviorScore REAL DEFAULT 5.0,
-    reliabilityScore REAL DEFAULT 5.0,
-    comment TEXT,
-    date TEXT NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS settings (
-    key TEXT PRIMARY KEY,
-    value TEXT NOT NULL
-  );
-`);
-
-// Helper function to seed initial classes & default settings if empty
+// Seed initial data if empty
 function seedInitialDataIfEmpty() {
-  const countStmt = db.prepare('SELECT COUNT(*) as count FROM school_classes');
-  const result = countStmt.get() as { count: number };
-  if (result.count === 0) {
+  let hasChanges = false;
+
+  // Seed default classes if empty
+  if (memoryDb.schoolClasses.length === 0) {
     const defaultClasses: SchoolClass[] = [
       { id: 'c_7_1', name: 'کلاس ۱/۷', grade: 'پایه هفتم' },
       { id: 'c_7_2', name: 'کلاس ۲/۷', grade: 'پایه هفتم' },
@@ -161,245 +130,206 @@ function seedInitialDataIfEmpty() {
       { id: 'c_12_hum', name: '۱۲ انسانی', grade: 'پایه دوازدهم' },
       { id: 'c_alumni', name: 'فارغ‌التحصیلان و معلمان', grade: 'سایر / مهمان', isExternal: true }
     ];
-
-    const insertClassStmt = db.prepare(
-      'INSERT INTO school_classes (id, name, grade, isExternal) VALUES (?, ?, ?, ?)'
-    );
-
-    for (const c of defaultClasses) {
-      insertClassStmt.run(c.id, c.name, c.grade, c.isExternal ? 1 : 0);
-    }
+    memoryDb.schoolClasses = defaultClasses;
+    hasChanges = true;
   }
 
   // Seed default bank card info if not set
-  const cardSetting = db.prepare('SELECT value FROM settings WHERE key = ?').get('bank_card_info') as { value: string } | undefined;
-  if (!cardSetting) {
+  if (!memoryDb.settings['bank_card_info']) {
     const defaultCard: BankCardInfo = {
       cardNumber: '6037-9918-9876-5432',
       cardHolderName: 'پارسا فیض (مدیر و راهبر مکتب‌خانه)',
       bankName: 'بانک ملی ایران'
     };
-    db.prepare('INSERT INTO settings (key, value) VALUES (?, ?)').run('bank_card_info', JSON.stringify(defaultCard));
+    memoryDb.settings['bank_card_info'] = JSON.stringify(defaultCard);
+    hasChanges = true;
   }
 
   // Ensure default admin users exist in DB if not registered yet
   for (const adminPhone of ADMIN_PHONES) {
     const cleanPhone = adminPhone.replace(/\D/g, '');
-    const userRow = db.prepare('SELECT id FROM users WHERE phone = ?').get(adminPhone);
-    if (!userRow) {
-      const adminId = `u_admin_${cleanPhone.slice(-4)}`;
-      const medals = JSON.stringify([
-        {
-          id: 'm_admin_crown',
-          title: 'راهبر کتابخانه',
-          icon: '👑',
-          description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
-          color: 'bg-amber-100 text-amber-800 border-amber-300'
-        }
-      ]);
+    const userExists = memoryDb.users.some(
+      (u) => u.phone === adminPhone || u.phone.replace(/\D/g, '') === cleanPhone
+    );
 
-      db.prepare(`
-        INSERT OR IGNORE INTO users (
-          id, name, className, phone, avatar, status, role, password,
-          rating, ratingsCount, booksContributedCount, booksReadCount, medals, joinedDate
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        adminId,
-        'مدیر سامانه مکتب‌خانه',
-        'مدیریت کتابخانه',
-        adminPhone,
-        'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-        'approved',
-        'admin',
-        'admin123',
-        5.0,
-        1,
-        0,
-        0,
-        medals,
-        new Date().toLocaleDateString('fa-IR')
-      );
+    if (!userExists) {
+      const adminId = `u_admin_${cleanPhone.slice(-4)}`;
+      memoryDb.users.push({
+        id: adminId,
+        name: 'مدیر سامانه مکتب‌خانه',
+        className: 'مدیریت کتابخانه',
+        phone: adminPhone,
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'admin',
+        password: 'admin123',
+        rating: 5.0,
+        ratingsCount: 1,
+        booksContributedCount: 0,
+        booksReadCount: 0,
+        medals: [
+          {
+            id: 'm_admin_crown',
+            title: 'راهبر کتابخانه',
+            icon: '👑',
+            description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
+            color: 'bg-amber-100 text-amber-800 border-amber-300'
+          }
+        ],
+        joinedDate: new Date().toLocaleDateString('fa-IR'),
+        activeLoanCount: 0
+      });
+      hasChanges = true;
     }
+  }
+
+  if (hasChanges) {
+    saveToDisk();
   }
 }
 
 seedInitialDataIfEmpty();
 
 // ==========================================
-// Database Access Functions
+// Database Access Service
 // ==========================================
 
 export const dbService = {
   // ---- USERS ----
   getAllUsers(): User[] {
-    const rows = db.prepare('SELECT * FROM users').all() as any[];
-    return rows.map((r) => ({
-      ...r,
-      medals: r.medals ? JSON.parse(r.medals) : [],
-      rating: Number(r.rating) || 5.0,
-      ratingsCount: Number(r.ratingsCount) || 0,
-      booksContributedCount: Number(r.booksContributedCount) || 0,
-      booksReadCount: Number(r.booksReadCount) || 0,
-      activeLoanCount: Number(r.activeLoanCount) || 0
+    return memoryDb.users.map((u) => ({
+      ...u,
+      medals: Array.isArray(u.medals) ? u.medals : [],
+      rating: Number(u.rating) || 5.0,
+      ratingsCount: Number(u.ratingsCount) || 0,
+      booksContributedCount: Number(u.booksContributedCount) || 0,
+      booksReadCount: Number(u.booksReadCount) || 0,
+      activeLoanCount: Number(u.activeLoanCount) || 0
     }));
   },
 
   getUserById(id: string): User | null {
-    const r = db.prepare('SELECT * FROM users WHERE id = ?').get(id) as any;
-    if (!r) return null;
+    const user = memoryDb.users.find((u) => u.id === id);
+    if (!user) return null;
     return {
-      ...r,
-      medals: r.medals ? JSON.parse(r.medals) : [],
-      rating: Number(r.rating) || 5.0,
-      ratingsCount: Number(r.ratingsCount) || 0,
-      booksContributedCount: Number(r.booksContributedCount) || 0,
-      booksReadCount: Number(r.booksReadCount) || 0,
-      activeLoanCount: Number(r.activeLoanCount) || 0
+      ...user,
+      medals: Array.isArray(user.medals) ? user.medals : [],
+      rating: Number(user.rating) || 5.0,
+      ratingsCount: Number(user.ratingsCount) || 0,
+      booksContributedCount: Number(user.booksContributedCount) || 0,
+      booksReadCount: Number(user.booksReadCount) || 0,
+      activeLoanCount: Number(user.activeLoanCount) || 0
     };
   },
 
   getUserByPhone(phone: string): User | null {
     const cleanDigits = phone.replace(/\D/g, '');
-    const users = this.getAllUsers();
-    return users.find((u) => {
-      const uClean = u.phone.replace(/\D/g, '');
-      return uClean === cleanDigits || u.phone === phone || (cleanDigits.length >= 10 && uClean.endsWith(cleanDigits.slice(-10)));
-    }) || null;
+    const user = memoryDb.users.find((u) => {
+      const uClean = (u.phone || '').replace(/\D/g, '');
+      return (
+        uClean === cleanDigits ||
+        u.phone === phone ||
+        (cleanDigits.length >= 10 && uClean.endsWith(cleanDigits.slice(-10)))
+      );
+    });
+    if (!user) return null;
+    return this.getUserById(user.id);
   },
 
   createUser(user: User): User {
-    const stmt = db.prepare(`
-      INSERT INTO users (
-        id, name, className, phone, avatar, status, role, password,
-        rating, ratingsCount, booksContributedCount, booksReadCount, medals, joinedDate, suspensionReason, activeLoanCount
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const existingIndex = memoryDb.users.findIndex((u) => u.id === user.id);
+    const newUser: User = {
+      ...user,
+      medals: Array.isArray(user.medals) ? user.medals : [],
+      rating: Number(user.rating) || 5.0,
+      ratingsCount: Number(user.ratingsCount) || 0,
+      booksContributedCount: Number(user.booksContributedCount) || 0,
+      booksReadCount: Number(user.booksReadCount) || 0,
+      activeLoanCount: Number(user.activeLoanCount) || 0,
+      joinedDate: user.joinedDate || new Date().toLocaleDateString('fa-IR')
+    };
 
-    stmt.run(
-      user.id,
-      user.name,
-      user.className,
-      user.phone,
-      user.avatar || '',
-      user.status,
-      user.role,
-      user.password || '',
-      user.rating || 5.0,
-      user.ratingsCount || 0,
-      user.booksContributedCount || 0,
-      user.booksReadCount || 0,
-      JSON.stringify(user.medals || []),
-      user.joinedDate || new Date().toLocaleDateString('fa-IR'),
-      user.suspensionReason || null,
-      user.activeLoanCount || 0
-    );
+    if (existingIndex >= 0) {
+      memoryDb.users[existingIndex] = newUser;
+    } else {
+      memoryDb.users.push(newUser);
+    }
 
-    return user;
+    saveToDisk();
+    return newUser;
   },
 
   updateUser(id: string, updates: Partial<User>): User | null {
-    const current = this.getUserById(id);
-    if (!current) return null;
+    const index = memoryDb.users.findIndex((u) => u.id === id);
+    if (index === -1) return null;
 
-    const merged: User = { ...current, ...updates };
+    const current = memoryDb.users[index];
+    const updated: User = {
+      ...current,
+      ...updates,
+      medals: updates.medals !== undefined ? updates.medals : (current.medals || []),
+      rating: updates.rating !== undefined ? Number(updates.rating) : current.rating,
+      ratingsCount: updates.ratingsCount !== undefined ? Number(updates.ratingsCount) : current.ratingsCount,
+      booksContributedCount: updates.booksContributedCount !== undefined ? Number(updates.booksContributedCount) : current.booksContributedCount,
+      booksReadCount: updates.booksReadCount !== undefined ? Number(updates.booksReadCount) : current.booksReadCount,
+      activeLoanCount: updates.activeLoanCount !== undefined ? Number(updates.activeLoanCount) : current.activeLoanCount
+    };
 
-    const stmt = db.prepare(`
-      UPDATE users SET
-        name = ?,
-        className = ?,
-        phone = ?,
-        avatar = ?,
-        status = ?,
-        role = ?,
-        password = ?,
-        rating = ?,
-        ratingsCount = ?,
-        booksContributedCount = ?,
-        booksReadCount = ?,
-        medals = ?,
-        suspensionReason = ?,
-        activeLoanCount = ?
-      WHERE id = ?
-    `);
+    memoryDb.users[index] = updated;
+    saveToDisk();
+    return updated;
+  },
 
-    stmt.run(
-      merged.name,
-      merged.className,
-      merged.phone,
-      merged.avatar,
-      merged.status,
-      merged.role,
-      merged.password || '',
-      merged.rating,
-      merged.ratingsCount,
-      merged.booksContributedCount,
-      merged.booksReadCount,
-      JSON.stringify(merged.medals || []),
-      merged.suspensionReason || null,
-      merged.activeLoanCount || 0,
-      id
-    );
-
-    return merged;
+  deleteUser(id: string): boolean {
+    const initialLen = memoryDb.users.length;
+    memoryDb.users = memoryDb.users.filter((u) => u.id !== id);
+    if (memoryDb.users.length !== initialLen) {
+      saveToDisk();
+      return true;
+    }
+    return false;
   },
 
   // ---- BOOKS ----
   getAllBooks(): Book[] {
-    const rows = db.prepare('SELECT * FROM books').all() as any[];
-    return rows.map((r) => ({
-      ...r,
-      reviews: r.reviews ? JSON.parse(r.reviews) : [],
-      rating: Number(r.rating) || 5.0,
-      reviewsCount: Number(r.reviewsCount) || 0,
-      isDamaged: Boolean(r.isDamaged)
+    return memoryDb.books.map((b) => ({
+      ...b,
+      reviews: Array.isArray(b.reviews) ? b.reviews : [],
+      rating: Number(b.rating) || 5.0,
+      reviewsCount: Number(b.reviewsCount) || 0,
+      isDamaged: Boolean(b.isDamaged)
     }));
   },
 
   getBookById(id: string): Book | null {
-    const r = db.prepare('SELECT * FROM books WHERE id = ?').get(id) as any;
-    if (!r) return null;
+    const book = memoryDb.books.find((b) => b.id === id);
+    if (!book) return null;
     return {
-      ...r,
-      reviews: r.reviews ? JSON.parse(r.reviews) : [],
-      rating: Number(r.rating) || 5.0,
-      reviewsCount: Number(r.reviewsCount) || 0,
-      isDamaged: Boolean(r.isDamaged)
+      ...book,
+      reviews: Array.isArray(book.reviews) ? book.reviews : [],
+      rating: Number(book.rating) || 5.0,
+      reviewsCount: Number(book.reviewsCount) || 0,
+      isDamaged: Boolean(book.isDamaged)
     };
   },
 
   createBook(book: Book): Book {
-    const stmt = db.prepare(`
-      INSERT INTO books (
-        id, title, author, ownerId, ownerName, ownerClass, ownerAvatar,
-        coverImage, category, condition, description, status, borrowerId,
-        borrowerName, rating, reviewsCount, reviews, addedDate,
-        estimatedReturnDate, isDamaged, damageDescription
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const newBook: Book = {
+      ...book,
+      status: book.status || 'available',
+      rating: Number(book.rating) || 5.0,
+      reviewsCount: Number(book.reviewsCount) || 0,
+      reviews: Array.isArray(book.reviews) ? book.reviews : [],
+      addedDate: book.addedDate || new Date().toLocaleDateString('fa-IR'),
+      isDamaged: Boolean(book.isDamaged)
+    };
 
-    stmt.run(
-      book.id,
-      book.title,
-      book.author,
-      book.ownerId,
-      book.ownerName,
-      book.ownerClass,
-      book.ownerAvatar || '',
-      book.coverImage,
-      book.category,
-      book.condition,
-      book.description || '',
-      book.status || 'available',
-      book.borrowerId || null,
-      book.borrowerName || null,
-      book.rating || 5.0,
-      book.reviewsCount || 0,
-      JSON.stringify(book.reviews || []),
-      book.addedDate || new Date().toLocaleDateString('fa-IR'),
-      book.estimatedReturnDate || null,
-      book.isDamaged ? 1 : 0,
-      book.damageDescription || null
-    );
+    const existingIdx = memoryDb.books.findIndex((b) => b.id === book.id);
+    if (existingIdx >= 0) {
+      memoryDb.books[existingIdx] = newBook;
+    } else {
+      memoryDb.books.push(newBook);
+    }
 
     // Increment owner's booksContributedCount
     const owner = this.getUserById(book.ownerId);
@@ -407,68 +337,34 @@ export const dbService = {
       this.updateUser(owner.id, { booksContributedCount: (owner.booksContributedCount || 0) + 1 });
     }
 
-    return book;
+    saveToDisk();
+    return newBook;
   },
 
   updateBook(id: string, updates: Partial<Book>): Book | null {
-    const current = this.getBookById(id);
-    if (!current) return null;
+    const index = memoryDb.books.findIndex((b) => b.id === id);
+    if (index === -1) return null;
 
-    const merged: Book = { ...current, ...updates };
+    const current = memoryDb.books[index];
+    const updated: Book = {
+      ...current,
+      ...updates,
+      reviews: updates.reviews !== undefined ? updates.reviews : (current.reviews || []),
+      rating: updates.rating !== undefined ? Number(updates.rating) : current.rating,
+      reviewsCount: updates.reviewsCount !== undefined ? Number(updates.reviewsCount) : current.reviewsCount,
+      isDamaged: updates.isDamaged !== undefined ? Boolean(updates.isDamaged) : current.isDamaged
+    };
 
-    const stmt = db.prepare(`
-      UPDATE books SET
-        title = ?,
-        author = ?,
-        ownerName = ?,
-        ownerClass = ?,
-        ownerAvatar = ?,
-        coverImage = ?,
-        category = ?,
-        condition = ?,
-        description = ?,
-        status = ?,
-        borrowerId = ?,
-        borrowerName = ?,
-        rating = ?,
-        reviewsCount = ?,
-        reviews = ?,
-        estimatedReturnDate = ?,
-        isDamaged = ?,
-        damageDescription = ?
-      WHERE id = ?
-    `);
-
-    stmt.run(
-      merged.title,
-      merged.author,
-      merged.ownerName,
-      merged.ownerClass,
-      merged.ownerAvatar || '',
-      merged.coverImage,
-      merged.category,
-      merged.condition,
-      merged.description || '',
-      merged.status,
-      merged.borrowerId || null,
-      merged.borrowerName || null,
-      merged.rating,
-      merged.reviewsCount,
-      JSON.stringify(merged.reviews || []),
-      merged.estimatedReturnDate || null,
-      merged.isDamaged ? 1 : 0,
-      merged.damageDescription || null,
-      id
-    );
-
-    return merged;
+    memoryDb.books[index] = updated;
+    saveToDisk();
+    return updated;
   },
 
   deleteBook(id: string): boolean {
     const book = this.getBookById(id);
     if (!book) return false;
 
-    db.prepare('DELETE FROM books WHERE id = ?').run(id);
+    memoryDb.books = memoryDb.books.filter((b) => b.id !== id);
 
     // Decrement user's count
     const owner = this.getUserById(book.ownerId);
@@ -476,6 +372,7 @@ export const dbService = {
       this.updateUser(owner.id, { booksContributedCount: owner.booksContributedCount - 1 });
     }
 
+    saveToDisk();
     return true;
   },
 
@@ -496,225 +393,144 @@ export const dbService = {
 
   // ---- LENDING REQUESTS ----
   getAllRequests(): LendingRequest[] {
-    const rows = db.prepare('SELECT * FROM lending_requests ORDER BY createdAt DESC').all() as any[];
-    return rows.map((r) => ({
+    return memoryDb.requests.map((r) => ({
       ...r,
       is12hGraceConfirmed: Boolean(r.is12hGraceConfirmed),
       ownerFeedbackGiven: Boolean(r.ownerFeedbackGiven),
       borrowerFeedbackGiven: Boolean(r.borrowerFeedbackGiven),
       isDamagedReported: Boolean(r.isDamagedReported),
-      paymentProof: r.paymentProof ? JSON.parse(r.paymentProof) : undefined,
       feeAmount: Number(r.feeAmount) || 10000,
       extensionCount: Number(r.extensionCount) || 0
     }));
   },
 
   getRequestById(id: string): LendingRequest | null {
-    const r = db.prepare('SELECT * FROM lending_requests WHERE id = ?').get(id) as any;
-    if (!r) return null;
+    const req = memoryDb.requests.find((r) => r.id === id);
+    if (!req) return null;
     return {
-      ...r,
-      is12hGraceConfirmed: Boolean(r.is12hGraceConfirmed),
-      ownerFeedbackGiven: Boolean(r.ownerFeedbackGiven),
-      borrowerFeedbackGiven: Boolean(r.borrowerFeedbackGiven),
-      isDamagedReported: Boolean(r.isDamagedReported),
-      paymentProof: r.paymentProof ? JSON.parse(r.paymentProof) : undefined,
-      feeAmount: Number(r.feeAmount) || 10000,
-      extensionCount: Number(r.extensionCount) || 0
+      ...req,
+      is12hGraceConfirmed: Boolean(req.is12hGraceConfirmed),
+      ownerFeedbackGiven: Boolean(req.ownerFeedbackGiven),
+      borrowerFeedbackGiven: Boolean(req.borrowerFeedbackGiven),
+      isDamagedReported: Boolean(req.isDamagedReported),
+      feeAmount: Number(req.feeAmount) || 10000,
+      extensionCount: Number(req.extensionCount) || 0
     };
   },
 
   createRequest(req: LendingRequest): LendingRequest {
-    const stmt = db.prepare(`
-      INSERT INTO lending_requests (
-        id, bookId, bookTitle, bookCover, ownerId, ownerName, ownerClass,
-        borrowerId, borrowerName, borrowerClass, borrowerPhone, status,
-        pickupLocation, pickupTime, pickupShift, handoverWindow, handoverConfirmedAt,
-        handoverConfirmedByRole, is12hGraceConfirmed, createdAt, acceptedAt,
-        ownerFeedbackGiven, borrowerFeedbackGiven, feeAmount, paymentStatus,
-        paymentDeadline, paidAt, paymentProof, dueDate, extensionStatus,
-        extensionCount, extensionRequestedAt, isDamagedReported, damageNotes
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const newReq: LendingRequest = {
+      ...req,
+      status: req.status || 'pending',
+      feeAmount: Number(req.feeAmount) || 10000,
+      paymentStatus: req.paymentStatus || 'pending',
+      extensionStatus: req.extensionStatus || 'none',
+      extensionCount: Number(req.extensionCount) || 0,
+      createdAt: req.createdAt || new Date().toLocaleDateString('fa-IR'),
+      is12hGraceConfirmed: Boolean(req.is12hGraceConfirmed),
+      ownerFeedbackGiven: Boolean(req.ownerFeedbackGiven),
+      borrowerFeedbackGiven: Boolean(req.borrowerFeedbackGiven),
+      isDamagedReported: Boolean(req.isDamagedReported)
+    };
 
-    stmt.run(
-      req.id,
-      req.bookId,
-      req.bookTitle,
-      req.bookCover || '',
-      req.ownerId,
-      req.ownerName,
-      req.ownerClass || '',
-      req.borrowerId,
-      req.borrowerName,
-      req.borrowerClass || '',
-      req.borrowerPhone || '',
-      req.status || 'pending',
-      req.pickupLocation || null,
-      req.pickupTime || null,
-      req.pickupShift || null,
-      req.handoverWindow || null,
-      req.handoverConfirmedAt || null,
-      req.handoverConfirmedByRole || null,
-      req.is12hGraceConfirmed ? 1 : 0,
-      req.createdAt || new Date().toLocaleDateString('fa-IR'),
-      req.acceptedAt || null,
-      req.ownerFeedbackGiven ? 1 : 0,
-      req.borrowerFeedbackGiven ? 1 : 0,
-      req.feeAmount || 10000,
-      req.paymentStatus || 'pending',
-      req.paymentDeadline || null,
-      req.paidAt || null,
-      req.paymentProof ? JSON.stringify(req.paymentProof) : null,
-      req.dueDate || null,
-      req.extensionStatus || 'none',
-      req.extensionCount || 0,
-      req.extensionRequestedAt || null,
-      req.isDamagedReported ? 1 : 0,
-      req.damageNotes || null
-    );
+    const existingIdx = memoryDb.requests.findIndex((r) => r.id === req.id);
+    if (existingIdx >= 0) {
+      memoryDb.requests[existingIdx] = newReq;
+    } else {
+      memoryDb.requests.unshift(newReq);
+    }
 
     // Update book status to requested
     this.updateBook(req.bookId, { status: 'requested' });
 
-    return req;
+    saveToDisk();
+    return newReq;
   },
 
   updateRequest(id: string, updates: Partial<LendingRequest>): LendingRequest | null {
-    const current = this.getRequestById(id);
-    if (!current) return null;
+    const index = memoryDb.requests.findIndex((r) => r.id === id);
+    if (index === -1) return null;
 
-    const merged: LendingRequest = { ...current, ...updates };
+    const current = memoryDb.requests[index];
+    const updated: LendingRequest = {
+      ...current,
+      ...updates,
+      feeAmount: updates.feeAmount !== undefined ? Number(updates.feeAmount) : current.feeAmount,
+      extensionCount: updates.extensionCount !== undefined ? Number(updates.extensionCount) : current.extensionCount,
+      is12hGraceConfirmed: updates.is12hGraceConfirmed !== undefined ? Boolean(updates.is12hGraceConfirmed) : current.is12hGraceConfirmed,
+      ownerFeedbackGiven: updates.ownerFeedbackGiven !== undefined ? Boolean(updates.ownerFeedbackGiven) : current.ownerFeedbackGiven,
+      borrowerFeedbackGiven: updates.borrowerFeedbackGiven !== undefined ? Boolean(updates.borrowerFeedbackGiven) : current.borrowerFeedbackGiven,
+      isDamagedReported: updates.isDamagedReported !== undefined ? Boolean(updates.isDamagedReported) : current.isDamagedReported
+    };
 
-    const stmt = db.prepare(`
-      UPDATE lending_requests SET
-        status = ?,
-        pickupLocation = ?,
-        pickupTime = ?,
-        pickupShift = ?,
-        handoverWindow = ?,
-        handoverConfirmedAt = ?,
-        handoverConfirmedByRole = ?,
-        is12hGraceConfirmed = ?,
-        acceptedAt = ?,
-        ownerFeedbackGiven = ?,
-        borrowerFeedbackGiven = ?,
-        feeAmount = ?,
-        paymentStatus = ?,
-        paymentDeadline = ?,
-        paidAt = ?,
-        paymentProof = ?,
-        dueDate = ?,
-        extensionStatus = ?,
-        extensionCount = ?,
-        extensionRequestedAt = ?,
-        isDamagedReported = ?,
-        damageNotes = ?
-      WHERE id = ?
-    `);
-
-    stmt.run(
-      merged.status,
-      merged.pickupLocation || null,
-      merged.pickupTime || null,
-      merged.pickupShift || null,
-      merged.handoverWindow || null,
-      merged.handoverConfirmedAt || null,
-      merged.handoverConfirmedByRole || null,
-      merged.is12hGraceConfirmed ? 1 : 0,
-      merged.acceptedAt || null,
-      merged.ownerFeedbackGiven ? 1 : 0,
-      merged.borrowerFeedbackGiven ? 1 : 0,
-      merged.feeAmount || 10000,
-      merged.paymentStatus || 'pending',
-      merged.paymentDeadline || null,
-      merged.paidAt || null,
-      merged.paymentProof ? JSON.stringify(merged.paymentProof) : null,
-      merged.dueDate || null,
-      merged.extensionStatus || 'none',
-      merged.extensionCount || 0,
-      merged.extensionRequestedAt || null,
-      merged.isDamagedReported ? 1 : 0,
-      merged.damageNotes || null,
-      id
-    );
-
-    return merged;
+    memoryDb.requests[index] = updated;
+    saveToDisk();
+    return updated;
   },
 
   // ---- SCHOOL CLASSES ----
   getAllClasses(): SchoolClass[] {
-    const rows = db.prepare('SELECT * FROM school_classes ORDER BY grade, name').all() as any[];
-    return rows.map((r) => ({
-      ...r,
-      isExternal: Boolean(r.isExternal)
-    }));
+    return [...memoryDb.schoolClasses];
   },
 
   createClass(c: SchoolClass): SchoolClass {
-    const stmt = db.prepare('INSERT INTO school_classes (id, name, grade, isExternal) VALUES (?, ?, ?, ?)');
-    stmt.run(c.id, c.name, c.grade, c.isExternal ? 1 : 0);
+    const existingIdx = memoryDb.schoolClasses.findIndex((item) => item.id === c.id);
+    if (existingIdx >= 0) {
+      memoryDb.schoolClasses[existingIdx] = c;
+    } else {
+      memoryDb.schoolClasses.push(c);
+    }
+    saveToDisk();
     return c;
   },
 
   updateClass(id: string, updates: Partial<SchoolClass>): SchoolClass | null {
-    const current = db.prepare('SELECT * FROM school_classes WHERE id = ?').get(id) as any;
-    if (!current) return null;
-    const merged: SchoolClass = { ...current, isExternal: Boolean(current.isExternal), ...updates };
-    db.prepare('UPDATE school_classes SET name = ?, grade = ?, isExternal = ? WHERE id = ?').run(
-      merged.name,
-      merged.grade,
-      merged.isExternal ? 1 : 0,
-      id
-    );
-    return merged;
+    const index = memoryDb.schoolClasses.findIndex((c) => c.id === id);
+    if (index === -1) return null;
+
+    const current = memoryDb.schoolClasses[index];
+    const updated: SchoolClass = { ...current, ...updates };
+    memoryDb.schoolClasses[index] = updated;
+    saveToDisk();
+    return updated;
   },
 
   deleteClass(id: string): boolean {
-    db.prepare('DELETE FROM school_classes WHERE id = ?').run(id);
-    return true;
+    const initialLen = memoryDb.schoolClasses.length;
+    memoryDb.schoolClasses = memoryDb.schoolClasses.filter((c) => c.id !== id);
+    if (memoryDb.schoolClasses.length !== initialLen) {
+      saveToDisk();
+      return true;
+    }
+    return false;
   },
 
   // ---- FEEDBACKS ----
   getAllFeedbacks(): MutualFeedback[] {
-    const rows = db.prepare('SELECT * FROM feedbacks ORDER BY date DESC').all() as any[];
-    return rows.map((r) => ({
-      ...r,
-      punctualityScore: Number(r.punctualityScore) || 5.0,
-      conditionScore: Number(r.conditionScore) || 5.0,
-      behaviorScore: Number(r.behaviorScore) || 5.0,
-      reliabilityScore: Number(r.reliabilityScore) || 5.0
+    return memoryDb.feedbacks.map((fb) => ({
+      ...fb,
+      punctualityScore: Number(fb.punctualityScore) || 5.0,
+      conditionScore: Number(fb.conditionScore) || 5.0,
+      behaviorScore: Number(fb.behaviorScore) || 5.0,
+      reliabilityScore: Number(fb.reliabilityScore) || 5.0
     }));
   },
 
   createFeedback(fb: MutualFeedback): MutualFeedback {
-    const stmt = db.prepare(`
-      INSERT INTO feedbacks (
-        id, requestId, fromUserId, fromUserName, toUserId, toUserName,
-        role, punctualityScore, conditionScore, behaviorScore, reliabilityScore, comment, date
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
+    const newFb: MutualFeedback = {
+      ...fb,
+      punctualityScore: Number(fb.punctualityScore) || 5.0,
+      conditionScore: Number(fb.conditionScore) || 5.0,
+      behaviorScore: Number(fb.behaviorScore) || 5.0,
+      reliabilityScore: Number(fb.reliabilityScore) || 5.0
+    };
 
-    stmt.run(
-      fb.id,
-      fb.requestId,
-      fb.fromUserId,
-      fb.fromUserName,
-      fb.toUserId,
-      fb.toUserName,
-      fb.role,
-      fb.punctualityScore,
-      fb.conditionScore,
-      fb.behaviorScore,
-      fb.reliabilityScore,
-      fb.comment || '',
-      fb.date
-    );
+    memoryDb.feedbacks.unshift(newFb);
 
     // Update target user's rating & read count
     const targetUser = this.getUserById(fb.toUserId);
     if (targetUser) {
-      const avgScore = (fb.punctualityScore + fb.conditionScore + fb.behaviorScore + fb.reliabilityScore) / 4;
+      const avgScore = (newFb.punctualityScore + newFb.conditionScore + newFb.behaviorScore + newFb.reliabilityScore) / 4;
       const currentCount = targetUser.ratingsCount || 0;
       const currentRating = targetUser.rating || 5.0;
       const newRating = Number(((currentRating * currentCount + avgScore) / (currentCount + 1)).toFixed(1));
@@ -727,15 +543,16 @@ export const dbService = {
       });
     }
 
-    return fb;
+    saveToDisk();
+    return newFb;
   },
 
   // ---- SETTINGS ----
   getBankCardInfo(): BankCardInfo {
-    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get('bank_card_info') as { value: string } | undefined;
-    if (row && row.value) {
+    const val = memoryDb.settings['bank_card_info'];
+    if (val) {
       try {
-        return JSON.parse(row.value);
+        return JSON.parse(val);
       } catch (e) {
         // fallback
       }
@@ -748,7 +565,8 @@ export const dbService = {
   },
 
   setBankCardInfo(info: BankCardInfo): BankCardInfo {
-    db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run('bank_card_info', JSON.stringify(info));
+    memoryDb.settings['bank_card_info'] = JSON.stringify(info);
+    saveToDisk();
     return info;
   },
 
