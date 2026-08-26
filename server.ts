@@ -1,4 +1,4 @@
-import express, { Request, Response } from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -18,6 +18,12 @@ const BALE_BOT_TOKEN =
 const BOT_USERNAME = 'Maktabkunebot';
 const BALE_API_BASE_URL = `https://tapi.bale.ai/bot${BALE_BOT_TOKEN}`;
 const BALE_DEEP_LINK_BASE = `https://ble.ir/${BOT_USERNAME}`;
+
+// آدرس وبهوک پیش‌فرض روی دامنه HTTPS
+const DEFAULT_WEBHOOK_URL =
+  process.env.BALE_WEBHOOK_URL ||
+  (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
+
 const PORT = 3000;
 
 /**
@@ -44,7 +50,6 @@ export interface OtpSession {
 
 /**
  * حافظه موقت نگهداری نشست‌ها (In-Memory Session Store)
- * در سیستم‌های توزیع‌شده می‌توان از Redis استفاده کرد
  */
 const otpSessions = new Map<string, OtpSession>();
 
@@ -77,7 +82,7 @@ export function normalizePhoneNumber(phone: string): string | null {
 
   // حذف پیشوندهای بین‌المللی 00 یا +
   if (cleaned.startsWith('0098')) {
-    cleaned = cleaned.substring(2); // به 98... تبدیل می‌شود
+    cleaned = cleaned.substring(2);
   } else if (cleaned.startsWith('098')) {
     cleaned = cleaned.substring(1);
   } else if (cleaned.startsWith('09')) {
@@ -101,7 +106,6 @@ export function normalizePhoneNumber(phone: string): string | null {
  * تولید کد ۵ رقمی تصادفی امن
  */
 export function generateOtpCode(): string {
-  // تولید عدد تصادفی بین 10000 تا 99999
   const randomNum = crypto.randomInt(10000, 100000);
   return randomNum.toString();
 }
@@ -114,7 +118,6 @@ setInterval(() => {
   for (const [sessionId, session] of otpSessions.entries()) {
     if (session.expiresAt < now && session.status !== 'VERIFIED') {
       session.status = 'EXPIRED';
-      // حذف نشست‌های قدیمی‌تر از ۱۰ دقیقه
       if (now - session.createdAt > 10 * 60 * 1000) {
         if (session.chatId) {
           chatToSessionMap.delete(session.chatId);
@@ -128,7 +131,6 @@ setInterval(() => {
 /**
  * ============================================================================
  * کلاینت ارتباط با API پیام‌رسان بله (Bale Bot API Client)
- * پروتکل بات بله سازگار با Telegram Bot API است
  * ============================================================================
  */
 
@@ -171,62 +173,35 @@ async function sendBaleMessage(
 }
 
 /**
- * ============================================================================
- * سرویس پس‌زمینه دریافت پیام‌های بله (Long Polling Worker)
- * با فراخوانی متد getUpdates بدون نیاز به وب‌هوک
- * ============================================================================
+ * تنظیم وبهوک در سرورهای بله (Set Webhook)
  */
-let isPollingActive = false;
-let lastUpdateOffset = 0;
-
-export async function startBaleLongPolling() {
-  if (isPollingActive) return;
-  isPollingActive = true;
-  console.log('🤖 [Bale Polling] سرویس Long Polling بات بله فعال شد...');
-
-  // حلقه پیوسته دریافت به‌روزرسانی‌ها
-  while (isPollingActive) {
-    try {
-      // فراخوانی متد getUpdates با timeout برای Long Polling
-      const res = await callBaleApi('getUpdates', {
-        offset: lastUpdateOffset > 0 ? lastUpdateOffset + 1 : 0,
-        limit: 100,
-        timeout: 15, // زمان انتظار سرور بله (ثانیه)
-      });
-
-      if (res && res.ok && Array.isArray(res.result) && res.result.length > 0) {
-        for (const update of res.result) {
-          // ثبت بالاترین update_id جهت جلوگیری از دریافت پیام تکراری
-          if (update.update_id >= lastUpdateOffset) {
-            lastUpdateOffset = update.update_id;
-          }
-
-          // پردازش پیام دریافت شده
-          if (update.message) {
-            await handleIncomingBaleMessage(update.message);
-          }
-        }
-      }
-    } catch (err) {
-      console.error('[Bale Polling Loop Error]:', err);
-      // وقفه کوتاه در صورت بروز خطای شبکه برای جلوگیری از اسپم
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-    }
-  }
+export async function setBaleWebhook(webhookUrl: string) {
+  console.log(`🌐 [Bale Webhook] در حال تنظیم Webhook روی آدرس: ${webhookUrl}`);
+  const result = await callBaleApi('setWebhook', { url: webhookUrl });
+  console.log('📌 [Bale Webhook Response]:', result);
+  return result;
 }
 
 /**
- * پردازش پیام‌های دریافتی از کاربر در پیام‌رسان بله
+ * دریافت اطلاعات وبهوک جاری از بله (Get Webhook Info)
  */
-async function handleIncomingBaleMessage(message: any) {
-  const chatId = message.chat?.id;
+export async function getBaleWebhookInfo() {
+  return await callBaleApi('getWebhookInfo');
+}
+
+/**
+ * ============================================================================
+ * منطق پردازش پیام‌های دریافتی از طریق Webhook
+ * ============================================================================
+ */
+export async function handleIncomingBaleMessage(message: any) {
+  const chatId = message.chat?.id || message.from?.id;
   if (!chatId) return;
 
   const text = (message.text || '').trim();
 
-  // ۱) بررسی دریافت دستور /start (شروع احراز هویت با Deep Link)
+  // ۱) پردازش دستور /start (ورود با شناسه نشست: /start SESSION_ID)
   if (text.startsWith('/start')) {
-    // استخراج پارامتر deep link: /start SESSION_ID
     const parts = text.split(/\s+/);
     const passedSessionId = parts.length > 1 ? parts[1].trim() : null;
 
@@ -235,14 +210,12 @@ async function handleIncomingBaleMessage(message: any) {
     if (passedSessionId && otpSessions.has(passedSessionId)) {
       targetSession = otpSessions.get(passedSessionId);
     } else {
-      // اگر پارامتر ارسال نشده بود، آخرین نشست مرتبط با این کاربر را بررسی کن
       const existingSessionId = chatToSessionMap.get(chatId);
       if (existingSessionId && otpSessions.has(existingSessionId)) {
         targetSession = otpSessions.get(existingSessionId);
       }
     }
 
-    // اگر نشست معتبر پیدا شد و منقضی نشده بود
     if (targetSession && targetSession.expiresAt > Date.now()) {
       targetSession.chatId = chatId;
       targetSession.status = 'STARTED';
@@ -268,7 +241,6 @@ async function handleIncomingBaleMessage(message: any) {
       });
       return;
     } else {
-      // نشست پیدا نشد یا منقضی شده
       const notFoundText =
         `⚠️ <b>نشست احراز هویت یافت نشد یا منقضی شده است.</b>\n\n` +
         `لطفاً به سایت مکتب‌خونه مراجعه کرده و مجدداً شماره همراه خود را وارد نمایید.`;
@@ -280,13 +252,12 @@ async function handleIncomingBaleMessage(message: any) {
     }
   }
 
-  // ۲) بررسی دریافت اشتراک‌گذاری شماره تماس (Contact Object)
+  // ۲) پردازش دریافت آبجکت Contact (اشتراک‌گذاری شماره همراه)
   if (message.contact) {
     const contact = message.contact;
     const rawContactPhone = contact.phone_number || '';
     const normalizedContactPhone = normalizePhoneNumber(rawContactPhone);
 
-    // یافتن نشست فعال متصل به این چت
     const activeSessionId = chatToSessionMap.get(chatId);
     const session = activeSessionId ? otpSessions.get(activeSessionId) : null;
 
@@ -304,7 +275,7 @@ async function handleIncomingBaleMessage(message: any) {
       normalizedContactPhone &&
       normalizedContactPhone === session.phoneNumber
     ) {
-      // ✅ تطابق موفقیت‌آمیز: ارسال کد تایید ۵ رقمی به کاربر در بله
+      // ✅ شماره مطابقت دارد -> ارسال کد تایید ۵ رقمی به کاربر در بله
       session.status = 'CODE_SENT';
 
       const successOtpText =
@@ -324,7 +295,7 @@ async function handleIncomingBaleMessage(message: any) {
       const mismatchText =
         `❌ <b>عدم تطابق شماره همراه!</b>\n\n` +
         `شماره حساب بله شما (<code>${rawContactPhone}</code>) با شماره وارد شده در سایت (<code>${session.originalPhone}</code>) مطابقت ندارد.\n\n` +
-        `💡 لطفاً یا با حسابی در بله پیام دهید که شماره آن یکسان است، یا در سایت شماره مربوط به این حساب بله را وارد فرمایید.`;
+        `💡 لطفاً یا با حسابی در بله وارد شوید که شماره آن یکسان است، یا در سایت شماره مربوط به این حساب بله را وارد فرمایید.`;
 
       await sendBaleMessage(chatId, mismatchText, {
         remove_keyboard: true,
@@ -333,10 +304,10 @@ async function handleIncomingBaleMessage(message: any) {
     return;
   }
 
-  // ۳) پاسخ به سایر پیام‌های متنی متفرقه
+  // ۳) پیام‌های متفرقه دیگر
   const helpText =
-    `🎒 <b>بات احراز هویت و دریافت کد تایید «مکتب‌خونه»</b>\n\n` +
-    `برای دریافت کد تایید، ابتدا شماره خود را در سایت مکتب‌خونه وارد کنید و سپس روی لینک بله کلیک نمایید.`;
+    `🎒 <b>بات احراز هویت «مکتب‌خونه»</b>\n\n` +
+    `برای ورود یا ثبت‌نام، ابتدا شماره همراه خود را در سایت وارد نمایید و سپس روی پیوند ورود به بله کلیک کنید.`;
 
   await sendBaleMessage(chatId, helpText);
 }
@@ -349,8 +320,47 @@ async function handleIncomingBaleMessage(message: any) {
 async function startServer() {
   const app = express();
 
-  // فعال‌سازی پارسر JSON
-  app.use(express.json());
+  // فعال‌سازی CORS برای تمام درخواست‌ها
+  app.use((_req: Request, res: Response, next: NextFunction) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header(
+      'Access-Control-Allow-Headers',
+      'Origin, X-Requested-With, Content-Type, Accept, Authorization'
+    );
+    if (_req.method === 'OPTIONS') {
+      return res.sendStatus(200);
+    }
+    next();
+  });
+
+  // فعال‌سازی پارسر JSON و Urlencoded با سقف مناسب
+  app.use(express.json({ limit: '10mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  /**
+   * --------------------------------------------------------------------------
+   * Webhook API: دریافت آپدیت‌های ارسالی از پیام‌رسان بله (POST /api/bale-webhook)
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/bale-webhook', async (req: Request, res: Response): Promise<void> => {
+    // پاسخ فوری 200 OK به سرور بله جهت جلوگیری از تکرار درخواست
+    res.status(200).json({ ok: true });
+
+    try {
+      const update = req.body;
+      if (!update) return;
+
+      // پردازش پیام دریافتی (مستقیم یا داخل message)
+      if (update.message) {
+        await handleIncomingBaleMessage(update.message);
+      } else if (update.edited_message) {
+        await handleIncomingBaleMessage(update.edited_message);
+      }
+    } catch (err) {
+      console.error('[Webhook Processing Error]:', err);
+    }
+  });
 
   /**
    * --------------------------------------------------------------------------
@@ -359,7 +369,7 @@ async function startServer() {
    */
   app.post('/api/request-otp', (req: Request, res: Response): any => {
     try {
-      const { phone } = req.body;
+      const { phone } = req.body || {};
 
       if (!phone || typeof phone !== 'string') {
         return res.status(400).json({
@@ -373,8 +383,7 @@ async function startServer() {
       if (!normalized) {
         return res.status(400).json({
           success: false,
-          message:
-            'فرمت شماره تلفن همراه نامعتبر است. نمونه صحیح: 09123456789',
+          message: 'فرمت شماره تلفن همراه نامعتبر است. نمونه صحیح: 09123456789',
         });
       }
 
@@ -398,7 +407,7 @@ async function startServer() {
 
       otpSessions.set(sessionId, session);
 
-      // لینک اختصاصی Deep Link بله
+      // لینک‌های اتصال به بات بله
       const baleLink = `${BALE_DEEP_LINK_BASE}?start=${sessionId}`;
       const baleWebLink = `https://web.bale.ai/#/im?p=@${BOT_USERNAME}&start=${sessionId}`;
 
@@ -430,7 +439,7 @@ async function startServer() {
    */
   app.post('/api/verify-otp', (req: Request, res: Response): any => {
     try {
-      const { session_id, user_otp } = req.body;
+      const { session_id, user_otp } = req.body || {};
 
       if (!session_id || !user_otp) {
         return res.status(400).json({
@@ -445,7 +454,7 @@ async function startServer() {
         return res.status(404).json({
           success: false,
           message:
-            'نشست احراز هویت یافت نشد یا منقضی شده است. لطفاً مجدداً درخواست کد دهید.',
+            'نشست احراز هویت یافت نشد یا منقضی شده است. لطفاً مجدداً شماره خود را وارد نمایید.',
         });
       }
 
@@ -483,7 +492,7 @@ async function startServer() {
       session.status = 'VERIFIED';
       session.verifiedAt = Date.now();
 
-      // ساخت توکن ورود شبیه‌سازی‌شده (یا JWT در سیستم نهایی)
+      // ساخت توکن احراز هویت
       const authToken = crypto
         .createHmac('sha256', 'maktabkhaneh_secret_key')
         .update(`${session.phoneNumber}_${session.verifiedAt}`)
@@ -509,7 +518,6 @@ async function startServer() {
   /**
    * --------------------------------------------------------------------------
    * API ۳: بررسی وضعیت لحظه‌ای نشست (GET /api/otp-status/:sessionId)
-   * برای آپدیت زنده در فرانت‌اند هنگام ارسال کد توسط بات در بله
    * --------------------------------------------------------------------------
    */
   app.get('/api/otp-status/:sessionId', (req: Request, res: Response): any => {
@@ -539,19 +547,44 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API ۴: بررسی وضعیت سلامت بات و Long Polling (GET /api/bale-bot-status)
+   * API ۴: تنظیم دستی یا خودکار Webhook بله (POST /api/set-bale-webhook)
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/set-bale-webhook', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const requestedUrl = req.body?.url || DEFAULT_WEBHOOK_URL;
+      const result = await setBaleWebhook(requestedUrl);
+      res.json({
+        success: true,
+        webhook_url: requestedUrl,
+        bale_response: result,
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        success: false,
+        message: err.message,
+      });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API ۵: بررسی وضعیت سلامت بات و Webhook بله (GET /api/bale-bot-status)
    * --------------------------------------------------------------------------
    */
   app.get('/api/bale-bot-status', async (_req: Request, res: Response): Promise<void> => {
     try {
-      // فراخوانی متد getMe برای دریافت اطلاعات نام و یوزرنیم بات از بله
-      const meRes = await callBaleApi('getMe');
+      const [meRes, webhookInfo] = await Promise.all([
+        callBaleApi('getMe'),
+        getBaleWebhookInfo(),
+      ]);
 
       res.json({
         success: true,
+        mode: 'WEBHOOK',
         bot_username: BOT_USERNAME,
-        polling_active: isPollingActive,
-        last_offset: lastUpdateOffset,
+        default_webhook_url: DEFAULT_WEBHOOK_URL,
+        webhook_info: webhookInfo,
         active_sessions_count: otpSessions.size,
         bale_api_status: meRes.ok ? 'CONNECTED' : 'DISCONNECTED',
         bot_info: meRes.result || null,
@@ -562,6 +595,19 @@ async function startServer() {
         message: err.message,
       });
     }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * Fallback اختصاصی برای مسیرهای نامعتبر /api/* (همیشه خروجی JSON بازمی‌گرداند)
+   * جلوگیری از بازگشت خروجی HTML <pre> و ایجاد خطای JSON.parse در فرانت‌اند
+   * --------------------------------------------------------------------------
+   */
+  app.all('/api/*', (req: Request, res: Response) => {
+    res.status(404).json({
+      success: false,
+      message: `مسیر API درخواستی (${req.method} ${req.path}) یافت نشد.`,
+    });
   });
 
   /**
@@ -584,15 +630,20 @@ async function startServer() {
   }
 
   // راه‌اندازی سرور روی پورت 3000 و هوست 0.0.0.0
-  app.listen(PORT, '0.0.0.0', () => {
+  app.listen(PORT, '0.0.0.0', async () => {
     console.log(`🚀 سرور مکتب‌خونه با موفقیت روی پورت ${PORT} اجرا شد.`);
     console.log(`🔗 آدرس محلی: http://localhost:${PORT}`);
     console.log(`🤖 متصل به بات بله: @${BOT_USERNAME}`);
+    console.log(`🌐 حالت فعال: Webhook (${DEFAULT_WEBHOOK_URL})`);
 
-    // شروع سرویس دریافت پیام‌های Long Polling بله
-    startBaleLongPolling().catch((err) => {
-      console.error('خطا در اجرای Long Polling بله:', err);
-    });
+    // تلاش برای ثبت خودکار Webhook در سرورهای بله هنگام استارت سرور
+    try {
+      if (DEFAULT_WEBHOOK_URL && DEFAULT_WEBHOOK_URL.startsWith('https://')) {
+        await setBaleWebhook(DEFAULT_WEBHOOK_URL);
+      }
+    } catch (webhookErr) {
+      console.warn('⚠️ توجه: امکان ثبت خودکار Webhook در استارت اولیه وجود نداشت:', webhookErr);
+    }
   });
 }
 

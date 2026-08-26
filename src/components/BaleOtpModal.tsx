@@ -122,13 +122,23 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
     try {
       const response = await fetch('/api/request-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: JSON.stringify({ phone: cleanPhone })
       });
 
-      const data = await response.json();
+      let data: any = {};
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { success: false, message: text || `خطای سرور (${response.status})` };
+      }
 
-      if (data.success) {
+      if (response.ok && data.success) {
         setSessionId(data.session_id);
         setBaleLink(data.bale_link);
         setBaleWebLink(data.bale_web_link || `https://ble.ir/${data.bot_username || 'Maktabkunebot'}?start=${data.session_id}`);
@@ -142,7 +152,7 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
       }
     } catch (err: any) {
       console.error('Request OTP Error:', err);
-      setErrorMessage('امکان برقراری ارتباط با سرور وجود ندارد.');
+      setErrorMessage(err.message || 'امکان برقراری ارتباط با سرور وجود ندارد.');
     } finally {
       setIsLoading(false);
     }
@@ -167,22 +177,32 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
     try {
       const response = await fetch('/api/verify-otp', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
         body: JSON.stringify({
           session_id: sessionId,
           user_otp: fullOtp
         })
       });
 
-      const data = await response.json();
+      let data: any = {};
+      const contentType = response.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        data = { success: false, message: text || `خطای سرور (${response.status})` };
+      }
 
-      if (data.success) {
+      if (response.ok && data.success) {
         setSuccessMessage('✅ احراز هویت با موفقیت انجام شد!');
         setSessionStatus('VERIFIED');
 
         // ورود خودکار در اپلیکیشن
         setTimeout(() => {
-          const res = loginWithOtpPhone(phone);
+          loginWithOtpPhone(phone);
           if (onSuccessLogin) {
             onSuccessLogin(phone);
           }
@@ -193,7 +213,7 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
       }
     } catch (err: any) {
       console.error('Verify OTP Error:', err);
-      setErrorMessage('خطا در بررسی کد تایید.');
+      setErrorMessage(err.message || 'خطا در بررسی کد تایید.');
     } finally {
       setIsLoading(false);
     }
