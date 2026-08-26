@@ -27,12 +27,20 @@ interface BaleOtpModalProps {
   initialPhone?: string;
 }
 
+// تبدیل اعداد فارسی و عربی به انگلیسی
+const toEnglishDigits = (str: string): string => {
+  if (!str) return '';
+  return str
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 1776))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 1632));
+};
+
 export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
   onClose,
   onSuccessLogin,
   initialPhone = '09123456789'
 }) => {
-  const { loginWithOtpPhone } = useApp();
+  const { loginWithBale, loginWithOtpPhone } = useApp();
 
   // وضعیت‌های مرحله فرم (مرحله ۱: دریافت شماره، مرحله ۲: دریافت کد ۵ رقمی)
   const [step, setStep] = useState<1 | 2>(1);
@@ -202,13 +210,25 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
         setSessionStatus('VERIFIED');
 
         // ورود خودکار در اپلیکیشن
-        setTimeout(() => {
-          loginWithOtpPhone(phone);
+        setTimeout(async () => {
+          try {
+            if (loginWithBale) {
+              await loginWithBale(phone);
+            } else if (loginWithOtpPhone) {
+              await loginWithOtpPhone(phone);
+            }
+          } catch (loginErr) {
+            console.error('Auto login error after OTP:', loginErr);
+          }
           if (onSuccessLogin) {
-            onSuccessLogin(phone);
+            try {
+              onSuccessLogin(phone);
+            } catch (cbErr) {
+              console.error('onSuccessLogin error:', cbErr);
+            }
           }
           onClose();
-        }, 1200);
+        }, 800);
       } else {
         setErrorMessage(data.message || 'کد تایید وارد شده نادرست یا منقضی است.');
       }
@@ -224,8 +244,8 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
   // مدیریت ورودی خانه‌های ۵ رقمی OTP
   // --------------------------------------------------------------------------
   const handleOtpChange = (index: number, value: string) => {
-    // فقط عدد مجاز است
-    const cleaned = value.replace(/\D/g, '');
+    // فقط عدد مجاز است (تبدیل اعداد فارسی و انگلیسی)
+    const cleaned = toEnglishDigits(value).replace(/\D/g, '');
     if (cleaned.length > 1) {
       // حالت Paste کردن کل کد ۵ رقمی
       const pasted = cleaned.slice(0, 5).split('');

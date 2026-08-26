@@ -32,6 +32,7 @@ interface AppContextType {
   isLoading: boolean;
   loginUser: (phone: string, pass: string) => Promise<{ success: boolean; message: string; user?: User }>;
   loginWithBale: (phone: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  loginWithOtpPhone: (phone: string) => Promise<{ success: boolean; message: string; user?: User }>;
   logoutUser: () => void;
   registerUser: (data: RegistrationInput) => Promise<{ success: boolean; message: string; user?: User }>;
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
@@ -744,6 +745,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isLoading,
         loginUser,
         loginWithBale,
+        loginWithOtpPhone: loginWithBale,
         logoutUser,
         registerUser,
         resetPasswordWithSMS,
