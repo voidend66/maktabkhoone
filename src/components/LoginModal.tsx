@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, LogIn, Phone, Lock, AlertCircle, Bot, Sparkles } from 'lucide-react';
+import { X, LogIn, Phone, Lock, AlertCircle, Bot, Sparkles, UserPlus } from 'lucide-react';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 
 interface LoginModalProps {
@@ -105,9 +105,24 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-6 pt-3 space-y-4">
           {errorMessage && (
-            <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 shrink-0" />
-              <span>{errorMessage}</span>
+            <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 space-y-2">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-500" />
+                <span>{errorMessage}</span>
+              </div>
+              {(errorMessage.includes('یافت نشد') || errorMessage.includes('ثبت‌نام')) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenRegister();
+                  }}
+                  className="w-full py-2 bg-rose-600 hover:bg-rose-700 text-white font-black text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+                >
+                  <UserPlus className="w-4 h-4 text-amber-300" />
+                  <span>هدایت به فرم ثبت‌نام اعضا</span>
+                </button>
+              )}
             </div>
           )}
 

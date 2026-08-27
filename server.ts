@@ -992,13 +992,6 @@ async function startServer() {
 
       const isAdmin = isAdminPhone(data.phone);
       const sysConfig = dbService.getSystemConfig();
-      const minRequired = sysConfig.minBooksForRegistration ?? 3;
-      if (!isAdmin && (!data.initialBooks || data.initialBooks.length < minRequired)) {
-        return res.status(400).json({
-          success: false,
-          message: `جهت تکمیل ثبت‌نام، باید حداقل ${minRequired} جلد کتاب جهت اشتراک‌گذاری معرفی کنید.`
-        });
-      }
 
       const newUserId = `u_${Date.now()}`;
       const newUser: User = {
@@ -1027,7 +1020,7 @@ async function startServer() {
             id: 'm_starter',
             title: 'عضو جدید کتابخانه',
             icon: '🌱',
-            description: `ثبت‌نام و مشارکت ${minRequired} کتاب در گنجینه مکتب‌خانه`,
+            description: 'عضویت و پیوستن به گنجینه مکتب‌خانه',
             color: 'bg-emerald-100 text-emerald-800 border-emerald-300'
           }
         ],
@@ -1501,6 +1494,18 @@ async function startServer() {
    */
   app.get('/api/admin/logs', (_req: Request, res: Response) => {
     res.json({ success: true, logs: dbService.getSystemLogs() });
+  });
+
+  app.post('/api/logs', (req: Request, res: Response): any => {
+    try {
+      const { level, message, details, userId, userName } = req.body || {};
+      const userInfo = userName ? ` (کاربر: ${userName})` : userId ? ` (کد کاربر: ${userId})` : '';
+      const formattedMsg = `[خطای کاربر/برنامه] ${message || 'خطای غیرمنتظره'}${userInfo}`;
+      const log = dbService.addSystemLog(level || 'error', formattedMsg, details || '');
+      return res.json({ success: true, log });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
   });
 
   app.delete('/api/admin/logs', (_req: Request, res: Response) => {

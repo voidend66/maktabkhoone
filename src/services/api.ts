@@ -293,5 +293,29 @@ export const api = {
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
     }
+  },
+
+  // Report Client Error to System Admin Logs
+  async reportError(
+    message: string,
+    details?: string,
+    level: 'error' | 'warn' | 'info' = 'error',
+    user?: { id?: string; name?: string }
+  ) {
+    try {
+      await fetch(`${API_BASE}/logs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          level,
+          message,
+          details,
+          userId: user?.id,
+          userName: user?.name
+        })
+      });
+    } catch (err) {
+      console.warn('Could not report error to system logs:', err);
+    }
   }
 };

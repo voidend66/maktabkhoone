@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { MainLibrary } from './components/MainLibrary';
@@ -16,9 +16,10 @@ import { Book } from './types';
 import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
+import { api } from './services/api';
 
 function MainAppContent() {
-  const { requestBookLoan, currentUser, systemConfig, resetToDefaults } = useApp();
+  const { requestBookLoan, currentUser, resetToDefaults } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
 
@@ -28,13 +29,40 @@ function MainAppContent() {
   // Guide Modal
   const [showGuideModal, setShowGuideModal] = useState(false);
 
-  // Complete Profile Modal Trigger
-  const minRequiredBooks = systemConfig?.minBooksForRegistration ?? 0;
+  // Complete Profile Modal Trigger (Profile completeness: Name check only)
   const isProfileIncomplete =
     currentUser &&
     currentUser.role !== 'admin' &&
-    (currentUser.name.startsWith('کاربر بله') ||
-      (minRequiredBooks > 0 && currentUser.booksContributedCount < minRequiredBooks));
+    (!currentUser.name || currentUser.name.startsWith('کاربر بله'));
+
+  // Global Error Listener for Admin System Logs
+  useEffect(() => {
+    const handleGlobalError = (event: ErrorEvent) => {
+      api.reportError(
+        `خطای کلاینت: ${event.message}`,
+        `${event.filename}:${event.lineno}:${event.colno}\n${event.error?.stack || ''}`,
+        'error',
+        currentUser || undefined
+      );
+    };
+
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason;
+      api.reportError(
+        `خطای پرامیس درمانده (Unhandled Rejection)`,
+        typeof reason === 'object' ? JSON.stringify(reason) : String(reason),
+        'error',
+        currentUser || undefined
+      );
+    };
+
+    window.addEventListener('error', handleGlobalError);
+    window.addEventListener('unhandledrejection', handleUnhandledRejection);
+    return () => {
+      window.removeEventListener('error', handleGlobalError);
+      window.removeEventListener('unhandledrejection', handleUnhandledRejection);
+    };
+  }, [currentUser]);
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -46,20 +74,24 @@ function MainAppContent() {
     }, 4000);
   };
 
-  const handleRequestLoan = (bookId: string) => {
+  const handleRequestLoan = async (bookId: string) => {
     if (!currentUser) {
       setShowAuthModal(true);
       showToast('جهت ثبت درخواست امانت ابتدا باید وارد حساب کاربری شوید.', 'error');
       return;
     }
 
-    const res = requestBookLoan(bookId);
+    const res = await requestBookLoan(bookId);
     if (res.success) {
       showToast(res.message, 'success');
       setSelectedBookForDetail(null);
       setActiveTab('requests'); // Switch to requests tab so user sees their active request!
     } else {
       showToast(res.message, 'error');
+      if (res.needBooks) {
+        setSelectedBookForDetail(null);
+        setActiveTab('my_books'); // Switch user to personal shelf to add books
+      }
     }
   };
 

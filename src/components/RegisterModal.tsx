@@ -129,8 +129,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
     }
   };
 
-  // Step 1 Next
-  const handleStep1Next = (e: React.FormEvent) => {
+  // Single Step Registration Submit
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
 
@@ -165,52 +165,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
       return;
     }
 
-    setStep(2); // Proceed to Books step directly
-  };
-
-  const handleAddBookToRegisterList = () => {
-    if (!bookTitle.trim() || !bookAuthor.trim()) {
-      setErrorMessage('عنوان کتاب و نام نویسنده الزامی است.');
-      return;
-    }
-
-    if (initialBooks.length >= maxAllowed) {
-      setErrorMessage(`حداکثر می‌توانید ${maxAllowed} جلد کتاب در گام اولیه ثبت کنید.`);
-      return;
-    }
-
-    setInitialBooks((prev) => [
-      ...prev,
-      {
-        title: bookTitle.trim(),
-        author: bookAuthor.trim(),
-        category: bookCategory,
-        condition: bookCondition,
-        coverImage: bookCoverImage,
-        description: bookDescription.trim() || 'کتاب امانتی دانش‌آموز مکتب‌خانه.'
-      }
-    ]);
-
-    setBookTitle('');
-    setBookAuthor('');
-    setBookDescription('');
-    setBookCoverImage(DEFAULT_BOOK_COVER);
-    setBookCoverPreview('');
-    setErrorMessage('');
-  };
-
-  const handleRemoveBookFromRegisterList = (idx: number) => {
-    setInitialBooks((prev) => prev.filter((_, i) => i !== idx));
-  };
-
-  const handleFinalRegister = async () => {
-    if (initialBooks.length < minRequired) {
-      setErrorMessage(`طبق قوانین مکتب‌خانه، حتماً باید حداقل ${minRequired} جلد کتاب جهت معرفی به سیستم وارد کنید.`);
-      return;
-    }
-
     setIsSubmitting(true);
-    setErrorMessage('');
 
     try {
       const res = await registerUser({
@@ -220,16 +175,20 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
         password: password.trim(),
         avatar,
         agreedToRules: true,
-        initialBooks
+        initialBooks: []
       });
 
       if (res.success) {
         setSuccessMessage(res.message);
       } else {
-        setErrorMessage(res.message);
+        const msg = res.message || 'خطا در ثبت‌نام';
+        setErrorMessage(msg);
+        api.reportError('خطا در فرم ثبت‌نام اعضا', msg, 'error');
       }
     } catch (err: any) {
-      setErrorMessage(err.message || 'خطا در ثبت‌نام');
+      const msg = err.message || 'خطا در ثبت‌نام';
+      setErrorMessage(msg);
+      api.reportError('استثنا در فرم ثبت‌نام اعضا', err.stack || msg, 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -248,8 +207,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
               <div>
                 <h3 className="font-black text-lg text-white">ثبت‌نام عضو جدید در مکتب خونه 🎒</h3>
                 <p className="text-xs text-cyan-100 font-bold">
-                  {step === 1 && 'گام ۱: مشخصات فردی، آواتار ۳ بعدی و تایید قوانین'}
-                  {step === 2 && `گام ۲: اهدا و معرفی حداقل ${minRequired} کتاب برای امانت`}
+                  مشخصات فردی، آواتار ۳ بعدی و تایید قوانین عضویت
                 </p>
               </div>
             </div>
@@ -261,15 +219,6 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
               <X className="w-5 h-5" />
             </button>
           </div>
-
-          {/* Step Progress bar */}
-          {!successMessage && (
-            <div className="bg-cyan-50 border-b border-cyan-100 px-6 py-2.5 flex items-center justify-between text-xs font-black text-cyan-800">
-              <span className={step === 1 ? 'text-orange-600 font-black underline' : ''}>۱. اطلاعات و قوانین</span>
-              <span>←</span>
-              <span className={step === 2 ? 'text-orange-600 font-black underline' : ''}>۲. اهدا کتاب‌ها</span>
-            </div>
-          )}
 
           {/* Content */}
           <div className="p-6 space-y-5 max-h-[80vh] overflow-y-auto">
@@ -293,9 +242,9 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                   متوجه شدم (بستن)
                 </button>
               </div>
-            ) : step === 1 ? (
-              /* STEP 1 FORM */
-              <form onSubmit={handleStep1Next} className="space-y-4">
+            ) : (
+              /* REGISTRATION FORM */
+              <form onSubmit={handleRegisterSubmit} className="space-y-4">
                 {errorMessage && (
                   <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
@@ -475,174 +424,14 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
 
                   <button
                     type="submit"
-                    className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white font-black text-xs rounded-xl shadow-md shadow-cyan-600/20 transition flex items-center gap-1.5"
+                    disabled={isSubmitting}
+                    className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white font-black text-xs rounded-xl shadow-md shadow-cyan-600/20 transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                   >
-                    <span>مرحله بعدی: اهدا کتاب‌ها</span>
-                    <BookPlus className="w-4 h-4 text-amber-300" />
+                    <span>{isSubmitting ? 'در حال ثبت‌نام...' : 'تکمیل ثبت‌نام دانش‌آموز'}</span>
+                    <CheckCircle2 className="w-4 h-4 text-amber-300" />
                   </button>
                 </div>
               </form>
-            ) : (
-              /* STEP 2: MANDATORY BOOKS */
-              <div className="space-y-5">
-                <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-950 leading-relaxed font-medium">
-                  📢 <strong>قانون مکتب‌خانه:</strong> برای تکمیل عضویت، باید حداقل <strong>{minRequired} جلد کتاب</strong> جهت امانت‌دهی به همکلاسی‌ها وارد کنید. (تعداد ثبت‌شده: <strong>{initialBooks.length} جلد</strong>)
-                </div>
-
-                {errorMessage && (
-                  <div className="p-3 bg-rose-50 text-rose-700 rounded-xl text-xs font-bold border border-rose-200 flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4 shrink-0" />
-                    <span>{errorMessage}</span>
-                  </div>
-                )}
-
-                {/* Registered Initial Books List */}
-                <div className="space-y-2">
-                  <h4 className="text-xs font-black text-slate-700">کتاب‌های آماده‌ی اشتراک‌گذاری شما:</h4>
-                  {initialBooks.map((b, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl border border-slate-200 text-xs"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img src={b.coverImage} alt={b.title} className="w-10 h-12 rounded-lg object-cover shadow-xs" />
-                        <div>
-                          <strong className="text-slate-900 block font-bold">{b.title}</strong>
-                          <span className="text-slate-500 text-[11px]">نویسنده: {b.author} | {b.category}</span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveBookFromRegisterList(idx)}
-                        className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-
-                {/* Add Book Mini Form */}
-                {initialBooks.length < maxAllowed && (
-                  <div className="p-4 bg-cyan-50/70 rounded-2xl border border-cyan-200 space-y-3">
-                    <h5 className="text-xs font-black text-slate-800 flex items-center gap-1">
-                      <BookPlus className="w-4 h-4 text-cyan-600" />
-                      افزودن کتاب جدید (کتاب {initialBooks.length + 1} از حداکثر {maxAllowed}):
-                    </h5>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <input
-                        type="text"
-                        value={bookTitle}
-                        onChange={(e) => setBookTitle(e.target.value)}
-                        placeholder="عنوان کتاب (مثلا: قصه‌های مجید)"
-                        className="text-xs p-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      />
-                      <input
-                        type="text"
-                        value={bookAuthor}
-                        onChange={(e) => setBookAuthor(e.target.value)}
-                        placeholder="نویسنده (مثلا: هوشنگ مرادی کرمانی)"
-                        className="text-xs p-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <select
-                        value={bookCategory}
-                        onChange={(e) => setBookCategory(e.target.value)}
-                        className="text-xs p-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      >
-                        {CATEGORIES.filter((c) => c !== 'همه تصنیف‌ها').map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
-                        ))}
-                      </select>
-
-                      <select
-                        value={bookCondition}
-                        onChange={(e) => setBookCondition(e.target.value as BookCondition)}
-                        className="text-xs p-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      >
-                        <option value="عالی (نو)">عالی (نو)</option>
-                        <option value="خوب">خوب</option>
-                        <option value="متوسط">متوسط</option>
-                      </select>
-                    </div>
-
-                    {/* Photo Upload Input */}
-                    <div className="space-y-2">
-                      <label className="block text-[11px] font-bold text-slate-700">
-                        آپلود عکس جلد کتاب (اختیاری):
-                      </label>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        <label
-                          className={`cursor-pointer px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition ${
-                            isUploading
-                              ? 'bg-slate-100 text-slate-400 border-slate-300 cursor-wait'
-                              : 'bg-white hover:bg-slate-50 text-cyan-700 border-cyan-300 shadow-xs'
-                          }`}
-                        >
-                          {isUploading ? (
-                            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-600" />
-                          ) : (
-                            <Upload className="w-3.5 h-3.5" />
-                          )}
-                          <span>{isUploading ? 'در حال آپلود عکس...' : 'انتخاب عکس از دستگاه'}</span>
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,image/webp,image/jpg"
-                            onChange={handleImageUpload}
-                            disabled={isUploading}
-                            className="hidden"
-                          />
-                        </label>
-
-                        {(bookCoverPreview || (bookCoverImage && bookCoverImage.startsWith('/uploads'))) && (
-                          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-xl border border-emerald-200 text-[11px] font-bold animate-in fade-in">
-                            <img
-                              src={bookCoverPreview || bookCoverImage}
-                              alt="پیش‌نمایش"
-                              className="w-6 h-7 rounded-md object-cover border border-emerald-300"
-                            />
-                            <span>{isUploading ? 'در حال ارسال...' : 'عکس با موفقیت انتخاب و ذخیره شد ✓'}</span>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={handleAddBookToRegisterList}
-                      className="w-full py-2 bg-slate-800 text-white font-black text-xs rounded-xl hover:bg-slate-900 transition"
-                    >
-                      + اضافه به لیست کتاب‌ها
-                    </button>
-                  </div>
-                )}
-
-                {/* Step 3 Actions */}
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => setStep(1)}
-                    className="text-xs text-slate-600 font-bold hover:underline"
-                  >
-                    ← بازگشت به مشخصات
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleFinalRegister}
-                    className="px-6 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-lg shadow-emerald-600/20 transition flex items-center gap-1.5"
-                  >
-                    <CheckCircle2 className="w-4 h-4" />
-                    <span>تکمیل ثبت‌نام و عضویت در مکتب‌خانه</span>
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         </div>

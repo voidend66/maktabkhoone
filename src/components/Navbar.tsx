@@ -68,83 +68,83 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
 
           {/* Navigation Items */}
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 shrink min-w-0">
             <button
               onClick={() => setActiveTab('library')}
-              className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                 activeTab === 'library'
                   ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <BookOpen className="w-4.5 h-4.5 text-cyan-600" />
-              کتابخانه اصلی
+              <BookOpen className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+              <span>کتابخانه</span>
             </button>
 
             <button
               onClick={() => setActiveTab('league')}
-              className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                 activeTab === 'league'
                   ? 'bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Trophy className="w-4.5 h-4.5 text-amber-500" />
-              لیگ کتابخوانی
+              <Trophy className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-500 shrink-0" />
+              <span>لیگ</span>
             </button>
 
             {/* Features & Benefits Tab */}
             <button
               onClick={() => setActiveTab('benefits')}
-              className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                 activeTab === 'benefits'
                   ? 'bg-orange-50 text-orange-900 border border-orange-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Sparkles className="w-4.5 h-4.5 text-orange-500" />
-              مزایای مکتب خونه
+              <Sparkles className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-orange-500 shrink-0" />
+              <span>مزایا</span>
             </button>
 
             {/* Top Site Rules Tab */}
             <button
               onClick={() => setActiveTab('rules')}
-              className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                 activeTab === 'rules'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <ShieldCheck className="w-4.5 h-4.5 text-emerald-600" />
-              قوانین مکتب خونه
+              <ShieldCheck className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-600 shrink-0" />
+              <span>قوانین</span>
             </button>
 
             {currentUser && (
               <>
                 <button
                   onClick={() => setActiveTab('my_books')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+                  className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                     activeTab === 'my_books'
                       ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <BookPlus className="w-4.5 h-4.5 text-cyan-600" />
-                  طاقچه شخصی
+                  <BookPlus className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+                  <span>طاقچه</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab('requests')}
-                  className={`relative px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+                  className={`relative px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                     activeTab === 'requests'
                       ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <ArrowLeftRight className="w-4.5 h-4.5 text-cyan-600" />
-                  درخواست‌ها & امانت‌ها
+                  <ArrowLeftRight className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+                  <span>درخواست‌ها</span>
                   {pendingRequestsForMe > 0 && (
-                    <span className="w-5 h-5 rounded-full bg-orange-500 text-white text-[11px] flex items-center justify-center font-bold animate-pulse">
+                    <span className="w-4.5 h-4.5 rounded-full bg-orange-500 text-white text-[10px] flex items-center justify-center font-bold animate-pulse">
                       {pendingRequestsForMe}
                     </span>
                   )}
@@ -152,14 +152,14 @@ export const Navbar: React.FC<NavbarProps> = ({
 
                 <button
                   onClick={() => setActiveTab('profile')}
-                  className={`px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+                  className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                     activeTab === 'profile'
                       ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <UserIcon className="w-4.5 h-4.5 text-cyan-600" />
-                  پروفایل شخصی
+                  <UserIcon className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+                  <span>پروفایل</span>
                 </button>
               </>
             )}
@@ -167,16 +167,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             {(currentUser?.role === 'admin' || currentUser?.id === 'user_admin') && (
               <button
                 onClick={() => setActiveTab('admin')}
-                className={`relative px-3.5 py-2 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+                className={`relative px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
                   activeTab === 'admin'
                     ? 'bg-cyan-700 text-white shadow-md shadow-cyan-900/20'
                     : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <ShieldAlert className="w-4.5 h-4.5 text-amber-300" />
-                پنل مدیریت
+                <ShieldAlert className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-300 shrink-0" />
+                <span>مدیریت</span>
                 {pendingApprovalsForAdmin > 0 && (
-                  <span className="w-5 h-5 rounded-full bg-amber-400 text-slate-950 text-xs flex items-center justify-center font-bold">
+                  <span className="w-4.5 h-4.5 rounded-full bg-amber-400 text-slate-950 text-[10px] flex items-center justify-center font-bold">
                     {pendingApprovalsForAdmin}
                   </span>
                 )}

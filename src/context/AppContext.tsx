@@ -49,6 +49,7 @@ interface AppContextType {
   logoutUser: () => void;
   registerUser: (data: RegistrationInput) => Promise<{ success: boolean; message: string; user?: User }>;
   updateUser: (userId: string, data: Partial<User>) => boolean;
+  updateProfile: (data: Partial<User>) => Promise<{ success: boolean; message?: string; user?: User }>;
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string) => void;
@@ -62,7 +63,7 @@ interface AppContextType {
     description: string;
   }) => Promise<Book>;
   deleteBook: (bookId: string) => void;
-  requestBookLoan: (bookId: string) => Promise<{ success: boolean; message: string }>;
+  requestBookLoan: (bookId: string) => Promise<{ success: boolean; message: string; needBooks?: boolean }>;
   acceptLoanRequest: (
     requestId: string,
     pickupLocation: string,
@@ -437,7 +438,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'لطفا ابتدا وارد حساب کاربری خود شوید.' };
     }
     if (currentUser.status !== 'approved') {
-      return { success: false, message: 'حساب کاربری شما هنوز توسط مسئول کتابخانه تایید نشده است.' };
+      const msg = 'حساب کاربری شما هنوز توسط مسئول کتابخانه تایید نشده است.';
+      api.reportError('تلاش کاربر تاییدنشده برای امانت کتاب', msg, 'warn', currentUser);
+      return { success: false, message: msg };
     }
 
     const book = books.find((b) => b.id === bookId);
@@ -453,6 +456,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'این کتاب در حال حاضر در دست امانت یا درخواست‌شده است.' };
     }
 
+    // Check minimum required books contributed before loan
+    const userContributedBooks = books.filter((b) => b.ownerId === currentUser.id).length;
+    const minRequired = systemConfig?.minBooksForRegistration ?? 3;
+    if (userContributedBooks < minRequired) {
+      const msg = `برای امانت گرفتن این کتاب، طبق قوانین مکتب‌خانه ابتدا باید حداقل ${minRequired} جلد کتاب به طاقچه شخصی خود جهت امانت به سایر بچه‌ها اضافه کنید. (تعداد کتاب‌های ثبت‌شده شما: ${userContributedBooks} از ${minRequired})`;
+      api.reportError('کمبود کتاب ثبت‌شده برای دریافت امانت', msg, 'warn', currentUser);
+      return {
+        success: false,
+        needBooks: true,
+        message: msg
+      };
+    }
+
     try {
       const res = await api.createRequest(bookId, currentUser.id);
       if (res.success && res.request) {
@@ -462,8 +478,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         );
         return { success: true, message: `درخواست امانت کتاب "${book.title}" برای ${book.ownerName} ارسال شد.` };
       }
+      api.reportError('خطا در ثبت درخواست امانت از سرور', res.message || 'ناموفق', 'error', currentUser);
       return { success: false, message: res.message || 'خطا در ثبت درخواست' };
     } catch (e: any) {
+      api.reportError('استثنا در ثبت درخواست امانت', e.stack || e.message, 'error', currentUser);
       return { success: false, message: e.message || 'خطا در ثبت درخواست امانت' };
     }
   };
@@ -650,6 +668,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
 
     return true;
+  };
+
+  // Update current user profile async
+  const updateProfile = async (data: Partial<User>): Promise<{ success: boolean; message?: string; user?: User }> => {
+    if (!currentUser) return { success: false, message: 'کاربر به سیستم وارد نشده است' };
+    try {
+      updateUser(currentUser.id, data);
+      const res = await api.updateUser(currentUser.id, data);
+      if (res && res.user) {
+        setCurrentUser(res.user);
+        setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? res.user : u)));
+        localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
+      }
+      return { success: true, user: res?.user || currentUser };
+    } catch (err: any) {
+      console.error('Error in updateProfile:', err);
+      return { success: false, message: err.message || 'خطا در به روزرسانی پروفایل' };
+    }
   };
 
   // Complete Return & submit mutual feedback survey
@@ -857,6 +893,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         logoutUser,
         registerUser,
         updateUser,
+        updateProfile,
         resetPasswordWithSMS,
         approveUser,
         rejectUser,
