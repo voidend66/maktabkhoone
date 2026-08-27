@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { FANTASY_AVATARS, ADMIN_SPECIAL_AVATARS } from '../utils/avatars';
-import { User, Sparkles, X, Check, Save, ShieldCheck } from 'lucide-react';
+import { STUDENT_AVATARS, ADMIN_SPECIAL_AVATARS } from '../utils/avatars';
+import { User, Sparkles, X, Check, Save, ShieldCheck, Upload, Camera, Loader2 } from 'lucide-react';
+import { api } from '../services/api';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface EditProfileModalProps {
   onClose: () => void;
@@ -19,8 +21,54 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
   const [selectedAvatar, setSelectedAvatar] = useState(currentUser.avatar || '');
   const [password, setPassword] = useState(currentUser.password || '');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setErrorMsg('لطفا فقط فایل تصویری انتخاب کنید.');
+      return;
+    }
+
+    setIsUploading(true);
+    setErrorMsg('');
+
+    try {
+      const res = await api.uploadImage(file);
+      if (res.success && res.fileUrl) {
+        setSelectedAvatar(res.fileUrl);
+      } else {
+        setErrorMsg(res.message || 'خطا در آپلود آواتار');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'خطا در شبکه');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCameraCapture = async (file: File) => {
+    setIsUploading(true);
+    setErrorMsg('');
+
+    try {
+      const res = await api.uploadImage(file);
+      if (res.success && res.fileUrl) {
+        setSelectedAvatar(res.fileUrl);
+      } else {
+        setErrorMsg(res.message || 'خطا در آپلود تصویر دوربین');
+      }
+    } catch (err: any) {
+      setErrorMsg(err.message || 'خطا در شبکه');
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -151,9 +199,34 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
               </div>
             )}
 
-            {/* Standard 3D Avatars */}
+            {/* Custom Avatar Upload or Camera Photo option */}
+            <div className="flex items-center gap-2 mb-2">
+              <label className="cursor-pointer px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl border border-slate-300 transition flex items-center gap-1.5">
+                {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5 text-slate-600" />}
+                <span>بارگذاری عکس شخصی</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarFileUpload}
+                  disabled={isUploading}
+                  className="hidden"
+                />
+              </label>
+
+              <button
+                type="button"
+                onClick={() => setShowCameraModal(true)}
+                disabled={isUploading}
+                className="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-bold rounded-xl border border-emerald-300 transition flex items-center gap-1.5"
+              >
+                <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                <span>عکاسی با دوربین</span>
+              </button>
+            </div>
+
+            {/* Standard 3D Student Avatars */}
             <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5 max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
-              {FANTASY_AVATARS.map((av) => {
+              {STUDENT_AVATARS.map((av) => {
                 const isSelected = selectedAvatar === av.url;
                 return (
                   <button
@@ -258,6 +331,14 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
             </button>
           </div>
         </form>
+
+        <CameraCaptureModal
+          isOpen={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          onCapture={handleCameraCapture}
+          title="عکاسی آواتار با دوربین"
+          facingMode="user"
+        />
       </div>
     </div>
   );

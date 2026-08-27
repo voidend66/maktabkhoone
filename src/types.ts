@@ -170,3 +170,13 @@ export interface RegistrationInput {
   agreedToRules: boolean;
   initialBooks: NewBookInput[];
 }
+
+export interface SystemConfig {
+  minBooksForRegistration: number;
+  maxBooksForRegistration: number;
+  requireAdminApproval: boolean;
+  loanFeeAmount: number;
+  loanDurationDays: number;
+  paymentWindowHours: number;
+  handoverWindowHours: number;
+}

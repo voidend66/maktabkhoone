@@ -2,21 +2,15 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { BookCondition } from '../types';
 import { CATEGORIES } from '../data/mockData';
-import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload, Loader2, Trash2, Sparkles } from 'lucide-react';
+import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload, Loader2, Trash2, Sparkles, Camera } from 'lucide-react';
 import { api } from '../services/api';
+import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface AddBookModalProps {
   onClose: () => void;
 }
 
-const PRESET_COVERS = [
-  { label: 'داستان و رمان', url: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600' },
-  { label: 'فلسفه و تفکر', url: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=600' },
-  { label: 'علمی و کیهان', url: 'https://images.unsplash.com/photo-1532012197267-da84d127e765?auto=format&fit=crop&q=80&w=600' },
-  { label: 'کلاسیک و شعر', url: 'https://images.unsplash.com/photo-1516979187457-637abb4f9353?auto=format&fit=crop&q=80&w=600' },
-  { label: 'تاریخ و معاصر', url: 'https://images.unsplash.com/photo-1457369804613-52c61a468e7d?auto=format&fit=crop&q=80&w=600' },
-  { label: 'روانشناسی و موفقیت', url: 'https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&q=80&w=600' }
-];
+import { PRESET_BOOK_COVERS } from '../utils/coverPresets';
 
 export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
   const { addBook } = useApp();
@@ -25,13 +19,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
   const [author, setAuthor] = useState('');
   const [category, setCategory] = useState(CATEGORIES[1]); // Default
   const [condition, setCondition] = useState<BookCondition>('عالی (نو)');
-  const [coverImage, setCoverImage] = useState(PRESET_COVERS[0].url);
+  const [coverImage, setCoverImage] = useState(PRESET_BOOK_COVERS[0].url);
   const [customCoverUrl, setCustomCoverUrl] = useState('');
   const [uploadedCover, setUploadedCover] = useState('');
   const [previewUrl, setPreviewUrl] = useState('');
   const [description, setDescription] = useState('');
   const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -48,6 +43,30 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
       return;
     }
 
+    // Instant local preview
+    const localUrl = URL.createObjectURL(file);
+    setPreviewUrl(localUrl);
+    setIsUploading(true);
+    setError('');
+
+    try {
+      const uploadRes = await api.uploadImage(file);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        setUploadedCover(uploadRes.fileUrl);
+        setCustomCoverUrl('');
+      } else {
+        setError(uploadRes.message || 'خطا در آپلود عکس روی سرور');
+        setPreviewUrl('');
+      }
+    } catch (err: any) {
+      setError(err.message || 'خطا در برقراری ارتباط با سرور آپلود');
+      setPreviewUrl('');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const handleCameraCapture = async (file: File) => {
     // Instant local preview
     const localUrl = URL.createObjectURL(file);
     setPreviewUrl(localUrl);
@@ -210,7 +229,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                   ) : (
                     <Upload className="w-4 h-4" />
                   )}
-                  <span>{isUploading ? 'در حال آپلود و پردازش تصویر...' : 'انتخاب و آپلود عکس جلد'}</span>
+                  <span>{isUploading ? 'در حال آپلود و پردازش تصویر...' : 'انتخاب فایل از دستگاه'}</span>
                   <input
                     type="file"
                     accept="image/jpeg,image/png,image/webp,image/jpg"
@@ -219,6 +238,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                     className="hidden"
                   />
                 </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowCameraModal(true)}
+                  disabled={isUploading}
+                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-2 active:scale-95"
+                >
+                  <Camera className="w-4 h-4 text-emerald-200" />
+                  <span>عکاسی با دوربین 📸</span>
+                </button>
 
                 <span className="text-[11px] text-slate-500">
                   فرمت‌های مجاز: JPG, PNG, WEBP (حداکثر ۱۰ مگابایت)
@@ -282,7 +311,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                 یا انتخاب یکی از کاورهای آماده مکتب‌خانه:
               </span>
               <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
-                {PRESET_COVERS.map((preset, i) => (
+                {PRESET_BOOK_COVERS.map((preset, i) => (
                   <div
                     key={i}
                     onClick={() => {
@@ -343,6 +372,14 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
             </button>
           </div>
         </form>
+
+        <CameraCaptureModal
+          isOpen={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          onCapture={handleCameraCapture}
+          title="عکاسی از جلد کتاب با دوربین"
+          facingMode="environment"
+        />
       </div>
     </div>
   );

@@ -87,9 +87,8 @@ export const ADMIN_SPECIAL_AVATARS: AvatarOption[] = [
   }
 ];
 
-// Ultra-Cute 3D Cartoon Avatars without personal names
-export const FANTASY_AVATARS: AvatarOption[] = [
-  ...ADMIN_SPECIAL_AVATARS,
+// Student 3D Cartoon Avatars (Elementary School Level)
+export const STUDENT_AVATARS: AvatarOption[] = [
   {
     id: 'avatar_curly_glasses',
     name: '',
@@ -351,9 +350,20 @@ export const FANTASY_AVATARS: AvatarOption[] = [
   }
 ];
 
-export const getDefaultAvatar = (id: string = 'avatar_curly_glasses') => {
-  const found = FANTASY_AVATARS.find((a) => a.id === id);
-  return found ? found.url : FANTASY_AVATARS[0].url;
+export const FANTASY_AVATARS: AvatarOption[] = [...ADMIN_SPECIAL_AVATARS, ...STUDENT_AVATARS];
+
+export const getAvailableAvatars = (isAdmin: boolean = false): AvatarOption[] => {
+  return isAdmin ? [...ADMIN_SPECIAL_AVATARS, ...STUDENT_AVATARS] : STUDENT_AVATARS;
 };
 
-export const BOY_AVATARS = FANTASY_AVATARS;
+export const isAdminAvatar = (urlOrId?: string): boolean => {
+  if (!urlOrId) return false;
+  return ADMIN_SPECIAL_AVATARS.some((a) => a.id === urlOrId || a.url === urlOrId);
+};
+
+export const getDefaultAvatar = (id: string = 'avatar_curly_glasses') => {
+  const found = STUDENT_AVATARS.find((a) => a.id === id) || FANTASY_AVATARS.find((a) => a.id === id);
+  return found ? found.url : STUDENT_AVATARS[0].url;
+};
+
+export const BOY_AVATARS = STUDENT_AVATARS;

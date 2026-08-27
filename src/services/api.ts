@@ -6,7 +6,8 @@ import {
   MutualFeedback,
   BankCardInfo,
   RegistrationInput,
-  BookReview
+  BookReview,
+  SystemConfig
 } from '../types';
 
 const API_BASE = '/api';
@@ -18,6 +19,7 @@ export interface BootstrapResponse {
   schoolClasses: SchoolClass[];
   feedbacks: MutualFeedback[];
   bankCardInfo: BankCardInfo;
+  systemConfig?: SystemConfig;
 }
 
 export const api = {
@@ -124,6 +126,17 @@ export const api = {
       body: JSON.stringify({ reason })
     });
     return await res.json();
+  },
+
+  async deleteUser(id: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${id}`, {
+        method: 'DELETE'
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در حذف کاربر' };
+    }
   },
 
   // Books APIs
@@ -257,5 +270,28 @@ export const api = {
       body: JSON.stringify(info)
     });
     return await res.json();
+  },
+
+  // System Config APIs
+  async getSystemConfig(): Promise<{ success: boolean; config?: SystemConfig }> {
+    try {
+      const res = await fetch(`${API_BASE}/settings/config`);
+      return await res.json();
+    } catch (e: any) {
+      return { success: false };
+    }
+  },
+
+  async updateSystemConfig(config: Partial<SystemConfig>): Promise<{ success: boolean; message?: string; config?: SystemConfig }> {
+    try {
+      const res = await fetch(`${API_BASE}/settings/config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(config)
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
+    }
   }
 };

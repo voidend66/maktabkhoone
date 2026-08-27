@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { NewBookInput, BookCondition } from '../types';
 import { CATEGORIES } from '../data/mockData';
-import { FANTASY_AVATARS } from '../utils/avatars';
+import { STUDENT_AVATARS } from '../utils/avatars';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 import { RulesModal } from './RulesModal';
 import { api } from '../services/api';
@@ -25,6 +25,8 @@ import {
   Loader2
 } from 'lucide-react';
 
+import { PRESET_BOOK_COVERS, DEFAULT_BOOK_COVER } from '../utils/coverPresets';
+
 interface RegisterModalProps {
   onClose: () => void;
   onOpenLogin: () => void;
@@ -32,7 +34,9 @@ interface RegisterModalProps {
 }
 
 export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLogin, onOpenRules }) => {
-  const { registerUser, schoolClasses, users } = useApp();
+  const { registerUser, schoolClasses, users, systemConfig } = useApp();
+  const minRequired = systemConfig?.minBooksForRegistration ?? 3;
+  const maxAllowed = systemConfig?.maxBooksForRegistration ?? 5;
 
   // Step 1: Personal info & avatar, Step 2: Initial Books
   const [step, setStep] = useState<1 | 2>(1);
@@ -41,7 +45,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [avatar, setAvatar] = useState(FANTASY_AVATARS[0].url);
+  const [avatar, setAvatar] = useState(STUDENT_AVATARS[0].url);
   const [agreedToRules, setAgreedToRules] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
 
@@ -52,7 +56,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
       author: 'مهدی آذر یزدی',
       category: 'داستان و قصه کودک',
       condition: 'عالی (نو)',
-      coverImage: 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600',
+      coverImage: PRESET_BOOK_COVERS[0].url,
       description: 'کتاب قصه صمیمی و جذاب برای مطالعه اعضای مکتب خونه.'
     },
     {
@@ -60,7 +64,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
       author: 'هارون یحیی',
       category: 'علمی و رازهای جهان',
       condition: 'خوب',
-      coverImage: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=600',
+      coverImage: PRESET_BOOK_COVERS[2].url,
       description: 'تصاویری جذاب و دانستنی درباره سیارات و طبیعت.'
     },
     {
@@ -68,7 +72,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
       author: 'مصطفی رحماندوست',
       category: 'شعر و ترانه کودکانه',
       condition: 'عالی (نو)',
-      coverImage: 'https://images.unsplash.com/photo-1516979187457-637abb4f9353?auto=format&fit=crop&q=80&w=600',
+      coverImage: PRESET_BOOK_COVERS[3].url,
       description: 'شعرهای خواندنی و شاد.'
     }
   ]);
@@ -78,7 +82,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   const [bookAuthor, setBookAuthor] = useState('');
   const [bookCategory, setBookCategory] = useState(CATEGORIES[1]);
   const [bookCondition, setBookCondition] = useState<BookCondition>('عالی (نو)');
-  const [bookCoverImage, setBookCoverImage] = useState('https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600');
+  const [bookCoverImage, setBookCoverImage] = useState(DEFAULT_BOOK_COVER);
   const [bookCoverPreview, setBookCoverPreview] = useState('');
   const [bookDescription, setBookDescription] = useState('');
 
@@ -170,8 +174,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
       return;
     }
 
-    if (initialBooks.length >= 5) {
-      setErrorMessage('حداکثر می‌توانید ۵ جلد کتاب در گام اولیه ثبت کنید.');
+    if (initialBooks.length >= maxAllowed) {
+      setErrorMessage(`حداکثر می‌توانید ${maxAllowed} جلد کتاب در گام اولیه ثبت کنید.`);
       return;
     }
 
@@ -190,7 +194,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
     setBookTitle('');
     setBookAuthor('');
     setBookDescription('');
-    setBookCoverImage('https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600');
+    setBookCoverImage(DEFAULT_BOOK_COVER);
     setBookCoverPreview('');
     setErrorMessage('');
   };
@@ -200,8 +204,8 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   };
 
   const handleFinalRegister = async () => {
-    if (initialBooks.length < 3) {
-      setErrorMessage('طبق قوانین مکتب‌خانه، حتماً باید حداقل ۳ جلد کتاب جهت معرفی به سیستم وارد کنید.');
+    if (initialBooks.length < minRequired) {
+      setErrorMessage(`طبق قوانین مکتب‌خانه، حتماً باید حداقل ${minRequired} جلد کتاب جهت معرفی به سیستم وارد کنید.`);
       return;
     }
 
@@ -245,7 +249,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                 <h3 className="font-black text-lg text-white">ثبت‌نام عضو جدید در مکتب خونه 🎒</h3>
                 <p className="text-xs text-cyan-100 font-bold">
                   {step === 1 && 'گام ۱: مشخصات فردی، آواتار ۳ بعدی و تایید قوانین'}
-                  {step === 2 && 'گام ۲: اهدا و معرفی ۳ الی ۵ کتاب برای امانت'}
+                  {step === 2 && `گام ۲: اهدا و معرفی حداقل ${minRequired} کتاب برای امانت`}
                 </p>
               </div>
             </div>
@@ -305,7 +309,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                     انتخاب آواتار کارتونی و ۳ بعدی حساب کاربری 🎨:
                   </label>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {FANTASY_AVATARS.map((item) => (
+                    {STUDENT_AVATARS.map((item) => (
                       <div
                         key={item.id}
                         onClick={() => setAvatar(item.url)}
@@ -479,10 +483,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                 </div>
               </form>
             ) : (
-              /* STEP 2: MANDATORY 3 TO 5 BOOKS */
+              /* STEP 2: MANDATORY BOOKS */
               <div className="space-y-5">
                 <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-950 leading-relaxed font-medium">
-                  📢 <strong>قانون مکتب‌خانه:</strong> برای تکمیل عضویت، باید حداقل <strong>۳ جلد کتاب</strong> جهت امانت‌دهی به همکلاسی‌ها وارد کنید. (تعداد ثبت‌شده: <strong>{initialBooks.length} جلد</strong>)
+                  📢 <strong>قانون مکتب‌خانه:</strong> برای تکمیل عضویت، باید حداقل <strong>{minRequired} جلد کتاب</strong> جهت امانت‌دهی به همکلاسی‌ها وارد کنید. (تعداد ثبت‌شده: <strong>{initialBooks.length} جلد</strong>)
                 </div>
 
                 {errorMessage && (
@@ -520,11 +524,11 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                 </div>
 
                 {/* Add Book Mini Form */}
-                {initialBooks.length < 5 && (
+                {initialBooks.length < maxAllowed && (
                   <div className="p-4 bg-cyan-50/70 rounded-2xl border border-cyan-200 space-y-3">
                     <h5 className="text-xs font-black text-slate-800 flex items-center gap-1">
                       <BookPlus className="w-4 h-4 text-cyan-600" />
-                      افزودن کتاب جدید (کتاب {initialBooks.length + 1}):
+                      افزودن کتاب جدید (کتاب {initialBooks.length + 1} از حداکثر {maxAllowed}):
                     </h5>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">

@@ -7,7 +7,8 @@ import {
   SchoolClass,
   MutualFeedback,
   BankCardInfo,
-  BookReview
+  BookReview,
+  SystemConfig
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
@@ -110,27 +111,31 @@ loadFromDisk();
 function seedInitialDataIfEmpty() {
   let hasChanges = false;
 
-  // Seed default classes if empty
-  if (memoryDb.schoolClasses.length === 0) {
-    const defaultClasses: SchoolClass[] = [
-      { id: 'c_7_1', name: 'کلاس ۱/۷', grade: 'پایه هفتم' },
-      { id: 'c_7_2', name: 'کلاس ۲/۷', grade: 'پایه هفتم' },
-      { id: 'c_8_1', name: 'کلاس ۱/۸', grade: 'پایه هشتم' },
-      { id: 'c_8_2', name: 'کلاس ۲/۸', grade: 'پایه هشتم' },
-      { id: 'c_9_1', name: 'کلاس ۱/۹', grade: 'پایه نهم' },
-      { id: 'c_9_2', name: 'کلاس ۲/۹', grade: 'پایه نهم' },
-      { id: 'c_10_exp', name: '۱۰ تجربی', grade: 'پایه دهم' },
-      { id: 'c_10_math', name: '۱۰ ریاضی', grade: 'پایه دهم' },
-      { id: 'c_10_hum', name: '۱۰ انسانی', grade: 'پایه دهم' },
-      { id: 'c_11_exp', name: '۱۱ تجربی', grade: 'پایه یازدهم' },
-      { id: 'c_11_math', name: '۱۱ ریاضی', grade: 'پایه یازدهم' },
-      { id: 'c_11_hum', name: '۱۱ انسانی', grade: 'پایه یازدهم' },
-      { id: 'c_12_exp', name: '۱۲ تجربی', grade: 'پایه دوازدهم' },
-      { id: 'c_12_math', name: '۱۲ ریاضی', grade: 'پایه دوازدهم' },
-      { id: 'c_12_hum', name: '۱۲ انسانی', grade: 'پایه دوازدهم' },
-      { id: 'c_alumni', name: 'فارغ‌التحصیلان و معلمان', grade: 'سایر / مهمان', isExternal: true }
+  // Seed default classes if empty or containing old secondary school classes
+  const hasOldSecondaryClasses = memoryDb.schoolClasses.some(
+    (c) =>
+      c.grade.includes('هفتم') ||
+      c.grade.includes('هشتم') ||
+      c.grade.includes('نهم') ||
+      c.grade.includes('دهم') ||
+      c.grade.includes('یازدهم') ||
+      c.grade.includes('دوازدهم')
+  );
+
+  if (memoryDb.schoolClasses.length === 0 || hasOldSecondaryClasses) {
+    const elementaryClasses: SchoolClass[] = [
+      { id: 'c_1_1', name: 'کلاس ۱/۱', grade: 'پایه اول دبستان' },
+      { id: 'c_1_2', name: 'کلاس ۱/۲', grade: 'پایه اول دبستان' },
+      { id: 'c_2_1', name: 'کلاس ۲/۱', grade: 'پایه دوم دبستان' },
+      { id: 'c_2_2', name: 'کلاس ۲/۲', grade: 'پایه دوم دبستان' },
+      { id: 'c_3_1', name: 'کلاس ۳/۱', grade: 'پایه سوم دبستان' },
+      { id: 'c_3_2', name: 'کلاس ۳/۲', grade: 'پایه سوم دبستان' },
+      { id: 'c_4_1', name: 'کلاس ۴/۱', grade: 'پایه چهارم دبستان' },
+      { id: 'c_5_1', name: 'کلاس ۵/۱', grade: 'پایه پنجم دبستان' },
+      { id: 'c_6_1', name: 'کلاس ۶/۱', grade: 'پایه ششم دبستان' },
+      { id: 'c_staff', name: 'معلمان و کادر مدرسه', grade: 'معلمان و کادر مدرسه (سایر / مهمان)', isExternal: true }
     ];
-    memoryDb.schoolClasses = defaultClasses;
+    memoryDb.schoolClasses = elementaryClasses;
     hasChanges = true;
   }
 
@@ -142,6 +147,21 @@ function seedInitialDataIfEmpty() {
       bankName: 'بانک ملی ایران'
     };
     memoryDb.settings['bank_card_info'] = JSON.stringify(defaultCard);
+    hasChanges = true;
+  }
+
+  // Seed default system configuration if not set
+  if (!memoryDb.settings['system_config']) {
+    const defaultConfig: SystemConfig = {
+      minBooksForRegistration: 3,
+      maxBooksForRegistration: 5,
+      requireAdminApproval: true,
+      loanFeeAmount: 10000,
+      loanDurationDays: 7,
+      paymentWindowHours: 3,
+      handoverWindowHours: 12
+    };
+    memoryDb.settings['system_config'] = JSON.stringify(defaultConfig);
     hasChanges = true;
   }
 
@@ -281,45 +301,87 @@ export const dbService = {
   },
 
   deleteUser(id: string): boolean {
-    const initialLen = memoryDb.users.length;
+    const user = this.getUserById(id);
+    if (!user) return false;
+
+    // 1. Remove user
     memoryDb.users = memoryDb.users.filter((u) => u.id !== id);
-    if (memoryDb.users.length !== initialLen) {
-      saveToDisk();
-      return true;
-    }
-    return false;
+
+    // 2. Remove books owned by user
+    memoryDb.books = memoryDb.books.filter((b) => b.ownerId !== id);
+
+    // 3. Remove lending requests involving user
+    memoryDb.requests = memoryDb.requests.filter((r) => r.ownerId !== id && r.borrowerId !== id);
+
+    // 4. Clean up reviews submitted by this user on other books and re-calculate ratings
+    memoryDb.books = memoryDb.books.map((b) => {
+      if (!b.reviews || b.reviews.length === 0) return b;
+      const filteredReviews = b.reviews.filter((r) => r.userId !== id);
+      if (filteredReviews.length === b.reviews.length) return b;
+      const totalScore = filteredReviews.reduce((sum, r) => sum + r.rating, 0);
+      const newRating = filteredReviews.length > 0 ? Number((totalScore / filteredReviews.length).toFixed(1)) : 0;
+      return {
+        ...b,
+        reviews: filteredReviews,
+        reviewsCount: filteredReviews.length,
+        rating: newRating
+      };
+    });
+
+    // 5. Clean up user feedbacks
+    memoryDb.feedbacks = memoryDb.feedbacks.filter((f) => f.fromUserId !== id && f.toUserId !== id);
+
+    saveToDisk();
+    return true;
   },
 
   // ---- BOOKS ----
   getAllBooks(): Book[] {
-    return memoryDb.books.map((b) => ({
-      ...b,
-      reviews: Array.isArray(b.reviews) ? b.reviews : [],
-      rating: Number(b.rating) || 5.0,
-      reviewsCount: Number(b.reviewsCount) || 0,
-      isDamaged: Boolean(b.isDamaged)
-    }));
+    return memoryDb.books.map((b) => {
+      const reviews = Array.isArray(b.reviews) ? b.reviews : [];
+      const calculatedRating = reviews.length > 0
+        ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
+        : (b.rating && reviews.length > 0 ? Number(b.rating) : 0);
+
+      return {
+        ...b,
+        reviews: reviews,
+        rating: calculatedRating,
+        reviewsCount: reviews.length,
+        isDamaged: Boolean(b.isDamaged)
+      };
+    });
   },
 
   getBookById(id: string): Book | null {
     const book = memoryDb.books.find((b) => b.id === id);
     if (!book) return null;
+    const reviews = Array.isArray(book.reviews) ? book.reviews : [];
+    const calculatedRating = reviews.length > 0
+      ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
+      : (book.rating && reviews.length > 0 ? Number(book.rating) : 0);
+
     return {
       ...book,
-      reviews: Array.isArray(book.reviews) ? book.reviews : [],
-      rating: Number(book.rating) || 5.0,
-      reviewsCount: Number(book.reviewsCount) || 0,
+      reviews: reviews,
+      rating: calculatedRating,
+      reviewsCount: reviews.length,
       isDamaged: Boolean(book.isDamaged)
     };
   },
 
   createBook(book: Book): Book {
+    const reviews = Array.isArray(book.reviews) ? book.reviews : [];
+    const calculatedRating = reviews.length > 0
+      ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
+      : 0;
+
     const newBook: Book = {
       ...book,
       status: book.status || 'available',
-      rating: Number(book.rating) || 5.0,
-      reviewsCount: Number(book.reviewsCount) || 0,
-      reviews: Array.isArray(book.reviews) ? book.reviews : [],
+      rating: calculatedRating,
+      reviewsCount: reviews.length,
+      reviews: reviews,
       addedDate: book.addedDate || new Date().toLocaleDateString('fa-IR'),
       isDamaged: Boolean(book.isDamaged)
     };
@@ -346,12 +408,19 @@ export const dbService = {
     if (index === -1) return null;
 
     const current = memoryDb.books[index];
+    const updatedReviews = updates.reviews !== undefined ? updates.reviews : (current.reviews || []);
+    const calculatedRating = updates.rating !== undefined 
+      ? Number(updates.rating) 
+      : (updatedReviews.length > 0 
+          ? Number((updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1))
+          : 0);
+
     const updated: Book = {
       ...current,
       ...updates,
-      reviews: updates.reviews !== undefined ? updates.reviews : (current.reviews || []),
-      rating: updates.rating !== undefined ? Number(updates.rating) : current.rating,
-      reviewsCount: updates.reviewsCount !== undefined ? Number(updates.reviewsCount) : current.reviewsCount,
+      reviews: updatedReviews,
+      rating: calculatedRating,
+      reviewsCount: updates.reviewsCount !== undefined ? Number(updates.reviewsCount) : updatedReviews.length,
       isDamaged: updates.isDamaged !== undefined ? Boolean(updates.isDamaged) : current.isDamaged
     };
 
@@ -365,6 +434,7 @@ export const dbService = {
     if (!book) return false;
 
     memoryDb.books = memoryDb.books.filter((b) => b.id !== id);
+    memoryDb.requests = memoryDb.requests.filter((r) => r.bookId !== id);
 
     // Decrement user's count
     const owner = this.getUserById(book.ownerId);
@@ -380,9 +450,29 @@ export const dbService = {
     const book = this.getBookById(bookId);
     if (!book) return null;
 
-    const updatedReviews = [review, ...(book.reviews || [])];
+    const existingReviews = Array.isArray(book.reviews) ? [...book.reviews] : [];
+    const existingIndex = existingReviews.findIndex((r) => r.userId === review.userId);
+
+    let updatedReviews: BookReview[];
+    if (existingIndex >= 0) {
+      // Update existing review
+      existingReviews[existingIndex] = {
+        ...existingReviews[existingIndex],
+        rating: review.rating,
+        comment: review.comment,
+        date: review.date || new Date().toLocaleDateString('fa-IR'),
+        userName: review.userName || existingReviews[existingIndex].userName,
+        userAvatar: review.userAvatar || existingReviews[existingIndex].userAvatar,
+        userClass: review.userClass || existingReviews[existingIndex].userClass
+      };
+      updatedReviews = existingReviews;
+    } else {
+      // Add new review to beginning
+      updatedReviews = [review, ...existingReviews];
+    }
+
     const totalScore = updatedReviews.reduce((sum, r) => sum + r.rating, 0);
-    const newRating = Number((totalScore / updatedReviews.length).toFixed(1));
+    const newRating = updatedReviews.length > 0 ? Number((totalScore / updatedReviews.length).toFixed(1)) : 0;
 
     return this.updateBook(bookId, {
       reviews: updatedReviews,
@@ -527,7 +617,7 @@ export const dbService = {
 
     memoryDb.feedbacks.unshift(newFb);
 
-    // Update target user's rating & read count
+    // Update target user's rating
     const targetUser = this.getUserById(fb.toUserId);
     if (targetUser) {
       const avgScore = (newFb.punctualityScore + newFb.conditionScore + newFb.behaviorScore + newFb.reliabilityScore) / 4;
@@ -535,12 +625,22 @@ export const dbService = {
       const currentRating = targetUser.rating || 5.0;
       const newRating = Number(((currentRating * currentCount + avgScore) / (currentCount + 1)).toFixed(1));
 
-      const isBorrowerFinished = fb.role === 'owner_to_borrower';
       this.updateUser(targetUser.id, {
         rating: newRating,
-        ratingsCount: currentCount + 1,
-        booksReadCount: isBorrowerFinished ? (targetUser.booksReadCount || 0) + 1 : targetUser.booksReadCount
+        ratingsCount: currentCount + 1
       });
+    }
+
+    // Always increment borrower's booksReadCount when a feedback/return is recorded
+    const reqItem = this.getRequestById(fb.requestId);
+    const borrowerId = reqItem?.borrowerId || (fb.role === 'owner_to_borrower' ? fb.toUserId : fb.fromUserId);
+    if (borrowerId) {
+      const borrower = this.getUserById(borrowerId);
+      if (borrower) {
+        this.updateUser(borrower.id, {
+          booksReadCount: (borrower.booksReadCount || 0) + 1
+        });
+      }
     }
 
     saveToDisk();
@@ -570,6 +670,46 @@ export const dbService = {
     return info;
   },
 
+  getSystemConfig(): SystemConfig {
+    const val = memoryDb.settings['system_config'];
+    if (val) {
+      try {
+        const parsed = JSON.parse(val);
+        return {
+          minBooksForRegistration: parsed.minBooksForRegistration ?? 3,
+          maxBooksForRegistration: parsed.maxBooksForRegistration ?? 5,
+          requireAdminApproval: parsed.requireAdminApproval ?? true,
+          loanFeeAmount: parsed.loanFeeAmount ?? 10000,
+          loanDurationDays: parsed.loanDurationDays ?? 7,
+          paymentWindowHours: parsed.paymentWindowHours ?? 3,
+          handoverWindowHours: parsed.handoverWindowHours ?? 12
+        };
+      } catch (e) {
+        // fallback
+      }
+    }
+    return {
+      minBooksForRegistration: 3,
+      maxBooksForRegistration: 5,
+      requireAdminApproval: true,
+      loanFeeAmount: 10000,
+      loanDurationDays: 7,
+      paymentWindowHours: 3,
+      handoverWindowHours: 12
+    };
+  },
+
+  setSystemConfig(config: Partial<SystemConfig>): SystemConfig {
+    const current = this.getSystemConfig();
+    const updated: SystemConfig = {
+      ...current,
+      ...config
+    };
+    memoryDb.settings['system_config'] = JSON.stringify(updated);
+    saveToDisk();
+    return updated;
+  },
+
   // Bootstrap full state
   getBootstrapData() {
     return {
@@ -578,7 +718,8 @@ export const dbService = {
       requests: this.getAllRequests(),
       schoolClasses: this.getAllClasses(),
       feedbacks: this.getAllFeedbacks(),
-      bankCardInfo: this.getBankCardInfo()
+      bankCardInfo: this.getBankCardInfo(),
+      systemConfig: this.getSystemConfig()
     };
   }
 };

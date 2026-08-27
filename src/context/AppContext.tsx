@@ -8,15 +8,27 @@ import {
   BookCondition,
   RequestStatus,
   RegistrationInput,
-  BankCardInfo
+  BankCardInfo,
+  SystemConfig
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
+import { DEFAULT_BOOK_COVER, getSafeImageUrl } from '../utils/coverPresets';
 
 const INITIAL_BANK_CARD: BankCardInfo = {
   cardNumber: '6037-9918-9876-5432',
   cardHolderName: 'پارسا فیض (مدیر و راهبر مکتب‌خانه)',
   bankName: 'بانک ملی ایران'
+};
+
+const INITIAL_SYSTEM_CONFIG: SystemConfig = {
+  minBooksForRegistration: 3,
+  maxBooksForRegistration: 5,
+  requireAdminApproval: true,
+  loanFeeAmount: 10000,
+  loanDurationDays: 7,
+  paymentWindowHours: 3,
+  handoverWindowHours: 12
 };
 
 const LOCAL_STORAGE_KEY_CURRENT_USER = 'school_lib_curr_user_v3';
@@ -29,6 +41,7 @@ interface AppContextType {
   schoolClasses: SchoolClass[];
   feedbacks: MutualFeedback[];
   bankCardInfo: BankCardInfo;
+  systemConfig: SystemConfig;
   isLoading: boolean;
   loginUser: (phone: string, pass: string) => Promise<{ success: boolean; message: string; user?: User }>;
   loginWithBale: (phone: string) => Promise<{ success: boolean; message: string; user?: User }>;
@@ -39,6 +52,7 @@ interface AppContextType {
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string) => void;
+  deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   addBook: (book: {
     title: string;
     author: string;
@@ -72,6 +86,7 @@ interface AppContextType {
   deleteSchoolClass: (id: string) => void;
   addBookReview: (bookId: string, rating: number, comment: string) => void;
   updateBankCardInfo: (info: BankCardInfo) => void;
+  updateSystemConfig: (config: Partial<SystemConfig>) => Promise<{ success: boolean; message?: string; config?: SystemConfig }>;
   resetToDefaults: () => void;
   refreshData: () => Promise<void>;
 }
@@ -86,6 +101,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [schoolClasses, setSchoolClasses] = useState<SchoolClass[]>([]);
   const [feedbacks, setFeedbacks] = useState<MutualFeedback[]>([]);
   const [bankCardInfo, setBankCardInfo] = useState<BankCardInfo>(INITIAL_BANK_CARD);
+  const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -114,6 +130,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setFeedbacks(data.feedbacks || []);
         if (data.bankCardInfo) {
           setBankCardInfo(data.bankCardInfo);
+        }
+        if (data.systemConfig) {
+          setSystemConfig(data.systemConfig);
         }
       }
     } catch (err) {
@@ -153,6 +172,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
     }
   }, [currentUser]);
+
+  // System Configuration
+  const updateSystemConfig = async (config: Partial<SystemConfig>) => {
+    setSystemConfig((prev) => ({ ...prev, ...config }));
+    try {
+      const res = await api.updateSystemConfig(config);
+      if (res.success && res.config) {
+        setSystemConfig(res.config);
+      }
+      return res;
+    } catch (e: any) {
+      console.error('Error updating system config on server:', e);
+      return { success: false, message: e.message || 'خطا در به‌روزرسانی تنظیمات سیستم' };
+    }
+  };
 
   // Bank Card Info
   const updateBankCardInfo = async (info: BankCardInfo) => {
@@ -319,6 +353,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Delete User (by self or admin)
+  const deleteUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const res = await api.deleteUser(userId);
+      if (res.success) {
+        setUsers((prev) => prev.filter((u) => u.id !== userId));
+        setBooks((prev) => prev.filter((b) => b.ownerId !== userId));
+        setRequests((prev) => prev.filter((r) => r.ownerId !== userId && r.borrowerId !== userId));
+        setFeedbacks((prev) => prev.filter((f) => f.fromUserId !== userId && f.toUserId !== userId));
+
+        if (currentUser?.id === userId) {
+          logoutUser();
+        }
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      return { success: false, message: err.message || 'خطا در حذف حساب کاربری' };
+    }
+  };
+
   // Add a book
   const addBook = async (bookData: {
     title: string;
@@ -338,7 +394,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       ownerName: currentUser.name,
       ownerClass: currentUser.className,
       ownerAvatar: currentUser.avatar,
-      coverImage: bookData.coverImage || 'https://images.unsplash.com/photo-1544716278-ca5e3f4abd8c?auto=format&fit=crop&q=80&w=600',
+      coverImage: getSafeImageUrl(bookData.coverImage, 'book'),
       category: bookData.category,
       condition: bookData.condition,
       description: bookData.description,
@@ -631,19 +687,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     setUsers((prev) =>
       prev.map((u) => {
+        let updatedUser = u;
         if (u.id === targetUserId) {
           const newCount = (u.ratingsCount || 0) + 1;
           const newRating = parseFloat(
             (((u.rating || 5.0) * (u.ratingsCount || 0) + avgFeedbackScore) / newCount).toFixed(1)
           );
-          return {
-            ...u,
+          updatedUser = {
+            ...updatedUser,
             rating: newRating,
-            ratingsCount: newCount,
-            booksReadCount: u.id === req.borrowerId ? (u.booksReadCount || 0) + 1 : u.booksReadCount
+            ratingsCount: newCount
           };
         }
-        return u;
+        if (u.id === req.borrowerId) {
+          updatedUser = {
+            ...updatedUser,
+            booksReadCount: (updatedUser.booksReadCount || 0) + 1
+          };
+        }
+        return updatedUser;
       })
     );
 
@@ -697,7 +759,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  // Add review & star rating to a book
+  // Add or update review & star rating to a book (1 review per user)
   const addBookReview = async (bookId: string, rating: number, comment: string) => {
     if (!currentUser) return;
 
@@ -715,10 +777,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setBooks((prev) =>
       prev.map((b) => {
         if (b.id === bookId) {
-          const updatedReviews = [newReview, ...b.reviews];
-          const newAvg = parseFloat(
-            (updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1)
-          );
+          const prevReviews = Array.isArray(b.reviews) ? [...b.reviews] : [];
+          const existingIndex = prevReviews.findIndex((r) => r.userId === currentUser.id);
+          let updatedReviews;
+          if (existingIndex >= 0) {
+            prevReviews[existingIndex] = {
+              ...prevReviews[existingIndex],
+              rating,
+              comment,
+              date: newReview.date,
+              userName: currentUser.name,
+              userAvatar: currentUser.avatar,
+              userClass: currentUser.className
+            };
+            updatedReviews = prevReviews;
+          } else {
+            updatedReviews = [newReview, ...prevReviews];
+          }
+
+          const newAvg = updatedReviews.length > 0
+            ? parseFloat((updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1))
+            : 0;
+
           return {
             ...b,
             rating: newAvg,
@@ -740,6 +820,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Delete book
   const deleteBook = async (bookId: string) => {
     setBooks((prev) => prev.filter((b) => b.id !== bookId));
+    setRequests((prev) => prev.filter((r) => r.bookId !== bookId));
     try {
       await api.deleteBook(bookId);
     } catch (e) {
@@ -768,6 +849,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         schoolClasses,
         feedbacks,
         bankCardInfo,
+        systemConfig,
         isLoading,
         loginUser,
         loginWithBale,
@@ -778,6 +860,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resetPasswordWithSMS,
         approveUser,
         rejectUser,
+        deleteUser,
         addBook,
         deleteBook,
         requestBookLoan,
@@ -793,6 +876,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteSchoolClass,
         addBookReview,
         updateBankCardInfo,
+        updateSystemConfig,
         resetToDefaults,
         refreshData
       }}

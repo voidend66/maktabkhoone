@@ -358,7 +358,26 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 
   // Static serving for uploaded files on disk
-  app.use('/uploads', express.static(UPLOADS_DIR));
+  app.use('/uploads', express.static(UPLOADS_DIR, {
+    maxAge: '7d',
+    setHeaders: (res) => {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    }
+  }));
+
+  // Direct route for uploads to ensure cross-server compatibility
+  app.get('/uploads/:filename', (req: Request, res: Response): any => {
+    const safeName = path.basename(req.params.filename);
+    const filePath = path.join(UPLOADS_DIR, safeName);
+    if (fs.existsSync(filePath)) {
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cache-Control', 'public, max-age=604800');
+      return res.sendFile(filePath);
+    }
+    return res.status(404).json({ error: 'File not found' });
+  });
 
   /**
    * --------------------------------------------------------------------------
@@ -657,8 +676,8 @@ async function startServer() {
         ] : [],
         joinedDate: new Date().toLocaleDateString('fa-IR'),
         avatar: isSystemAdmin
-          ? 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
-          : 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=200',
+          ? 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminCrown'
+          : 'https://api.dicebear.com/7.x/bottts/svg?seed=Student',
         status: 'approved'
       };
 
@@ -714,7 +733,7 @@ async function startServer() {
               }
             ],
             joinedDate: new Date().toLocaleDateString('fa-IR'),
-            avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+            avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminCrown',
             status: 'approved'
           };
           const savedAdmin = dbService.createUser(newAdmin);
@@ -756,10 +775,12 @@ async function startServer() {
       }
 
       const isAdmin = isAdminPhone(data.phone);
-      if (!isAdmin && (!data.initialBooks || data.initialBooks.length < 3)) {
+      const sysConfig = dbService.getSystemConfig();
+      const minRequired = sysConfig.minBooksForRegistration ?? 3;
+      if (!isAdmin && (!data.initialBooks || data.initialBooks.length < minRequired)) {
         return res.status(400).json({
           success: false,
-          message: 'جهت تکمیل ثبت‌نام، باید حداقل ۳ جلد کتاب جهت اشتراک‌گذاری معرفی کنید.'
+          message: `جهت تکمیل ثبت‌نام، باید حداقل ${minRequired} جلد کتاب جهت اشتراک‌گذاری معرفی کنید.`
         });
       }
 
@@ -769,8 +790,8 @@ async function startServer() {
         name: data.name.trim(),
         className: isAdmin ? 'مدیریت سامانه مکتب‌خانه' : data.className,
         phone: data.phone.trim(),
-        avatar: data.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250',
-        status: isAdmin ? 'approved' : 'pending',
+        avatar: data.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=Student',
+        status: isAdmin ? 'approved' : (sysConfig.requireAdminApproval ? 'pending' : 'approved'),
         role: isAdmin ? 'admin' : 'student',
         password: data.password,
         rating: 5.0,
@@ -790,7 +811,7 @@ async function startServer() {
             id: 'm_starter',
             title: 'عضو جدید کتابخانه',
             icon: '🌱',
-            description: 'ثبت‌نام و مشارکت ۳ کتاب در گنجینه مکتب‌خانه',
+            description: `ثبت‌نام و مشارکت ${minRequired} کتاب در گنجینه مکتب‌خانه`,
             color: 'bg-emerald-100 text-emerald-800 border-emerald-300'
           }
         ],
@@ -810,7 +831,7 @@ async function startServer() {
             ownerName: data.name,
             ownerClass: newUser.className,
             ownerAvatar: newUser.avatar,
-            coverImage: b.coverImage || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600',
+            coverImage: b.coverImage || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 560" width="400" height="560"><rect width="400" height="560" fill="%231e1b4b"/><text x="200" y="280" font-size="24" fill="%23ffffff" text-anchor="middle" font-family="sans-serif">مکتب‌خانه</text></svg>',
             category: b.category,
             condition: b.condition,
             description: b.description || 'معرفی شده توسط کاربر هنگام ثبت‌نام اولیه',
@@ -884,6 +905,31 @@ async function startServer() {
     });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
     res.json({ success: true, user });
+  });
+
+  app.delete('/api/users/:id', (req: Request, res: Response): any => {
+    try {
+      const { id } = req.params;
+      const user = dbService.getUserById(id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'کاربر مورد نظر یافت نشد.' });
+      }
+
+      // Safeguard: Prevent deleting the main system admin
+      if (isAdminPhone(user.phone) || user.role === 'admin') {
+        return res.status(403).json({ success: false, message: 'امکان حذف حساب کاربری مدیر اصلی سامانه وجود ندارد.' });
+      }
+
+      const deleted = dbService.deleteUser(id);
+      if (!deleted) {
+        return res.status(500).json({ success: false, message: 'خطا در حذف کاربر از دیتابیس.' });
+      }
+
+      res.json({ success: true, message: 'حساب کاربری و اطلاعات مرتبط با موفقیت حذف شد.' });
+    } catch (err: any) {
+      console.error('Delete User Error:', err);
+      res.status(500).json({ success: false, message: 'خطای سرور در فرآیند حذف حساب کاربری.' });
+    }
   });
 
   /**
@@ -1185,6 +1231,24 @@ async function startServer() {
     }
     const saved = dbService.setBankCardInfo({ cardNumber, cardHolderName, bankName: bankName || 'بانک ملی ایران' });
     res.json({ success: true, bankCardInfo: saved });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: تنظیمات سامانه و قوانین ثبت‌نام و امانت
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/settings/config', (_req: Request, res: Response) => {
+    res.json({ success: true, config: dbService.getSystemConfig() });
+  });
+
+  app.post('/api/settings/config', (req: Request, res: Response): any => {
+    const config = req.body;
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ success: false, message: 'اطلاعات تنظیمات نامعتبر است.' });
+    }
+    const updated = dbService.setSystemConfig(config);
+    res.json({ success: true, message: 'تنظیمات با موفقیت ذخیره شد.', config: updated });
   });
 
   /**

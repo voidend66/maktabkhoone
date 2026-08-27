@@ -1,6 +1,7 @@
 import React from 'react';
 import { Book } from '../types';
 import { Star, User, Bookmark, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { getSafeImageUrl, DEFAULT_BOOK_COVER } from '../utils/coverPresets';
 
 interface BookCardProps {
   book: Book;
@@ -19,8 +20,11 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onSelect, onRequestLoa
       {/* Cover Image Container */}
       <div className="relative h-44 sm:h-56 md:h-64 w-full bg-slate-100 overflow-hidden flex items-center justify-center">
         <img
-          src={book.coverImage}
+          src={getSafeImageUrl(book.coverImage, 'book')}
           alt={book.title}
+          onError={(e) => {
+            (e.currentTarget as HTMLImageElement).src = DEFAULT_BOOK_COVER;
+          }}
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
         />
@@ -69,11 +73,18 @@ export const BookCard: React.FC<BookCardProps> = ({ book, onSelect, onRequestLoa
         <div>
           {/* Rating */}
           <div className="flex items-center justify-between text-xs text-slate-500 mb-1.5">
-            <div className="flex items-center gap-1 text-amber-500 font-bold">
-              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-              <span>{book.rating}</span>
-              <span className="text-slate-400 font-normal">({book.reviewsCount} نظر)</span>
-            </div>
+            {book.reviewsCount && book.reviewsCount > 0 ? (
+              <div className="flex items-center gap-1 text-amber-500 font-bold">
+                <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                <span>{book.rating}</span>
+                <span className="text-slate-400 font-normal">({book.reviewsCount} نظر)</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1 text-slate-400 font-medium text-[11px]">
+                <Star className="w-3.5 h-3.5 text-slate-300" />
+                <span>بدون دیدگاه</span>
+              </div>
+            )}
             <span className="text-[11px] text-slate-400">{book.addedDate}</span>
           </div>
 

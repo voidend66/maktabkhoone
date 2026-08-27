@@ -183,34 +183,36 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* User Auth Buttons & Profile Badge */}
-          <div className="flex items-center gap-1.5 sm:gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {currentUser ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <div
                   onClick={() => setActiveTab('profile')}
-                  className="flex items-center gap-2 bg-slate-100 hover:bg-slate-200/80 p-1 sm:p-1.5 pr-2.5 sm:pr-3 rounded-xl sm:rounded-2xl cursor-pointer transition border border-slate-200"
+                  className="flex items-center gap-2 bg-slate-100/90 hover:bg-slate-200/90 p-1 sm:p-1.5 pr-2 sm:pr-2.5 rounded-xl sm:rounded-2xl cursor-pointer transition border border-slate-200 max-w-[170px] sm:max-w-[240px]"
                 >
                   <img
                     src={currentUser.avatar}
                     alt={currentUser.name}
-                    className="w-9 h-9 sm:w-10 sm:h-10 rounded-lg sm:rounded-xl object-cover ring-2 ring-cyan-500 shadow-xs shrink-0"
+                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl object-cover ring-2 ring-cyan-500 shadow-xs shrink-0"
                   />
-                  <div className="text-right">
-                    <div className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-1">
-                      <span>{currentUser.name}</span>
+                  <div className="text-right min-w-0 flex-1">
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs sm:text-sm font-black text-slate-900 truncate block">
+                        {currentUser.name}
+                      </span>
                       {currentUser.status === 'pending' ? (
-                        <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded-full font-bold">
-                          <Clock className="w-3 h-3" />
+                        <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-full font-bold shrink-0 whitespace-nowrap">
+                          <Clock className="w-2.5 h-2.5" />
                           در انتظار
                         </span>
                       ) : (
-                        <span className="hidden sm:inline-flex items-center gap-0.5 text-[10px] text-cyan-800 bg-cyan-100 px-1.5 py-0.2 rounded-full font-bold">
-                          <CheckCircle2 className="w-3 h-3 text-cyan-600" />
+                        <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded-full font-bold shrink-0 whitespace-nowrap">
+                          <CheckCircle2 className="w-2.5 h-2.5 text-cyan-600" />
                           عضو
                         </span>
                       )}
                     </div>
-                    <div className="text-[10px] text-cyan-700 font-bold leading-none mt-0.5">
+                    <div className="text-[10px] text-cyan-700 font-bold leading-none mt-0.5 truncate block">
                       {currentUser.className}
                     </div>
                   </div>
@@ -223,18 +225,18 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }
                   }}
                   title="خروج از حساب کاربری"
-                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1"
+                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap"
                 >
-                  <LogOut className="w-4 h-4 text-rose-500" />
+                  <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
                   <span className="hidden sm:inline">خروج</span>
                 </button>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 sm:gap-2">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
                 <button
                   id="navbar-auth-btn"
                   onClick={onOpenAuth || onOpenLogin || onOpenBaleOtp}
-                  className="px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-700 hover:from-emerald-700 hover:to-sky-800 rounded-xl shadow-md shadow-emerald-700/20 transition flex items-center gap-2 active:scale-95 cursor-pointer"
+                  className="px-3.5 sm:px-4 py-2 sm:py-2.5 text-xs sm:text-sm font-black text-white bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-700 hover:from-emerald-700 hover:to-sky-800 rounded-xl shadow-md shadow-emerald-700/20 transition flex items-center gap-2 active:scale-95 cursor-pointer whitespace-nowrap"
                   title="ورود و ثبت‌نام با پیام‌رسان بله"
                 >
                   <LogIn className="w-4 h-4 text-emerald-200 shrink-0" />

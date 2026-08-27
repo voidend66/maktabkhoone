@@ -30,7 +30,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
   onSelectBook,
   onRequestLoan
 }) => {
-  const { currentUser, books, deleteBook, logoutUser } = useApp();
+  const { currentUser, books, deleteBook, deleteUser, logoutUser } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
 
@@ -208,7 +208,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
             </div>
           </div>
 
-          {/* Action Buttons: Edit Profile & Logout */}
+          {/* Action Buttons: Edit Profile, Delete Account & Logout */}
           <div className="flex items-center gap-2.5 flex-wrap">
             <button
               onClick={() => setShowEditProfileModal(true)}
@@ -217,6 +217,27 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
               <Edit3 className="w-3.5 h-3.5 text-cyan-700" />
               <span>ویرایش مشخصات و آواتار</span>
             </button>
+
+            {!isAdmin && (
+              <button
+                onClick={async () => {
+                  const confirmed = window.confirm(
+                    'آیا از حذف حساب کاربری خود مطمئن هستید؟ با این کار تمام کتاب‌ها، نظرات و سوابق امانت شما به‌طور کامل حذف خواهد شد.'
+                  );
+                  if (confirmed) {
+                    const res = await deleteUser(currentUser.id);
+                    if (!res.success) {
+                      alert(res.message || 'خطا در حذف حساب کاربری');
+                    }
+                  }
+                }}
+                title="حذف کامل حساب کاربری"
+                className="px-3 py-2.5 bg-slate-100 hover:bg-rose-50 text-slate-600 hover:text-rose-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 border border-slate-200 hover:border-rose-200"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                <span>حذف حساب</span>
+              </button>
+            )}
 
             <button
               onClick={() => {

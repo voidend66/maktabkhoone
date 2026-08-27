@@ -1,7 +1,9 @@
 {
   "name": "Remix Copy of کتابخانه همکلاسی - سامانه امانت کتاب مدرسه",
   "description": "سامانه اشتراک‌گذاری و امانت کتاب همتا به همتا بین دانش‌آموزان مدرسه به همراه لیگ کتابخوانی و امتیازدهی",
-  "requestFramePermissions": [],
+  "requestFramePermissions": [
+    "camera"
+  ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
   ]

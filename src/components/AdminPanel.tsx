@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import {
@@ -23,7 +23,11 @@ import {
   XCircle,
   Save,
   LogOut,
-  Edit3
+  Edit3,
+  Sliders,
+  Settings,
+  AlertCircle,
+  Coins
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -35,6 +39,7 @@ export const AdminPanel: React.FC = () => {
     requests,
     approveUser,
     rejectUser,
+    deleteUser,
     deleteBook,
     schoolClasses,
     addSchoolClass,
@@ -42,12 +47,14 @@ export const AdminPanel: React.FC = () => {
     deleteSchoolClass,
     bankCardInfo,
     updateBankCardInfo,
+    systemConfig,
+    updateSystemConfig,
     verifyPaymentByAdmin
   } = useApp();
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'all_books' | 'all_users' | 'class_management'
+    'pending_users' | 'bank_card' | 'system_settings' | 'all_books' | 'all_users' | 'class_management'
   >('pending_users');
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -56,6 +63,55 @@ export const AdminPanel: React.FC = () => {
   const [cardHolderName, setCardHolderName] = useState(bankCardInfo.cardHolderName);
   const [bankName, setBankName] = useState(bankCardInfo.bankName);
   const [cardSaveMsg, setCardSaveMsg] = useState('');
+
+  // System Config State
+  const [minBooksForReg, setMinBooksForReg] = useState(systemConfig?.minBooksForRegistration ?? 3);
+  const [maxBooksForReg, setMaxBooksForReg] = useState(systemConfig?.maxBooksForRegistration ?? 5);
+  const [reqAdminApproval, setReqAdminApproval] = useState(systemConfig?.requireAdminApproval ?? true);
+  const [loanFee, setLoanFee] = useState(systemConfig?.loanFeeAmount ?? 10000);
+  const [loanDuration, setLoanDuration] = useState(systemConfig?.loanDurationDays ?? 7);
+  const [paymentHours, setPaymentHours] = useState(systemConfig?.paymentWindowHours ?? 3);
+  const [handoverHours, setHandoverHours] = useState(systemConfig?.handoverWindowHours ?? 12);
+  const [configSaveMsg, setConfigSaveMsg] = useState('');
+  const [isSavingConfig, setIsSavingConfig] = useState(false);
+
+  useEffect(() => {
+    if (systemConfig) {
+      setMinBooksForReg(systemConfig.minBooksForRegistration ?? 3);
+      setMaxBooksForReg(systemConfig.maxBooksForRegistration ?? 5);
+      setReqAdminApproval(systemConfig.requireAdminApproval ?? true);
+      setLoanFee(systemConfig.loanFeeAmount ?? 10000);
+      setLoanDuration(systemConfig.loanDurationDays ?? 7);
+      setPaymentHours(systemConfig.paymentWindowHours ?? 3);
+      setHandoverHours(systemConfig.handoverWindowHours ?? 12);
+    }
+  }, [systemConfig]);
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSavingConfig(true);
+    try {
+      const res = await updateSystemConfig({
+        minBooksForRegistration: Number(minBooksForReg) || 3,
+        maxBooksForRegistration: Number(maxBooksForReg) || 5,
+        requireAdminApproval: reqAdminApproval,
+        loanFeeAmount: Number(loanFee) || 10000,
+        loanDurationDays: Number(loanDuration) || 7,
+        paymentWindowHours: Number(paymentHours) || 3,
+        handoverWindowHours: Number(handoverHours) || 12
+      });
+      if (res.success) {
+        setConfigSaveMsg('قوانین و تنظیمات سامانه با موفقیت در پایگاه داده ذخیره شد ✓');
+      } else {
+        setConfigSaveMsg(res.message || 'خطا در ذخیره تنظیمات');
+      }
+    } catch (err: any) {
+      setConfigSaveMsg('خطا در ذخیره تنظیمات');
+    } finally {
+      setIsSavingConfig(false);
+      setTimeout(() => setConfigSaveMsg(''), 5000);
+    }
+  };
 
   // Class Management Form State
   const [newClassName, setNewClassName] = useState('');
@@ -201,10 +257,22 @@ export const AdminPanel: React.FC = () => {
           }`}
         >
           <CreditCard className="w-4 h-4 text-emerald-400" />
-          <span>کارت به کارت و فیش‌ها ({pendingPayments.length})</span>
+          <span>کارت و فیش‌ها ({pendingPayments.length})</span>
           {pendingPayments.length > 0 && (
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse absolute top-2 left-2" />
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('system_settings')}
+          className={`flex-1 min-w-[140px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'system_settings'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Sliders className="w-4 h-4 text-amber-400" />
+          <span>قوانین و تنظیمات سامانه</span>
         </button>
 
         <button
@@ -511,6 +579,205 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
+      {/* Tab: System Settings & Rules */}
+      {activeTab === 'system_settings' && (
+        <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
+          <div className="flex items-center justify-between flex-wrap gap-3 pb-4 border-b border-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200">
+                <Sliders className="w-6 h-6 text-amber-600" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 text-lg">قوانین و تنظیمات پلتفرم مکتب‌خانه</h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  مدیریت شرایط ثبت‌نام اعضا، سهمیه کتاب‌های اولیه، قوانین امانت‌گیری و زمان‌بندی‌ها
+                </p>
+              </div>
+            </div>
+
+            {configSaveMsg && (
+              <div className="p-3 bg-emerald-50 text-emerald-800 rounded-xl text-xs font-bold border border-emerald-200 flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <span>{configSaveMsg}</span>
+              </div>
+            )}
+          </div>
+
+          <form onSubmit={handleSaveConfig} className="space-y-6">
+            {/* Section 1: Registration Rules */}
+            <div className="space-y-4">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <ShieldCheck className="w-4 h-4 text-indigo-600" />
+                <span>قوانین ثبت‌نام و عضویت دانش‌آموزان:</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    حداقل تعداد کتاب برای ثبت‌نام (جلد):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="20"
+                    value={minBooksForReg}
+                    onChange={(e) => setMinBooksForReg(parseInt(e.target.value) || 1)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    هر عضو جدید موظف است این تعداد کتاب جهت اهدا یا اشتراک در گنجینه وارد کند.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    حداکثر سقف معرفی کتاب در ثبت‌نام:
+                  </label>
+                  <input
+                    type="number"
+                    min={minBooksForReg}
+                    max="50"
+                    value={maxBooksForReg}
+                    onChange={(e) => setMaxBooksForReg(parseInt(e.target.value) || minBooksForReg)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    حداکثر تعداد کتابی که در فرم ثبت‌نام اولیه قابل اضافه کردن است.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    نیاز به تایید مدیر برای فعال‌سازی حساب:
+                  </label>
+                  <div className="pt-2 flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="requireApproval"
+                        checked={reqAdminApproval === true}
+                        onChange={() => setReqAdminApproval(true)}
+                        className="w-4 h-4 text-indigo-600"
+                      />
+                      <span className="text-xs font-bold text-slate-800">بله (در انتظار تایید)</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="requireApproval"
+                        checked={reqAdminApproval === false}
+                        onChange={() => setReqAdminApproval(false)}
+                        className="w-4 h-4 text-indigo-600"
+                      />
+                      <span className="text-xs font-bold text-slate-800">خیر (فعال‌سازی فوری)</span>
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    در حالت بله، تا زمان بررسی کارت و کتب توسط مدیر، حساب در وضعیت Pending می‌ماند.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 2: Lending & Fee Rules */}
+            <div className="space-y-4 pt-2">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Coins className="w-4 h-4 text-amber-600" />
+                <span>قوانین امانت‌دهی، مبلغ و بازه‌های زمانی:</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    مبلغ حق امانت کتاب (تومان):
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="1000"
+                    value={loanFee}
+                    onChange={(e) => setLoanFee(parseInt(e.target.value) || 0)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-emerald-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    مبلغ واریزی به شماره کارت مکتب‌خانه بابت هر بار امانت کتاب.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    مدت مجاز امانت کتاب (روز):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="60"
+                    value={loanDuration}
+                    onChange={(e) => setLoanDuration(parseInt(e.target.value) || 7)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    فرصت دانش‌آموز برای خواندن و بازگرداندن کتاب به مالک.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    مهلت ثبت فیش واریزی (ساعت):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="48"
+                    value={paymentHours}
+                    onChange={(e) => setPaymentHours(parseInt(e.target.value) || 3)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    مهلت امانت‌گیرنده پس از تایید مالک برای کارت به کارت و ثبت فیش.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    مهلت هماهنگی تحویل حضوری (ساعت):
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="72"
+                    value={handoverHours}
+                    onChange={(e) => setHandoverHours(parseInt(e.target.value) || 12)}
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    مهلت تحویل فیزیکی کتاب در شیفت مدرسه یا آدرس منزل.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
+              <button
+                type="submit"
+                disabled={isSavingConfig}
+                className="px-8 py-3 bg-gradient-to-r from-indigo-600 to-indigo-800 hover:from-indigo-700 hover:to-indigo-900 text-white font-black text-xs rounded-xl shadow-lg shadow-indigo-600/20 transition flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+              >
+                <Save className="w-4 h-4" />
+                <span>{isSavingConfig ? 'در حال ذخیره‌سازی...' : 'ذخیره و اعمال قوانین در کل سامانه'}</span>
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* Tab 2: School Class Management */}
       {activeTab === 'class_management' && (
         <div className="space-y-6">
@@ -541,14 +808,13 @@ export const AdminPanel: React.FC = () => {
                   onChange={(e) => setNewClassGrade(e.target.value)}
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
                 >
-                  <option value="پایه اول">پایه اول</option>
-                  <option value="پایه دوم">پایه دوم</option>
-                  <option value="پایه سوم">پایه سوم</option>
-                  <option value="پایه چهارم">پایه چهارم</option>
-                  <option value="پایه پنجم">پایه پنجم</option>
-                  <option value="پایه ششم">پایه ششم</option>
-                  <option value="متوسطه اول">متوسطه اول</option>
-                  <option value="متوسطه دوم">متوسطه دوم</option>
+                  <option value="پایه اول دبستان">پایه اول دبستان</option>
+                  <option value="پایه دوم دبستان">پایه دوم دبستان</option>
+                  <option value="پایه سوم دبستان">پایه سوم دبستان</option>
+                  <option value="پایه چهارم دبستان">پایه چهارم دبستان</option>
+                  <option value="پایه پنجم دبستان">پایه پنجم دبستان</option>
+                  <option value="پایه ششم دبستان">پایه ششم دبستان</option>
+                  <option value="معلمان و کادر مدرسه">معلمان و کادر مدرسه</option>
                   <option value="متفرقه / غیره">متفرقه / غیره</option>
                 </select>
               </div>
@@ -782,22 +1048,43 @@ export const AdminPanel: React.FC = () => {
             {approvedStudents.map((st) => (
               <div
                 key={st.id}
-                className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center gap-3"
+                className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 hover:bg-slate-100/80 transition"
               >
-                <img
-                  src={st.avatar}
-                  alt={st.name}
-                  className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500"
-                />
-                <div>
-                  <div className="font-bold text-slate-900 text-sm">{st.name}</div>
-                  <div className="text-xs text-slate-500">
-                    کلاس {st.className} • ⭐ {st.rating}
-                  </div>
-                  <div className="text-[11px] text-emerald-700 font-semibold mt-1">
-                    {st.booksContributedCount} کتاب اشتراکی • {st.booksReadCount} کتاب خوانده
+                <div className="flex items-center gap-3 min-w-0">
+                  <img
+                    src={st.avatar}
+                    alt={st.name}
+                    className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500 shrink-0"
+                  />
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 text-sm truncate">{st.name}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      کلاس {st.className} • ⭐ {st.rating}
+                    </div>
+                    <div className="text-[11px] text-emerald-700 font-semibold mt-1">
+                      {st.booksContributedCount} کتاب • {st.booksReadCount} خوانده
+                    </div>
                   </div>
                 </div>
+
+                <button
+                  onClick={async () => {
+                    if (
+                      confirm(
+                        `آیا از حذف کامل حساب دانش‌آموز «${st.name}» مطمئن هستید؟ تمام کتاب‌ها و سوابق وی حذف خواهد شد.`
+                      )
+                    ) {
+                      const res = await deleteUser(st.id);
+                      if (!res.success) {
+                        alert(res.message || 'خطا در حذف کاربر');
+                      }
+                    }
+                  }}
+                  title="حذف حساب کاربر"
+                  className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-100/80 rounded-xl transition shrink-0"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
               </div>
             ))}
           </div>

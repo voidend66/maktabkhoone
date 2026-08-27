@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Book } from '../types';
 import { useApp } from '../context/AppContext';
+import { getSafeImageUrl, DEFAULT_BOOK_COVER, DEFAULT_AVATARS } from '../utils/coverPresets';
 import {
   X,
   Star,
@@ -27,9 +28,23 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onRequestLoan
 }) => {
   const { currentUser, addBookReview, users } = useApp();
-  const [newRating, setNewRating] = useState(5);
-  const [newComment, setNewComment] = useState('');
+  
+  const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
+
+  const [newRating, setNewRating] = useState(existingUserReview ? existingUserReview.rating : 5);
+  const [newComment, setNewComment] = useState(existingUserReview ? existingUserReview.comment : '');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Sync state if existing review changes
+  React.useEffect(() => {
+    if (existingUserReview) {
+      setNewRating(existingUserReview.rating);
+      setNewComment(existingUserReview.comment);
+    } else {
+      setNewRating(5);
+      setNewComment('');
+    }
+  }, [book?.id, currentUser?.id]);
 
   if (!book) return null;
 
@@ -40,8 +55,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     e.preventDefault();
     if (!newComment.trim()) return;
     setIsSubmittingReview(true);
-    addBookReview(book.id, newRating, newComment);
-    setNewComment('');
+    addBookReview(book.id, newRating, newComment.trim());
     setIsSubmittingReview(false);
   };
 
@@ -72,8 +86,11 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
             {/* Cover Column */}
             <div className="relative rounded-2xl overflow-hidden aspect-[3/4] bg-slate-100 shadow-md">
               <img
-                src={book.coverImage}
+                src={getSafeImageUrl(book.coverImage, 'book')}
                 alt={book.title}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = DEFAULT_BOOK_COVER;
+                }}
                 className="w-full h-full object-cover"
               />
               <span
@@ -169,8 +186,11 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
           <div className="bg-indigo-50/60 rounded-2xl p-4 border border-indigo-100 flex items-center justify-between flex-wrap gap-4">
             <div className="flex items-center gap-3">
               <img
-                src={book.ownerAvatar || owner?.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=250'}
+                src={getSafeImageUrl(book.ownerAvatar || owner?.avatar, 'avatar')}
                 alt={book.ownerName}
+                onError={(e) => {
+                  (e.currentTarget as HTMLImageElement).src = DEFAULT_AVATARS.studentMale;
+                }}
                 className="w-12 h-12 rounded-full object-cover ring-2 ring-indigo-500"
               />
               <div>

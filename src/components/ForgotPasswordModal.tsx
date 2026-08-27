@@ -38,7 +38,13 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({
       return;
     }
 
-    const found = users.find(u => u.phone === phone.trim() && u.name.trim() === name.trim());
+    const cleanInputPhone = phone.replace(/\D/g, '');
+    const found = users.find(u => {
+      const uClean = u.phone.replace(/\D/g, '');
+      const matchesPhone = uClean === cleanInputPhone || (cleanInputPhone.length >= 10 && uClean.endsWith(cleanInputPhone.slice(-10)));
+      const matchesName = u.name.trim().toLowerCase() === name.trim().toLowerCase();
+      return matchesPhone && matchesName;
+    });
     if (!found) {
       setError('حساب کاربری با این نام و شماره تلفن یافت نشد.');
       return;
