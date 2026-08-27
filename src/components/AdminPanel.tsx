@@ -33,7 +33,8 @@ import {
   Filter,
   Crown,
   UserPlus,
-  Shield
+  Shield,
+  ArrowLeftRight
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -62,9 +63,17 @@ export const AdminPanel: React.FC = () => {
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
+    'pending_users' | 'bank_card' | 'lending_history' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
   >('pending_users');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Payment Archive State
+  const [paymentSearch, setPaymentSearch] = useState('');
+  const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'rejected' | 'proof_submitted'>('all');
+
+  // Lending History State
+  const [lendingSearch, setLendingSearch] = useState('');
+  const [lendingFilter, setLendingFilter] = useState<string>('all');
 
   // System Logs State
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
@@ -352,6 +361,18 @@ export const AdminPanel: React.FC = () => {
           {pendingPayments.length > 0 && (
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse absolute top-2 left-2" />
           )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('lending_history')}
+          className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'lending_history'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <ArrowLeftRight className="w-4 h-4 text-amber-400" />
+          <span>تاریخچه کل امانت‌ها ({requests.length})</span>
         </button>
 
         <button
@@ -694,6 +715,485 @@ export const AdminPanel: React.FC = () => {
                 </div>
               ))
             )}
+          </div>
+
+          {/* Historical Payments Archive & Stats */}
+          <div className="border-t border-slate-200 pt-8 mt-8 space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div>
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-amber-500" />
+                  <span>بایگانی تراکنش‌های مالی و تاریخچه کل فیش‌ها</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  نظارت بر مبالغ دریافتی، فیش‌های تایید شده، رد شده و کل تسویه حساب‌های سامانه
+                </p>
+              </div>
+            </div>
+
+            {/* Financial Stats Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-950">
+                <span className="text-[10px] text-emerald-800 block font-semibold">کل مبالغ وصول شده:</span>
+                <strong className="text-lg font-black block mt-1">
+                  {requests
+                    .filter((r) => r.paymentStatus === 'paid')
+                    .reduce((sum, r) => sum + (r.feeAmount || 10000), 0)
+                    .toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal">تومان</span>
+                </strong>
+                <span className="text-[9px] text-emerald-700 block mt-0.5">کارمزد امانت‌ کتابخانه</span>
+              </div>
+
+              <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 text-sky-950">
+                <span className="text-[10px] text-sky-800 block font-semibold">کل فیش‌های تایید شده:</span>
+                <strong className="text-lg font-black block mt-1">
+                  {requests.filter((r) => r.paymentStatus === 'paid').length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal">مورد</span>
+                </strong>
+                <span className="text-[9px] text-sky-700 block mt-0.5">ثبت نهایی امانت‌ها</span>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-950">
+                <span className="text-[10px] text-amber-800 block font-semibold">فیش‌های معوقه (فعلی):</span>
+                <strong className="text-lg font-black block mt-1">
+                  {requests.filter((r) => r.status === 'payment_proof_submitted').length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal">مورد</span>
+                </strong>
+                <span className="text-[9px] text-amber-700 block mt-0.5">در انتظار تایید مدیریت</span>
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-950">
+                <span className="text-[10px] text-rose-800 block font-semibold">فیش‌های رد شده:</span>
+                <strong className="text-lg font-black block mt-1">
+                  {requests.filter((r) => r.paymentStatus === 'rejected').length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal">مورد</span>
+                </strong>
+                <span className="text-[9px] text-rose-700 block mt-0.5">اطلاعات نادرست/نامعتبر</span>
+              </div>
+            </div>
+
+            {/* Search & Filter Controls for Payments Archive */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row gap-3 items-center justify-between">
+              {/* Search input */}
+              <div className="relative w-full md:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+                <input
+                  type="text"
+                  placeholder="جستجو در امانت‌گیرنده، نام کتاب یا کد پیگیری..."
+                  value={paymentSearch}
+                  onChange={(e) => setPaymentSearch(e.target.value)}
+                  className="w-full text-xs pr-9 pl-3 py-3 bg-white border border-slate-300 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Filter Buttons */}
+              <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+                <span className="text-[11px] text-slate-500 font-bold ml-1">وضعیت پرداخت:</span>
+                {(['all', 'paid', 'rejected', 'proof_submitted'] as const).map((filter) => (
+                  <button
+                    key={filter}
+                    onClick={() => setPaymentFilter(filter)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                      paymentFilter === filter
+                        ? 'bg-slate-800 text-white shadow-xs'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {filter === 'all' && 'همه رکوردها'}
+                    {filter === 'paid' && 'تایید شده ✅'}
+                    {filter === 'rejected' && 'رد شده ❌'}
+                    {filter === 'proof_submitted' && 'در انتظار تایید ⏳'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Payments List Container */}
+            <div className="space-y-3">
+              {(() => {
+                const allPaymentReqs = requests.filter(
+                  (r) => r.paymentProof !== undefined || r.paymentStatus !== undefined
+                );
+                const sortedPayments = [...allPaymentReqs].sort(
+                  (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+                const filteredPayments = sortedPayments.filter((req) => {
+                  const matchesStatus =
+                    paymentFilter === 'all' ||
+                    (paymentFilter === 'paid' && req.paymentStatus === 'paid') ||
+                    (paymentFilter === 'rejected' && req.paymentStatus === 'rejected') ||
+                    (paymentFilter === 'proof_submitted' &&
+                      (req.paymentStatus === 'proof_submitted' || req.status === 'payment_proof_submitted'));
+
+                  const term = paymentSearch.trim().toLowerCase();
+                  const matchesSearch =
+                    !term ||
+                    req.bookTitle.toLowerCase().includes(term) ||
+                    req.borrowerName.toLowerCase().includes(term) ||
+                    req.ownerName.toLowerCase().includes(term) ||
+                    (req.paymentProof?.trackingCode &&
+                      req.paymentProof.trackingCode.toLowerCase().includes(term));
+
+                  return matchesStatus && matchesSearch;
+                });
+
+                if (filteredPayments.length === 0) {
+                  return (
+                    <div className="bg-white rounded-3xl p-8 text-center border border-slate-200 text-xs text-slate-400">
+                      هیچ فیش یا تراکنش مالی منطبق با فیلتر شما در سیستم یافت نشد.
+                    </div>
+                  );
+                }
+
+                return filteredPayments.map((req) => (
+                  <div
+                    key={req.id + '-archive'}
+                    className="bg-white rounded-2xl p-4 border border-slate-200 shadow-3xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4"
+                  >
+                    <div className="flex items-center gap-3">
+                      <img
+                        src={req.bookCover}
+                        alt={req.bookTitle}
+                        className="w-9 h-12 rounded-lg object-cover shadow-3xs shrink-0"
+                      />
+                      <div>
+                        <h4 className="font-bold text-slate-800 text-xs">{req.bookTitle}</h4>
+                        <p className="text-[10px] text-slate-500 mt-0.5">
+                          توسط: <span className="text-cyan-800 font-bold">{req.borrowerName}</span> (کلاس {req.borrowerClass}) 
+                          • مالک: {req.ownerName}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1 text-[10px] bg-slate-50 p-2.5 rounded-xl border border-slate-150 flex-1 max-w-xl">
+                      <div>
+                        <span className="text-slate-400">کد پیگیری:</span>
+                        <span className="font-mono text-slate-800 block font-bold" dir="ltr">
+                          {req.paymentProof?.trackingCode || 'ثبت‌نشده'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400">تاریخ واریز:</span>
+                        <span className="text-slate-800 block font-semibold">
+                          {req.paymentProof?.paymentDate || 'ثبت‌نشده'}
+                        </span>
+                      </div>
+                      <div className="col-span-2 sm:col-span-1">
+                        <span className="text-slate-400">مبلغ واریزی:</span>
+                        <span className="text-emerald-700 block font-black">
+                          {(req.feeAmount || 10000).toLocaleString('fa-IR')} تومان
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {req.paymentProof?.receiptImage && (
+                        <button
+                          onClick={() => {
+                            const w = window.open();
+                            if (w && req.paymentProof?.receiptImage) {
+                              w.document.write(`<img src="${req.paymentProof.receiptImage}" style="max-width:100%; max-height:100vh; display:block; margin:auto;"/>`);
+                            } else {
+                              alert('تصویر فیش باز نشد. مرورگر شما پاپ‌آپ را مسدود کرده است.');
+                            }
+                          }}
+                          className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-bold transition flex items-center gap-1 cursor-pointer"
+                        >
+                          مشاهده تصویر فیش
+                        </button>
+                      )}
+
+                      <span
+                        className={`px-3 py-1.5 rounded-lg text-[10px] font-black ${
+                          req.paymentStatus === 'paid'
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                            : req.paymentStatus === 'rejected'
+                            ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                            : 'bg-amber-100 text-amber-800 border border-amber-200'
+                        }`}
+                      >
+                        {req.paymentStatus === 'paid' && 'تایید شده ✅'}
+                        {req.paymentStatus === 'rejected' && 'رد صلاحیت شده ❌'}
+                        {req.paymentStatus === 'proof_submitted' && 'معلق (جدید) ⏳'}
+                        {!req.paymentStatus && 'پرداخت‌نشده ⛔'}
+                      </span>
+                    </div>
+                  </div>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Comprehensive Lending & Exchange History */}
+      {activeTab === 'lending_history' && (
+        <div className="space-y-6">
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
+                  <ArrowLeftRight className="w-5 h-5 text-indigo-600" />
+                  <span>دفتر اسناد و بایگانی جامع امانات کتاب</span>
+                </h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  نظارت بر تمامی کتاب‌های امانت داده شده، امانت‌های فعال، مهلت تحویل، بازگشت‌ها و تاخیرها
+                </p>
+              </div>
+            </div>
+
+            {/* Lending Statistics Grid */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-slate-900">
+                <span className="text-[10px] text-slate-500 block font-semibold">کل بده‌بستان‌های ثبت شده:</span>
+                <strong className="text-2xl font-black block mt-1 text-slate-800">
+                  {requests.length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal text-slate-500">تراکنش</span>
+                </strong>
+                <span className="text-[9px] text-slate-400 block mt-0.5">آمار تجمعی کل تاریخ مدرسه</span>
+              </div>
+
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-amber-950">
+                <span className="text-[10px] text-amber-800 block font-semibold">امانت‌های فعال (دست دانش‌آموز):</span>
+                <strong className="text-2xl font-black block mt-1 text-amber-900">
+                  {requests.filter((r) => r.status === 'handover_confirmed').length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal text-amber-700">جلد کتاب</span>
+                </strong>
+                <span className="text-[9px] text-amber-600 block mt-0.5">در خارج از کتابخانه</span>
+              </div>
+
+              <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-4 text-emerald-950">
+                <span className="text-[10px] text-emerald-800 block font-semibold">کتاب‌های عودت داده شده:</span>
+                <strong className="text-2xl font-black block mt-1 text-emerald-900">
+                  {requests.filter((r) => r.status === 'returned').length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal text-emerald-700">جلد کتاب</span>
+                </strong>
+                <span className="text-[9px] text-emerald-600 block mt-0.5">بازگشت موفقیت‌آمیز به مالک</span>
+              </div>
+
+              <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 text-rose-950">
+                <span className="text-[10px] text-rose-800 block font-semibold">کتاب‌های دارای تاخیر/دیرکرد:</span>
+                <strong className="text-2xl font-black block mt-1 text-rose-900">
+                  {requests
+                    .filter(
+                      (r) =>
+                        r.status === 'handover_confirmed' &&
+                        r.dueDate &&
+                        new Date(r.dueDate).getTime() < new Date().getTime()
+                    )
+                    .length.toLocaleString('fa-IR')}{' '}
+                  <span className="text-xs font-normal text-rose-700">جلد کتاب</span>
+                </strong>
+                <span className="text-[9px] text-rose-600 block mt-0.5">نیازمند پیگیری تلفنی</span>
+              </div>
+            </div>
+
+            {/* Search and Filters */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row gap-3 items-center justify-between">
+              {/* Search bar */}
+              <div className="relative w-full md:w-80">
+                <Search className="w-4 h-4 text-slate-400 absolute right-3 top-3.5" />
+                <input
+                  type="text"
+                  placeholder="جستجو بر اساس کتاب، مالک یا امانت‌گیرنده..."
+                  value={lendingSearch}
+                  onChange={(e) => setLendingSearch(e.target.value)}
+                  className="w-full text-xs pr-9 pl-3 py-3 bg-white border border-slate-300 rounded-xl font-bold focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
+                <span className="text-[11px] text-slate-500 font-bold ml-1">فیلتر وضعیت امانت:</span>
+                {[
+                  { value: 'all', label: 'همه موارد' },
+                  { value: 'active', label: 'امانت‌های فعال 📖' },
+                  { value: 'returned', label: 'عودت شده‌ها ✅' },
+                  { value: 'pending', label: 'در انتظار تایید اولیه ⏳' },
+                  { value: 'rejected', label: 'رد شده/لغو شده ❌' }
+                ].map((item) => (
+                  <button
+                    key={item.value}
+                    onClick={() => setLendingFilter(item.value)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-black transition cursor-pointer ${
+                      lendingFilter === item.value
+                        ? 'bg-indigo-600 text-white shadow-xs'
+                        : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Lending Records Cards List */}
+            <div className="space-y-4">
+              {(() => {
+                const sortedRequests = [...requests].sort(
+                  (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+                );
+
+                const filteredLendings = sortedRequests.filter((req) => {
+                  const matchesStatus =
+                    lendingFilter === 'all' ||
+                    (lendingFilter === 'active' && req.status === 'handover_confirmed') ||
+                    (lendingFilter === 'returned' && req.status === 'returned') ||
+                    (lendingFilter === 'pending' && (req.status === 'pending' || req.status === 'accepted')) ||
+                    (lendingFilter === 'rejected' && req.status === 'rejected');
+
+                  const term = lendingSearch.trim().toLowerCase();
+                  const matchesSearch =
+                    !term ||
+                    req.bookTitle.toLowerCase().includes(term) ||
+                    req.borrowerName.toLowerCase().includes(term) ||
+                    req.ownerName.toLowerCase().includes(term) ||
+                    req.borrowerClass.toLowerCase().includes(term) ||
+                    req.ownerClass.toLowerCase().includes(term);
+
+                  return matchesStatus && matchesSearch;
+                });
+
+                if (filteredLendings.length === 0) {
+                  return (
+                    <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 text-xs text-slate-400">
+                      هیچ پرونده امانتی منطبق با جستجو و فیلترهای بالا یافت نشد.
+                    </div>
+                  );
+                }
+
+                return filteredLendings.map((req) => {
+                  const isOverdue =
+                    req.status === 'handover_confirmed' &&
+                    req.dueDate &&
+                    new Date(req.dueDate).getTime() < new Date().getTime();
+
+                  return (
+                    <div
+                      key={req.id}
+                      className={`bg-white rounded-2xl p-5 border shadow-3xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 transition-all hover:border-slate-300 ${
+                        isOverdue ? 'border-rose-300 bg-rose-50/10' : 'border-slate-200'
+                      }`}
+                    >
+                      {/* Left: Book & People Details */}
+                      <div className="flex items-start gap-4">
+                        <img
+                          src={req.bookCover}
+                          alt={req.bookTitle}
+                          className="w-12 h-16 rounded-xl object-cover shadow-sm shrink-0 border border-slate-100"
+                        />
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-slate-900 text-sm">{req.bookTitle}</h4>
+                            
+                            {isOverdue && (
+                              <span className="bg-rose-100 text-rose-800 text-[9px] px-2 py-0.5 rounded-md font-bold border border-rose-200 animate-pulse">
+                                ⚠️ دیرکرد تحویل
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="text-[11px] text-slate-600 font-bold space-y-0.5">
+                            <p>
+                              امانت‌گیرنده:{' '}
+                              <span className="text-indigo-700">{req.borrowerName}</span> (کلاس{' '}
+                              {req.borrowerClass}) •{' '}
+                              <span className="text-slate-400 font-normal">شماره همراه:</span>{' '}
+                              <strong className="text-slate-800 font-mono text-[10px]" dir="ltr">
+                                {req.borrowerPhone || 'نامشخص'}
+                              </strong>
+                            </p>
+                            <p>
+                              مالک کتاب:{' '}
+                              <span className="text-cyan-700">{req.ownerName}</span> (کلاس{' '}
+                              {req.ownerClass})
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Middle: Timeline & Dates */}
+                      <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] bg-slate-50 p-3 rounded-xl border border-slate-150 flex-1 max-w-lg md:mx-4">
+                        <div>
+                          <span className="text-slate-400 block">تاریخ درخواست:</span>
+                          <span className="text-slate-800 font-bold">
+                            {new Date(req.createdAt).toLocaleDateString('fa-IR')}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">وضعیت پرداخت:</span>
+                          <span
+                            className={`font-black ${
+                              req.paymentStatus === 'paid'
+                                ? 'text-emerald-700'
+                                : req.paymentStatus === 'rejected'
+                                ? 'text-rose-700'
+                                : 'text-amber-700'
+                            }`}
+                          >
+                            {req.paymentStatus === 'paid'
+                              ? 'تایید شده (۱۰,۰۰۰ تومان)'
+                              : req.paymentStatus === 'rejected'
+                              ? 'فیش رد شده'
+                              : req.paymentStatus === 'proof_submitted'
+                              ? 'در انتظار بررسی فیش'
+                              : 'پرداخت‌نشده'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">تاریخ تحویل فیزیکی:</span>
+                          <span className="text-slate-800 font-semibold">
+                            {req.handoverConfirmedAt
+                              ? new Date(req.handoverConfirmedAt).toLocaleDateString('fa-IR')
+                              : 'هنوز تحویل داده نشده'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-slate-400 block">مهلت عودت کتاب:</span>
+                          <span
+                            className={`font-bold block ${
+                              isOverdue ? 'text-rose-600' : 'text-slate-800'
+                            }`}
+                          >
+                            {req.dueDate
+                              ? new Date(req.dueDate).toLocaleDateString('fa-IR')
+                              : 'تعیین‌نشده'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Actions / Status Badge */}
+                      <div className="shrink-0 flex items-center gap-2">
+                        <span
+                          className={`px-3 py-1.5 rounded-xl text-[10px] font-black border ${
+                            req.status === 'returned'
+                              ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                              : req.status === 'handover_confirmed'
+                              ? isOverdue
+                                ? 'bg-rose-100 text-rose-800 border-rose-300 shadow-xs'
+                                : 'bg-amber-100 text-amber-800 border-amber-200'
+                              : req.status === 'rejected'
+                              ? 'bg-slate-100 text-slate-700 border-slate-200'
+                              : 'bg-indigo-100 text-indigo-800 border-indigo-200'
+                          }`}
+                        >
+                          {req.status === 'pending' && 'در انتظار پذیرش مالک ⏳'}
+                          {req.status === 'accepted' && 'پذیرفته شده / منتظر پرداخت 💳'}
+                          {req.status === 'payment_pending' && 'در انتظار ارسال فیش 💳'}
+                          {req.status === 'payment_proof_submitted' && 'بررسی فیش توسط مدیر 📁'}
+                          {req.status === 'payment_completed' && 'آماده تحویل فیزیکی 📦'}
+                          {req.status === 'handover_confirmed' &&
+                            (isOverdue ? '⚠️ دارای دیرکرد در عودت' : '📖 در دست امانت فعال')}
+                          {req.status === 'returned' && 'بازگردانده شد به مالک ✅'}
+                          {req.status === 'rejected' && 'لغو شده / رد شده ❌'}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
           </div>
         </div>
       )}

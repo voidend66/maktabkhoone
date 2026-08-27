@@ -202,10 +202,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={onOpenGuide}
                     title="راهنما و آموزش مکتب‌خانه"
-                    className="px-2.5 py-1.5 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition border border-cyan-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                    className="hidden md:flex px-2.5 py-1.5 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition border border-cyan-200 items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                   >
                     <HelpCircle className="w-4 h-4 text-cyan-600 shrink-0" />
-                    <span className="hidden xl:inline">راهنما</span>
+                    <span>راهنما</span>
                   </button>
                 )}
 
@@ -216,10 +216,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }
                   }}
                   title="خروج از حساب کاربری"
-                  className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                  className="hidden md:flex px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span className="hidden xl:inline">خروج</span>
+                  <span>خروج</span>
                 </button>
               </div>
             ) : (
@@ -228,10 +228,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={onOpenGuide}
                     title="راهنما و آموزش مکتب‌خانه"
-                    className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                    className="hidden md:flex px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                   >
                     <HelpCircle className="w-4 h-4 text-slate-600 shrink-0" />
-                    <span className="hidden md:inline">راهنما</span>
+                    <span>راهنما</span>
                   </button>
                 )}
 
