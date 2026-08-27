@@ -26,6 +26,7 @@ export interface User {
   joinedDate: string;
   suspensionReason?: string;
   activeLoanCount?: number;
+  baleChatId?: number | string;
 }
 
 export interface BookReview {

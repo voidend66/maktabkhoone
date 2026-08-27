@@ -10,18 +10,31 @@ import { SiteRulesPage } from './components/SiteRulesPage';
 import { SiteBenefitsSection } from './components/SiteBenefitsSection';
 import { AdminPanel } from './components/AdminPanel';
 import { BaleOtpModal } from './components/BaleOtpModal';
+import { CompleteProfileModal } from './components/CompleteProfileModal';
+import { SystemGuideModal } from './components/SystemGuideModal';
 import { Book } from './types';
-import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
 
 function MainAppContent() {
-  const { requestBookLoan, currentUser, resetToDefaults } = useApp();
+  const { requestBookLoan, currentUser, systemConfig, resetToDefaults } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
 
   // Unified Auth Modal (Login / Register via Bale)
   const [showAuthModal, setShowAuthModal] = useState(false);
+
+  // Guide Modal
+  const [showGuideModal, setShowGuideModal] = useState(false);
+
+  // Complete Profile Modal Trigger
+  const minRequiredBooks = systemConfig?.minBooksForRegistration ?? 0;
+  const isProfileIncomplete =
+    currentUser &&
+    currentUser.role !== 'admin' &&
+    (currentUser.name.startsWith('کاربر بله') ||
+      (minRequiredBooks > 0 && currentUser.booksContributedCount < minRequiredBooks));
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
@@ -80,7 +93,24 @@ function MainAppContent() {
         onOpenLogin={() => setShowAuthModal(true)}
         onOpenRegister={() => setShowAuthModal(true)}
         onOpenPrintModal={() => setActiveTab('league')}
+        onOpenGuide={() => setShowGuideModal(true)}
       />
+
+      {/* Mandatory First-Time Complete Profile Modal */}
+      {isProfileIncomplete && (
+        <CompleteProfileModal
+          onClose={() => {}}
+          onComplete={() => {
+            showToast('اطلاعات عضویت شما با موفقیت تکمیل شد! به مکتب‌خانه خوش آمدید 🎉', 'success');
+            setShowGuideModal(true);
+          }}
+        />
+      )}
+
+      {/* Interactive System Guide Modal */}
+      {showGuideModal && (
+        <SystemGuideModal onClose={() => setShowGuideModal(false)} />
+      )}
 
       {/* Main Body Content Container */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6">
@@ -170,8 +200,16 @@ function MainAppContent() {
             </span>
             <span>•</span>
             <button
+              onClick={() => setShowGuideModal(true)}
+              className="text-xs text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <HelpCircle className="w-3.5 h-3.5" />
+              راهنمای امانت و قوانین
+            </button>
+            <span>•</span>
+            <button
               onClick={() => setActiveTab('rules')}
-              className="text-xs text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1"
+              className="text-xs text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1 cursor-pointer"
             >
               <ShieldCheck className="w-3.5 h-3.5" />
               قوانین و مقررات سایت

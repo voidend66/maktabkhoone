@@ -28,6 +28,7 @@ interface NavbarProps {
   onOpenRegister?: () => void;
   onOpenPrintModal?: () => void;
   onOpenBaleOtp?: () => void;
+  onOpenGuide?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,7 +38,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenLogin,
   onOpenRegister,
   onOpenPrintModal,
-  onOpenBaleOtp
+  onOpenBaleOtp,
+  onOpenGuide
 }) => {
   const { currentUser, setCurrentUser, logoutUser, users, switchUserRoleDemo, requests } = useApp();
 
@@ -218,6 +220,17 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </div>
 
+                {onOpenGuide && (
+                  <button
+                    onClick={onOpenGuide}
+                    title="راهنما و آموزش مکتب‌خانه"
+                    className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition border border-cyan-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-cyan-600 shrink-0" />
+                    <span className="hidden md:inline">راهنمای سامانه</span>
+                  </button>
+                )}
+
                 <button
                   onClick={() => {
                     if (confirm('آیا قصد خروج از حساب کاربری را دارید؟')) {
@@ -225,7 +238,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }
                   }}
                   title="خروج از حساب کاربری"
-                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap"
+                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
                   <span className="hidden sm:inline">خروج</span>
@@ -233,6 +246,17 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             ) : (
               <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                {onOpenGuide && (
+                  <button
+                    onClick={onOpenGuide}
+                    title="راهنما و آموزش مکتب‌خانه"
+                    className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                  >
+                    <HelpCircle className="w-4 h-4 text-slate-600 shrink-0" />
+                    <span className="hidden md:inline">راهنما</span>
+                  </button>
+                )}
+
                 <button
                   id="navbar-auth-btn"
                   onClick={onOpenAuth || onOpenLogin || onOpenBaleOtp}
@@ -368,11 +392,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </button>
               ) : (
                 <button
-                  onClick={onOpenLogin}
-                  className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-cyan-300 bg-cyan-50/90 text-cyan-900 text-xs font-black transition shadow-2xs active:scale-95"
+                  onClick={() => {
+                    if (confirm('آیا قصد خروج از حساب کاربری را دارید؟')) {
+                      logoutUser();
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-rose-200 bg-rose-50/90 text-rose-800 text-xs font-black transition shadow-2xs active:scale-95 cursor-pointer"
+                  title="خروج از حساب"
                 >
-                  <LogIn className="w-5 h-5 text-cyan-600" />
-                  <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">ورود</span>
+                  <LogOut className="w-5 h-5 text-rose-600" />
+                  <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">خروج</span>
                 </button>
               )}
             </>

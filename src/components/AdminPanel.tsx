@@ -27,7 +27,10 @@ import {
   Sliders,
   Settings,
   AlertCircle,
-  Coins
+  Coins,
+  Terminal,
+  RotateCcw,
+  Filter
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -54,9 +57,50 @@ export const AdminPanel: React.FC = () => {
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'system_settings' | 'all_books' | 'all_users' | 'class_management'
+    'pending_users' | 'bank_card' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
   >('pending_users');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // System Logs State
+  const [systemLogs, setSystemLogs] = useState<any[]>([]);
+  const [logSearch, setLogSearch] = useState('');
+  const [logLevelFilter, setLogLevelFilter] = useState<'all' | 'error' | 'warn' | 'info' | 'db'>('all');
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const fetchSystemLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const res = await fetch('/api/admin/logs');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.success) {
+          setSystemLogs(data.logs || []);
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching logs:', err);
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  const handleClearLogs = async () => {
+    if (!confirm('آیا از پاک‌سازی تمامی لاگ‌های ثبت‌شده دیتابیس و رویدادهای سامانه اطمینان دارید؟')) return;
+    try {
+      const res = await fetch('/api/admin/logs', { method: 'DELETE' });
+      if (res.ok) {
+        setSystemLogs([]);
+      }
+    } catch (err) {
+      console.error('Error clearing logs:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'system_logs') {
+      fetchSystemLogs();
+    }
+  }, [activeTab]);
 
   // Bank Card Form State
   const [cardNumber, setCardNumber] = useState(bankCardInfo.cardNumber);
@@ -309,6 +353,18 @@ export const AdminPanel: React.FC = () => {
         >
           <Users className="w-4 h-4" />
           <span>دانش‌آموزان ({approvedStudents.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('system_logs')}
+          className={`flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'system_logs'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Terminal className="w-4 h-4 text-emerald-400" />
+          <span>لاگ‌های دیتابیس و رویدادها ({systemLogs.length})</span>
         </button>
       </div>
 
@@ -618,15 +674,18 @@ export const AdminPanel: React.FC = () => {
                   </label>
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     max="20"
                     value={minBooksForReg}
-                    onChange={(e) => setMinBooksForReg(parseInt(e.target.value) || 1)}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value);
+                      setMinBooksForReg(isNaN(val) ? 0 : Math.max(0, val));
+                    }}
                     className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-black text-indigo-700 text-center"
                     required
                   />
                   <p className="text-[11px] text-slate-500 font-medium">
-                    هر عضو جدید موظف است این تعداد کتاب جهت اهدا یا اشتراک در گنجینه وارد کند.
+                    تعداد کتاب اجباری برای عضویت (اگر روی ۰ تنظیم شود، ثبت‌نام بدون افزودن کتاب ممکن می‌شود).
                   </p>
                 </div>
 
@@ -1087,6 +1146,146 @@ export const AdminPanel: React.FC = () => {
                 </button>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tab 5: System Logs */}
+      {activeTab === 'system_logs' && (
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-6">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+            <div className="flex items-center gap-2">
+              <Terminal className="w-5 h-5 text-emerald-600" />
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">لاگ‌های دیتابیس و تراکنش‌های سامانه</h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  گزارش به‌روزرسانی‌ها، ورود و ثبت‌نام، رخدادهای دیتابیس و خطاهای سیستم ({systemLogs.length} لاگ ثبت‌شده)
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={fetchSystemLogs}
+                className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5"
+                title="به‌روزرسانی"
+              >
+                <RotateCcw className={`w-4 h-4 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+                <span>بازخوانی لاگ‌ها</span>
+              </button>
+
+              <button
+                onClick={handleClearLogs}
+                disabled={systemLogs.length === 0}
+                className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold rounded-xl transition flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>پاک‌سازی لاگ‌ها</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Search & Level Filters */}
+          <div className="flex flex-col sm:flex-row items-center gap-3">
+            <div className="relative flex-1 w-full">
+              <Search className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+              <input
+                type="text"
+                placeholder="جستجو در متن لاگ یا جزئیات..."
+                value={logSearch}
+                onChange={(e) => setLogSearch(e.target.value)}
+                className="w-full pl-4 pr-10 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none"
+              />
+            </div>
+
+            <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
+              {(['all', 'error', 'warn', 'info', 'db'] as const).map((lvl) => (
+                <button
+                  key={lvl}
+                  onClick={() => setLogLevelFilter(lvl)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition whitespace-nowrap ${
+                    logLevelFilter === lvl
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  {lvl === 'all' && 'همه'}
+                  {lvl === 'error' && '🚨 خطاها'}
+                  {lvl === 'warn' && '⚠️ هشدارها'}
+                  {lvl === 'info' && 'ℹ️ عمومی'}
+                  {lvl === 'db' && '🗄️ دیتابیس'}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Logs List Table */}
+          <div className="border border-slate-200 rounded-2xl overflow-hidden">
+            <div className="max-h-[500px] overflow-y-auto">
+              {systemLogs.length === 0 ? (
+                <div className="p-8 text-center text-slate-500 text-xs font-bold">
+                  هیچ لاگی در حافظه سامانه یافت نشد.
+                </div>
+              ) : (
+                <table className="w-full text-right text-xs">
+                  <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
+                    <tr>
+                      <th className="p-3 w-28">زمان ثبت</th>
+                      <th className="p-3 w-24 text-center">نوع</th>
+                      <th className="p-3">پیام رویداد</th>
+                      <th className="p-3">جزئیات فنی</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {systemLogs
+                      .filter((l) => {
+                        if (logLevelFilter !== 'all' && l.level !== logLevelFilter) return false;
+                        if (logSearch) {
+                          const q = logSearch.toLowerCase();
+                          return (
+                            l.message.toLowerCase().includes(q) ||
+                            (l.details && l.details.toLowerCase().includes(q))
+                          );
+                        }
+                        return true;
+                      })
+                      .map((log) => (
+                        <tr key={log.id} className="hover:bg-slate-50/80 transition">
+                          <td className="p-3 font-mono text-[11px] text-slate-500 dir-ltr text-right">
+                            {log.timestamp}
+                          </td>
+                          <td className="p-3 text-center">
+                            {log.level === 'error' && (
+                              <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-black">
+                                ERROR
+                              </span>
+                            )}
+                            {log.level === 'warn' && (
+                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-black">
+                                WARN
+                              </span>
+                            )}
+                            {log.level === 'info' && (
+                              <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 rounded-md text-[10px] font-black">
+                                INFO
+                              </span>
+                            )}
+                            {log.level === 'db' && (
+                              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-black">
+                                DB
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-3 font-bold text-slate-900">{log.message}</td>
+                          <td className="p-3 text-slate-500 font-mono text-[11px] max-w-xs truncate">
+                            {log.details || '—'}
+                          </td>
+                        </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
         </div>
       )}

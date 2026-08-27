@@ -21,6 +21,14 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_FILE = path.join(DATA_DIR, 'maktabkhune.json');
 const DB_BACKUP = path.join(DATA_DIR, 'maktabkhune.json.bak');
 
+export interface SystemLog {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'db';
+  message: string;
+  details?: string;
+}
+
 interface DatabaseSchema {
   users: User[];
   books: Book[];
@@ -28,6 +36,7 @@ interface DatabaseSchema {
   schoolClasses: SchoolClass[];
   feedbacks: MutualFeedback[];
   settings: Record<string, string>;
+  systemLogs?: SystemLog[];
 }
 
 // In-memory data store with disk persistence
@@ -37,7 +46,8 @@ let memoryDb: DatabaseSchema = {
   requests: [],
   schoolClasses: [],
   feedbacks: [],
-  settings: {}
+  settings: {},
+  systemLogs: []
 };
 
 /**
@@ -76,7 +86,8 @@ function loadFromDisk(): boolean {
           requests: Array.isArray(parsed.requests) ? parsed.requests : [],
           schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
-          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {}
+          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
+          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
         };
         return true;
       }
@@ -93,7 +104,8 @@ function loadFromDisk(): boolean {
           requests: Array.isArray(parsed.requests) ? parsed.requests : [],
           schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
-          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {}
+          settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
+          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
         };
         return true;
       }
@@ -647,6 +659,15 @@ export const dbService = {
     return newFb;
   },
 
+  getSetting(key: string): string | null {
+    return memoryDb.settings[key] || null;
+  },
+
+  setSetting(key: string, value: string): void {
+    memoryDb.settings[key] = value;
+    saveToDisk();
+  },
+
   // ---- SETTINGS ----
   getBankCardInfo(): BankCardInfo {
     const val = memoryDb.settings['bank_card_info'];
@@ -710,6 +731,34 @@ export const dbService = {
     return updated;
   },
 
+  // ---- SYSTEM LOGS ----
+  addSystemLog(level: 'info' | 'warn' | 'error' | 'db', message: string, details?: string): SystemLog {
+    if (!memoryDb.systemLogs) memoryDb.systemLogs = [];
+    const newLog: SystemLog = {
+      id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      timestamp: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      level,
+      message,
+      details
+    };
+    memoryDb.systemLogs.unshift(newLog);
+    if (memoryDb.systemLogs.length > 500) {
+      memoryDb.systemLogs = memoryDb.systemLogs.slice(0, 500);
+    }
+    saveToDisk();
+    return newLog;
+  },
+
+  getSystemLogs(): SystemLog[] {
+    return memoryDb.systemLogs || [];
+  },
+
+  clearSystemLogs(): boolean {
+    memoryDb.systemLogs = [];
+    saveToDisk();
+    return true;
+  },
+
   // Bootstrap full state
   getBootstrapData() {
     return {
@@ -719,7 +768,8 @@ export const dbService = {
       schoolClasses: this.getAllClasses(),
       feedbacks: this.getAllFeedbacks(),
       bankCardInfo: this.getBankCardInfo(),
-      systemConfig: this.getSystemConfig()
+      systemConfig: this.getSystemConfig(),
+      systemLogs: this.getSystemLogs()
     };
   }
 };
