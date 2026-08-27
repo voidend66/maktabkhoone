@@ -34,6 +34,14 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
 
+  const handleAddBookClick = () => {
+    if (currentUser?.status !== 'approved') {
+      alert("⚠️ حساب کاربری شما هنوز تایید نشده است!\n\nپس از بررسی و تایید مدارک و مشخصات شما توسط مدیر مدرسه، امکان ثبت و اضافه کردن کتاب جدید به طاقچه فعال خواهد شد.");
+      return;
+    }
+    setShowAddModal(true);
+  };
+
   if (!currentUser) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center border border-slate-200 max-w-lg mx-auto my-12 space-y-4 shadow-sm">
@@ -80,7 +88,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
           {/* Prominent Large Add Book Button */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 shrink-0">
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleAddBookClick}
               className="bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 px-6 py-3.5 rounded-2xl text-sm font-black shadow-lg shadow-amber-500/30 hover:scale-[1.02] active:scale-95 transition flex items-center justify-center gap-2.5"
             >
               <BookPlus className="w-5 h-5 text-slate-950" />
@@ -89,6 +97,64 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
           </div>
         </div>
       </div>
+
+      {/* User Account Status Alert Banner */}
+      {currentUser.status !== 'approved' && (
+        <div className={`p-5 rounded-3xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-xs ${
+          currentUser.status === 'pending'
+            ? 'bg-amber-50 border-amber-200 text-amber-950'
+            : currentUser.status === 'rejected'
+              ? 'bg-rose-50/70 border-rose-200 text-rose-950'
+              : 'bg-slate-50 border-slate-200 text-slate-800'
+        }`}>
+          <div className="flex items-start gap-3.5">
+            <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-bold text-lg shrink-0 shadow-2xs ${
+              currentUser.status === 'pending'
+                ? 'bg-amber-100 text-amber-800'
+                : currentUser.status === 'rejected'
+                  ? 'bg-rose-100 text-rose-800'
+                  : 'bg-slate-100 text-slate-800'
+            }`}>
+              {currentUser.status === 'pending' ? '⏳' : currentUser.status === 'rejected' ? '❌' : '⛔'}
+            </div>
+            <div className="space-y-1">
+              <h4 className="font-black text-sm">
+                {currentUser.status === 'pending' && 'در انتظار بررسی و تایید حساب کاربری توسط مدیر'}
+                {currentUser.status === 'rejected' && 'درخواست عضویت شما رد شده است'}
+                {currentUser.status === 'suspended' && 'حساب کاربری شما موقتاً تعلیق شده است'}
+              </h4>
+              <p className="text-xs text-slate-600 leading-relaxed max-w-3xl">
+                {currentUser.status === 'pending' && 'مدیر مدرسه به زودی مدارک و کلاس انتخابی شما را بررسی و تایید خواهد کرد. به محض تایید، دسترسی‌های شما باز شده و نوتیفیکیشن بله برایتان ارسال خواهد شد.'}
+                {currentUser.status === 'rejected' && (
+                  <>
+                    <span className="block font-medium">علت رد درخواست عضویت:</span>
+                    <strong className="font-black text-rose-700 block mt-1 bg-rose-100/50 p-2.5 rounded-xl text-[11px] border border-rose-200/50">
+                      « {currentUser.rejectionReason || 'اطلاعات وارد شده ناقص یا نامفهوم است. لطفاً نسبت به اصلاح نام کامل و انتخاب کلاس درست اقدام کنید.'} »
+                    </strong>
+                    <span className="block mt-2 text-[11px] text-slate-500">جهت بررسی مجدد توسط مدیر، لطفاً مشخصات خود را ویرایش کرده و نام کامل و واقعی‌تان را ثبت فرمایید.</span>
+                  </>
+                )}
+                {currentUser.status === 'suspended' && (
+                  <>
+                    <span className="block font-medium">علت تعلیق حساب:</span>
+                    <strong className="font-black text-slate-700 block mt-1 bg-slate-100 p-2.5 rounded-xl text-[11px] border border-slate-200">
+                      « {currentUser.suspensionReason || 'تخلف در قوانین کتابخانه'} »
+                    </strong>
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          {currentUser.status === 'rejected' && (
+            <button
+              onClick={() => setShowEditProfileModal(true)}
+              className="w-full sm:w-auto px-5 py-3 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-black rounded-xl shadow-md transition shrink-0 cursor-pointer"
+            >
+              اصلاح و ویرایش مشخصات
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Main Books Grid (طاقچه کتاب‌ها) - Placed FIRST and PROMINENTLY */}
       <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xs space-y-6">
@@ -108,7 +174,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
           </div>
 
           <button
-            onClick={() => setShowAddModal(true)}
+            onClick={handleAddBookClick}
             className="text-xs font-black text-cyan-800 bg-cyan-50 hover:bg-cyan-100 px-4 py-2.5 rounded-xl border border-cyan-200 transition flex items-center gap-1.5 shadow-2xs"
           >
             <BookPlus className="w-4 h-4 text-cyan-600" />
@@ -128,7 +194,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
               </p>
             </div>
             <button
-              onClick={() => setShowAddModal(true)}
+              onClick={handleAddBookClick}
               className="px-6 py-3 bg-cyan-600 hover:bg-cyan-700 text-white font-black text-xs rounded-xl shadow-md shadow-cyan-600/20 transition inline-flex items-center gap-2"
             >
               <BookPlus className="w-4 h-4" />

@@ -230,8 +230,9 @@ export function registerAdminBaleChatId(chatId: string | number) {
         adminList = JSON.parse(savedSetting);
       } catch (e) {}
     }
-    if (!adminList.includes(chatId)) {
-      adminList.push(chatId);
+    const stringList = adminList.map(x => x.toString());
+    if (!stringList.includes(chatId.toString())) {
+      adminList.push(chatId.toString());
       dbService.setSetting('admin_bale_chat_ids', JSON.stringify(adminList));
     }
   } catch (err) {
@@ -245,12 +246,12 @@ export function registerAdminBaleChatId(chatId: string | number) {
 export async function notifyAdminsOnBale(user: User) {
   try {
     const allUsers = dbService.getAllUsers();
-    const adminChatIds = new Set<string | number>();
+    const adminChatIds = new Set<string>();
 
     // 1. مدیران ثبت‌شده در دیتابیس
     allUsers.forEach((u) => {
       if (u.role === 'admin' && u.baleChatId) {
-        adminChatIds.add(u.baleChatId);
+        adminChatIds.add(u.baleChatId.toString());
       }
     });
 
@@ -260,7 +261,7 @@ export async function notifyAdminsOnBale(user: User) {
       try {
         const parsed = JSON.parse(savedSetting);
         if (Array.isArray(parsed)) {
-          parsed.forEach((id) => adminChatIds.add(id));
+          parsed.forEach((id) => adminChatIds.add(id.toString()));
         }
       } catch (e) {}
     }
@@ -304,11 +305,11 @@ export async function notifyAdminsOnBale(user: User) {
 export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any) {
   try {
     const allUsers = dbService.getAllUsers();
-    const adminChatIds = new Set<string | number>();
+    const adminChatIds = new Set<string>();
 
     allUsers.forEach((u) => {
       if (u.role === 'admin' && u.baleChatId) {
-        adminChatIds.add(u.baleChatId);
+        adminChatIds.add(u.baleChatId.toString());
       }
     });
 
@@ -317,7 +318,7 @@ export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any)
       try {
         const parsed = JSON.parse(savedSetting);
         if (Array.isArray(parsed)) {
-          parsed.forEach((id) => adminChatIds.add(id));
+          parsed.forEach((id) => adminChatIds.add(id.toString()));
         }
       } catch (e) {}
     }
@@ -412,7 +413,7 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
         return;
       }
 
-      const updatedUser = dbService.updateUser(userId, { status: 'approved' });
+      const updatedUser = dbService.updateUser(userId, { status: 'approved', rejectionReason: '' });
 
       dbService.addSystemLog(
         'info',
@@ -560,7 +561,7 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
         reasonText = 'سلام، درخواست عضویت شما تایید نشد. اطلاعات ارائه‌شده نامعتبر یا نامربوط است.';
       }
 
-      dbService.updateUser(userId, { status: 'rejected' });
+      dbService.updateUser(userId, { status: 'rejected', rejectionReason: reasonText });
 
       dbService.addSystemLog(
         'info',
@@ -752,7 +753,7 @@ export async function handleIncomingBaleMessage(message: any) {
     const customReason = text || 'اطلاعات نادرست وارد شده است.';
 
     // Reject in database
-    dbService.updateUser(userId, { status: 'rejected' });
+    dbService.updateUser(userId, { status: 'rejected', rejectionReason: customReason });
 
     dbService.addSystemLog(
       'info',
@@ -1283,9 +1284,27 @@ async function startServer() {
       const isSystemAdmin = isAdminPhone(phone);
       let user = dbService.getUserByPhone(phone);
 
+      // Find verified session for this phone to extract baleChatId
+      let baleChatId: string | undefined;
+      const normalizedQueryPhone = normalizePhoneNumber(phone);
+      for (const [sid, sess] of otpSessions.entries()) {
+        if (sess.phoneNumber === normalizedQueryPhone && sess.status === 'VERIFIED') {
+          baleChatId = sess.chatId?.toString();
+          break;
+        }
+      }
+
       if (user) {
+        const updateData: Partial<User> = {};
         if (isSystemAdmin && (user.role !== 'admin' || user.status !== 'approved')) {
-          user = dbService.updateUser(user.id, { role: 'admin', status: 'approved' })!;
+          updateData.role = 'admin';
+          updateData.status = 'approved';
+        }
+        if (baleChatId) {
+          updateData.baleChatId = baleChatId;
+        }
+        if (Object.keys(updateData).length > 0) {
+          user = dbService.updateUser(user.id, updateData)!;
         }
         return res.json({
           success: true,
@@ -1300,6 +1319,7 @@ async function startServer() {
         id: isSystemAdmin ? `u_admin_${Date.now()}` : `u_bale_${Date.now()}`,
         name: isSystemAdmin ? 'مدیر سامانه مکتب‌خانه' : `کاربر بله (${phone.slice(-4)})`,
         phone: phone.trim(),
+        baleChatId: baleChatId,
         className: isSystemAdmin ? 'مدیریت کتابخانه' : 'کلاس ۱/۱',
         role: isSystemAdmin ? 'admin' : 'student',
         rating: 5,
@@ -1420,6 +1440,16 @@ async function startServer() {
         return res.status(400).json({ success: false, message: 'این شماره تلفن قبلاً در سامانه ثبت شده است.' });
       }
 
+      // Find verified session for this phone to extract baleChatId
+      let baleChatId: string | undefined;
+      const normalizedQueryPhone = normalizePhoneNumber(data.phone);
+      for (const [sid, sess] of otpSessions.entries()) {
+        if (sess.phoneNumber === normalizedQueryPhone && sess.status === 'VERIFIED') {
+          baleChatId = sess.chatId?.toString();
+          break;
+        }
+      }
+
       const isAdmin = isAdminPhone(data.phone);
       const sysConfig = dbService.getSystemConfig();
 
@@ -1429,6 +1459,7 @@ async function startServer() {
         name: data.name.trim(),
         className: isAdmin ? 'مدیریت سامانه مکتب‌خانه' : data.className,
         phone: data.phone.trim(),
+        baleChatId: baleChatId,
         avatar: data.avatar || 'https://api.dicebear.com/7.x/bottts/svg?seed=Student',
         status: isAdmin ? 'approved' : (sysConfig.requireAdminApproval ? 'pending' : 'approved'),
         role: isAdmin ? 'admin' : 'student',
@@ -1520,10 +1551,16 @@ async function startServer() {
       if (avatar) updates.avatar = avatar;
       if (password) updates.password = password;
 
+      const existingUser = dbService.getUserById(req.params.id);
+      if (existingUser && existingUser.status === 'rejected') {
+        updates.status = 'pending';
+        updates.rejectionReason = '';
+      }
+
       const user = dbService.updateUser(req.params.id, updates);
       if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
 
-      // Notify admins if user completed their profile
+      // Notify admins if user completed their profile or resubmitted for review
       if (user.role !== 'admin' && user.status === 'pending') {
         notifyAdminsOnBale(user);
       }
@@ -1536,7 +1573,7 @@ async function startServer() {
   });
 
   app.post('/api/users/:id/approve', (req: Request, res: Response): any => {
-    const user = dbService.updateUser(req.params.id, { status: 'approved' });
+    const user = dbService.updateUser(req.params.id, { status: 'approved', rejectionReason: '' });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
     
     // Notify user on Bale
@@ -1547,10 +1584,13 @@ async function startServer() {
 
   app.post('/api/users/:id/reject', (req: Request, res: Response): any => {
     const { reason } = req.body || {};
-    const user = dbService.updateUser(req.params.id, { status: 'rejected' });
-    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
-
     const reasonText = reason && reason.trim() ? reason.trim() : 'اطلاعات وارد شده ناقص یا نادرست است.';
+
+    const user = dbService.updateUser(req.params.id, {
+      status: 'rejected',
+      rejectionReason: reasonText
+    });
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
 
     dbService.addSystemLog(
       'info',
@@ -1757,6 +1797,15 @@ async function startServer() {
       const bookData = req.body as Book;
       if (!bookData || !bookData.title || !bookData.author || !bookData.ownerId) {
         return res.status(400).json({ success: false, message: 'اطلاعات کامل کتاب الزامی است.' });
+      }
+
+      // Check user approval status
+      const user = dbService.getUserById(bookData.ownerId);
+      if (!user || user.status !== 'approved') {
+        return res.status(403).json({
+          success: false,
+          message: 'تنها کاربران تاییدشده مجاز به اضافه کردن کتاب به طاقچه هستند.'
+        });
       }
 
       const bookId = bookData.id || `b_${Date.now()}`;
@@ -2002,6 +2051,42 @@ async function startServer() {
       reqItem.ownerId,
       `💳 <b>پرداخت حق امانت تایید شد</b>\n\n` +
       `پرداخت حق امانت کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} تایید گردید. تحویل کتاب مجاز است.`
+    );
+
+    res.json({ success: true, request: updated });
+  });
+
+  app.post('/api/requests/:id/reject-payment', (req: Request, res: Response): any => {
+    const { reason } = req.body || {};
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    const reasonText = reason && reason.trim() ? reason.trim() : 'تصویر فیش یا کد پیگیری واریز نامعتبر است.';
+
+    const paymentProof = reqItem.paymentProof || { trackingCode: '', paymentDate: '', submittedAt: '' };
+    const updated = dbService.updateRequest(req.params.id, {
+      status: 'accepted',
+      paymentStatus: 'rejected',
+      paymentProof: {
+        ...paymentProof,
+        rejectionReason: reasonText
+      }
+    });
+
+    dbService.addSystemLog(
+      'info',
+      `رد فیش پرداخت امانت کتاب (${reqItem.bookTitle}) با علت: ${reasonText}`,
+      `امانت‌گیرنده: ${reqItem.borrowerName}`
+    );
+
+    // Notify borrower
+    notifyUserOnBale(
+      reqItem.borrowerId,
+      `⚠️ <b>رد فیش پرداخت حق امانت</b>\n\n` +
+      `متأسفانه فیش واریزی شما برای امانت کتاب <b>«${reqItem.bookTitle}»</b> مورد تایید قرار نگرفت.\n\n` +
+      `📌 <b>علت رد پرداخت:</b>\n` +
+      `« ${reasonText} »\n\n` +
+      `لطفاً وارد سامانه شده و نسبت به ثبت مجدد فیش پرداخت معتبر اقدام فرمایید.`
     );
 
     res.json({ success: true, request: updated });

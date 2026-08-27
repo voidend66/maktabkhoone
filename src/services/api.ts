@@ -236,6 +236,15 @@ export const api = {
     return await res.json();
   },
 
+  async rejectPayment(id: string, reason?: string) {
+    const res = await fetch(`${API_BASE}/requests/${id}/reject-payment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    return await res.json();
+  },
+
   async confirmHandover(id: string, role: string) {
     const res = await fetch(`${API_BASE}/requests/${id}/handover`, {
       method: 'POST',

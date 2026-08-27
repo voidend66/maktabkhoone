@@ -278,9 +278,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     try {
       if (isApproved) {
         await api.approvePayment(requestId);
+      } else {
+        await api.rejectPayment(requestId, rejectionReason);
       }
     } catch (e) {
-      console.error('Error approving payment on server:', e);
+      console.error('Error verifying/rejecting payment on server:', e);
     }
   };
 
@@ -335,8 +337,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Admin Approve User
   const approveUser = async (userId: string) => {
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, status: 'approved' as const } : u))
+      prev.map((u) => (u.id === userId ? { ...u, status: 'approved' as const, rejectionReason: '' } : u))
     );
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser((prev) => prev ? { ...prev, status: 'approved' as const, rejectionReason: '' } : null);
+    }
     try {
       await api.approveUser(userId);
     } catch (e) {
@@ -346,11 +351,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Admin Reject User
   const rejectUser = async (userId: string, reason?: string) => {
+    const reasonText = reason || 'اطلاعات وارد شده ناقص یا نادرست است.';
     setUsers((prev) =>
-      prev.map((u) => (u.id === userId ? { ...u, status: 'rejected' as const } : u))
+      prev.map((u) => (u.id === userId ? { ...u, status: 'rejected' as const, rejectionReason: reasonText } : u))
     );
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser((prev) => prev ? { ...prev, status: 'rejected' as const, rejectionReason: reasonText } : null);
+    }
     try {
-      await api.rejectUser(userId, reason);
+      await api.rejectUser(userId, reasonText);
     } catch (e) {
       console.error('Error rejecting user on server:', e);
     }
@@ -649,23 +658,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // Update User profile (name, avatar, className, etc.)
   const updateUser = (userId: string, data: Partial<User>): boolean => {
+    let finalData = { ...data };
+    const userToUpdate = users.find(u => u.id === userId) || (currentUser?.id === userId ? currentUser : null);
+    if (userToUpdate && userToUpdate.status === 'rejected') {
+      finalData.status = 'pending';
+      finalData.rejectionReason = '';
+    }
+
     setUsers((prev) =>
       prev.map((u) => {
         if (u.id === userId) {
-          return { ...u, ...data };
+          return { ...u, ...finalData };
         }
         return u;
       })
     );
 
     if (currentUser?.id === userId) {
-      const updatedUser = { ...currentUser, ...data };
+      const updatedUser = { ...currentUser, ...finalData };
       setCurrentUser(updatedUser);
       localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(updatedUser));
     }
 
     // Also sync to server
-    api.updateUser(userId, data).catch((err) => {
+    api.updateUser(userId, finalData).catch((err) => {
       console.error('Error updating user on server:', err);
     });
 

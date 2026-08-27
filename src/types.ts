@@ -25,6 +25,7 @@ export interface User {
   medals: Medal[];
   joinedDate: string;
   suspensionReason?: string;
+  rejectionReason?: string;
   activeLoanCount?: number;
   baleChatId?: number | string;
 }
