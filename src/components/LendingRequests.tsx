@@ -60,31 +60,45 @@ export const LendingRequests: React.FC = () => {
     new Date().toLocaleDateString('fa-IR') + ' - ساعت ' + new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' })
   );
   const [receiptImage, setReceiptImage] = useState('');
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState('');
   const [isUploadingReceipt, setIsUploadingReceipt] = useState(false);
   const [receiptUploadError, setReceiptUploadError] = useState('');
   const [copySuccess, setCopySuccess] = useState(false);
 
   const handleReceiptUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setReceiptUploadError('حجم فایل فیش باید کمتر از ۱۰ مگابایت باشد.');
-        return;
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      setReceiptUploadError('فقط فرمت‌های تصویری معتبر (JPG, JPEG, PNG, WEBP) مجاز هستند.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setReceiptUploadError('حجم فایل فیش باید کمتر از ۱۰ مگابایت باشد.');
+      return;
+    }
+
+    // Instant local preview
+    const localUrl = URL.createObjectURL(file);
+    setReceiptPreviewUrl(localUrl);
+    setIsUploadingReceipt(true);
+    setReceiptUploadError('');
+
+    try {
+      const res = await api.uploadImage(file);
+      if (res.success && res.fileUrl) {
+        setReceiptImage(res.fileUrl);
+      } else {
+        setReceiptUploadError(res.message || 'خطا در بارگذاری فیش');
+        setReceiptPreviewUrl('');
       }
-      setIsUploadingReceipt(true);
-      setReceiptUploadError('');
-      try {
-        const res = await api.uploadImage(file);
-        if (res.success && res.fileUrl) {
-          setReceiptImage(res.fileUrl);
-        } else {
-          setReceiptUploadError(res.message || 'خطا در بارگذاری فیش');
-        }
-      } catch (err: any) {
-        setReceiptUploadError(err.message || 'خطا در ارتباط با سرور آپلود');
-      } finally {
-        setIsUploadingReceipt(false);
-      }
+    } catch (err: any) {
+      setReceiptUploadError(err.message || 'خطا در ارتباط با سرور آپلود');
+      setReceiptPreviewUrl('');
+    } finally {
+      setIsUploadingReceipt(false);
     }
   };
 
@@ -540,29 +554,74 @@ export const LendingRequests: React.FC = () => {
                           </label>
 
                           <div className="flex items-center gap-3 flex-wrap">
-                            <label className="cursor-pointer px-4 py-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition">
+                            <label
+                              className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black shadow-xs flex items-center gap-2 transition ${
+                                isUploadingReceipt
+                                  ? 'bg-slate-200 text-slate-500 cursor-wait'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300'
+                              }`}
+                            >
                               {isUploadingReceipt ? (
                                 <Loader2 className="w-4 h-4 animate-spin text-emerald-700" />
                               ) : (
                                 <Upload className="w-4 h-4 text-emerald-700" />
                               )}
-                              <span>{isUploadingReceipt ? 'در حال آپلود فیش روی سرور...' : 'بارگذاری عکس فیش از گوشی / کامپیوتر'}</span>
+                              <span>{isUploadingReceipt ? 'در حال ارسال فیش به سرور...' : 'بارگذاری عکس فیش از گوشی / کامپیوتر'}</span>
                               <input
                                 type="file"
-                                accept="image/*"
+                                accept="image/jpeg,image/png,image/webp,image/jpg"
                                 onChange={handleReceiptUpload}
                                 disabled={isUploadingReceipt}
                                 className="hidden"
                               />
                             </label>
 
-                            {receiptImage && (
-                              <div className="flex items-center gap-2 bg-emerald-100 text-emerald-900 px-3 py-1.5 rounded-xl text-xs font-bold border border-emerald-300">
-                                <img src={receiptImage} alt="receipt preview" className="w-8 h-8 rounded-lg object-cover" />
-                                <span>فیش با موفقیت در سرور ذخیره شد</span>
-                              </div>
-                            )}
+                            <span className="text-[10px] text-slate-500">
+                              (فرمت‌های مجاز: JPG, PNG, WEBP - حداکثر ۱۰ مگابایت)
+                            </span>
                           </div>
+
+                          {(receiptPreviewUrl || receiptImage) && (
+                            <div className="flex items-center justify-between p-2.5 bg-emerald-50/80 border border-emerald-300 rounded-xl mt-2 animate-in fade-in">
+                              <div className="flex items-center gap-2.5">
+                                <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-emerald-300 bg-white shrink-0">
+                                  <img
+                                    src={receiptPreviewUrl || receiptImage}
+                                    alt="پیش‌نمایش فیش"
+                                    className={`w-full h-full object-cover transition ${
+                                      isUploadingReceipt ? 'opacity-50 blur-[1px]' : 'opacity-100'
+                                    }`}
+                                  />
+                                  {isUploadingReceipt && (
+                                    <div className="absolute inset-0 flex items-center justify-center bg-emerald-900/40">
+                                      <Loader2 className="w-4 h-4 animate-spin text-white" />
+                                    </div>
+                                  )}
+                                </div>
+                                <div>
+                                  <span className="text-xs font-bold text-emerald-900 block">
+                                    {isUploadingReceipt ? 'در حال آپلود و ذخیره فیش...' : 'تصویر فیش با موفقیت در سرور ذخیره شد ✓'}
+                                  </span>
+                                  <span className="text-[10px] text-emerald-700 font-mono dir-ltr">
+                                    {receiptImage || 'در انتظار تایید سرور...'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {!isUploadingReceipt && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setReceiptImage('');
+                                    setReceiptPreviewUrl('');
+                                  }}
+                                  className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg transition"
+                                >
+                                  حذف
+                                </button>
+                              )}
+                            </div>
+                          )}
 
                           {receiptUploadError && (
                             <p className="text-[11px] text-rose-600 font-bold">{receiptUploadError}</p>

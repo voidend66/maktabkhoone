@@ -35,6 +35,7 @@ interface AppContextType {
   loginWithOtpPhone: (phone: string) => Promise<{ success: boolean; message: string; user?: User }>;
   logoutUser: () => void;
   registerUser: (data: RegistrationInput) => Promise<{ success: boolean; message: string; user?: User }>;
+  updateUser: (userId: string, data: Partial<User>) => boolean;
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string) => void;
@@ -570,6 +571,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return { success: true, message: 'رمز عبور شما با موفقیت تغییر کرد. اکنون می‌توانید وارد شوید.' };
   };
 
+  // Update User profile (name, avatar, className, etc.)
+  const updateUser = (userId: string, data: Partial<User>): boolean => {
+    setUsers((prev) =>
+      prev.map((u) => {
+        if (u.id === userId) {
+          return { ...u, ...data };
+        }
+        return u;
+      })
+    );
+
+    if (currentUser?.id === userId) {
+      const updatedUser = { ...currentUser, ...data };
+      setCurrentUser(updatedUser);
+      localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(updatedUser));
+    }
+
+    // Also sync to server
+    api.updateUser(userId, data).catch((err) => {
+      console.error('Error updating user on server:', err);
+    });
+
+    return true;
+  };
+
   // Complete Return & submit mutual feedback survey
   const completeReturnAndSubmitFeedback = async (
     requestId: string,
@@ -748,6 +774,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loginWithOtpPhone: loginWithBale,
         logoutUser,
         registerUser,
+        updateUser,
         resetPasswordWithSMS,
         approveUser,
         rejectUser,

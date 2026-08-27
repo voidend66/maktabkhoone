@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { EditProfileModal } from './EditProfileModal';
 import {
   ShieldAlert,
   UserCheck,
@@ -20,11 +21,15 @@ import {
   CreditCard,
   FileCheck,
   XCircle,
-  Save
+  Save,
+  LogOut,
+  Edit3
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
   const {
+    currentUser,
+    logoutUser,
     users,
     books,
     requests,
@@ -40,6 +45,7 @@ export const AdminPanel: React.FC = () => {
     verifyPaymentByAdmin
   } = useApp();
 
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
     'pending_users' | 'bank_card' | 'all_books' | 'all_users' | 'class_management'
   >('pending_users');
@@ -118,8 +124,45 @@ export const AdminPanel: React.FC = () => {
           </p>
         </div>
 
-        {/* Quick Stats Grid */}
-        <div className="flex items-center gap-3">
+        {/* Admin User Actions & Quick Stats */}
+        <div className="flex items-center gap-3 flex-wrap">
+          {currentUser && (
+            <div className="flex items-center gap-3 bg-white/10 backdrop-blur-md p-2.5 px-3.5 rounded-2xl border border-white/15">
+              <img
+                src={currentUser.avatar}
+                alt={currentUser.name}
+                className="w-11 h-11 rounded-xl object-cover ring-2 ring-amber-400 shrink-0"
+              />
+              <div className="text-right">
+                <div className="text-xs font-black text-white flex items-center gap-1">
+                  <span>{currentUser.name}</span>
+                  <span className="text-[10px] bg-amber-400 text-slate-950 px-1.5 py-0.2 rounded-md font-bold">مدیر</span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <button
+                    onClick={() => setShowEditProfileModal(true)}
+                    className="text-[11px] text-amber-300 hover:text-amber-200 font-bold flex items-center gap-0.5 underline cursor-pointer"
+                  >
+                    <Edit3 className="w-3 h-3" />
+                    ویرایش مشخصات و آواتار
+                  </button>
+                  <span className="text-white/30">•</span>
+                  <button
+                    onClick={() => {
+                      if (confirm('آیا از حساب کاربری مدیریت خارج می‌شوید؟')) {
+                        logoutUser();
+                      }
+                    }}
+                    className="text-[11px] text-rose-300 hover:text-rose-200 font-bold flex items-center gap-0.5 cursor-pointer"
+                  >
+                    <LogOut className="w-3 h-3" />
+                    خروج
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="bg-white/10 backdrop-blur-md p-3 rounded-2xl border border-white/10 text-center">
             <div className="text-2xl font-black text-amber-400">{pendingUsers.length} نفر</div>
             <div className="text-[10px] text-slate-300">در انتظار تایید</div>
@@ -759,6 +802,11 @@ export const AdminPanel: React.FC = () => {
             ))}
           </div>
         </div>
+      )}
+
+      {/* Edit Admin Profile & Avatar Modal */}
+      {showEditProfileModal && (
+        <EditProfileModal onClose={() => setShowEditProfileModal(false)} />
       )}
     </div>
   );

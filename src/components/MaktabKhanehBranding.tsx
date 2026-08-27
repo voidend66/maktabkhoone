@@ -16,21 +16,21 @@ export const MaktabKhanehLogo: React.FC<LogoProps> = ({
   showSlogan = true
 }) => {
   const sizeMap = {
-    sm: 'w-10 h-10 sm:w-12 sm:h-12',
-    md: 'w-12 h-12 sm:w-16 sm:h-16',
-    lg: 'w-12 h-12 sm:w-20 sm:h-20',
+    sm: 'w-12 h-12 sm:w-14 sm:h-14',
+    md: 'w-14 h-14 sm:w-16 sm:h-16',
+    lg: 'w-14 h-14 sm:w-20 sm:h-20',
     xl: 'w-20 h-20 sm:w-32 sm:h-32'
   };
 
   return (
-    <div className={`flex items-center gap-2.5 sm:gap-3.5 ${className}`}>
-      {/* Featured House Logo Image in clean, vibrant frame */}
+    <div className={`flex items-center gap-2.5 sm:gap-4 ${className}`}>
+      {/* Featured House Logo Image with generous sizing on mobile */}
       <div className={`relative ${sizeMap[size]} shrink-0 transition-all duration-300 hover:scale-105 group`}>
-        <div className="w-full h-full rounded-xl sm:rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-600 to-amber-400 p-0.5 sm:p-1 shadow-md shadow-cyan-900/20 ring-2 sm:ring-4 ring-cyan-500/20 overflow-hidden">
+        <div className="w-full h-full rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-600 to-amber-400 p-1 shadow-md shadow-cyan-900/20 ring-2 sm:ring-4 ring-cyan-500/20 overflow-hidden">
           <img
             src={houseLogoImg}
             alt="لوگوی مکتب خونه"
-            className="w-full h-full object-cover rounded-lg sm:rounded-xl bg-white transition-transform duration-300 group-hover:scale-110"
+            className="w-full h-full object-cover rounded-xl bg-white transition-transform duration-300 group-hover:scale-110"
           />
         </div>
         {/* Floating Paper Airplane decoration */}
@@ -39,22 +39,24 @@ export const MaktabKhanehLogo: React.FC<LogoProps> = ({
         </div>
       </div>
 
-      {/* Brand Title & Slogan */}
-      <div>
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          <h1 className="text-xl sm:text-3xl font-black tracking-tight flex items-center gap-1 leading-none">
-            <span className="text-cyan-700">مکتب</span>
-            <span className="text-orange-500">خونه</span>
-          </h1>
-          <span className="bg-gradient-to-r from-cyan-600 to-sky-600 text-white text-[9px] sm:text-[11px] font-black px-2 sm:px-2.5 py-0.5 rounded-full shadow-xs flex items-center gap-0.5">
-            <span>امانت کتاب</span>
-            <span>📚</span>
-          </span>
+      {/* Brand Title with Beautiful Persian Calligraphy & Subtitle */}
+      <div className="flex flex-col justify-center select-none">
+        <h1 className="text-2xl sm:text-4xl font-['Lalezar',cursive] tracking-wide flex items-center leading-none">
+          <span className="text-cyan-800 drop-shadow-xs">مَکـتَب‌</span>
+          <span className="text-amber-500 drop-shadow-xs">خـونـه</span>
+        </h1>
+
+        {/* Replaced 'امانت کتاب' badge with simple, clear subtitle */}
+        <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
+          <p className="text-[11px] sm:text-xs font-black text-slate-600 flex items-center gap-1 leading-tight">
+            <span>سامانه آنلاین تبادل و امانت کتاب</span>
+          </p>
         </div>
+
         {showSlogan && (
-          <p className="hidden sm:flex text-xs font-black text-slate-600 mt-1 items-center gap-1 flex-wrap">
-            <span className="text-cyan-600 font-bold">•</span> هر کتاب، یک سفر
-            <span className="text-orange-500 font-bold">•</span> هر امانت، یک اعتماد
+          <p className="hidden md:flex text-[11px] font-bold text-slate-400 items-center gap-1 mt-0.5">
+            <span className="text-cyan-600">•</span> هر کتاب، یک سفر
+            <span className="text-orange-500">•</span> هر امانت، یک اعتماد
           </p>
         )}
       </div>
@@ -89,12 +91,12 @@ export const MaktabKhanehHouseLogo: React.FC<{ size?: 'sm' | 'md' | 'lg' | 'hero
         <div className="space-y-1.5 pt-1">
           <div className="flex items-center justify-center gap-2">
             <span className="text-amber-300 text-lg">💡</span>
-            <h2 className="text-xl sm:text-2xl font-black text-amber-300 tracking-tight">
-              مکتب خونه • پاتوق کتاب خوارها
+            <h2 className="text-2xl sm:text-3xl font-['Lalezar',cursive] text-amber-300 tracking-wide">
+              مکتب‌خونه • پاتوق کتاب‌خوان‌ها
             </h2>
             <span className="text-amber-300 text-lg">🎒</span>
           </div>
-          <p className="text-xs sm:text-sm text-cyan-100 font-black tracking-wide bg-cyan-950/70 py-2 px-3 rounded-xl border border-cyan-500/30">
+          <p className="text-xs sm:text-sm text-cyan-100 font-bold tracking-wide bg-cyan-950/70 py-2 px-3 rounded-xl border border-cyan-500/30">
             • هر کتاب، یک سفر • هر امانت، یک اعتماد •
           </p>
         </div>
@@ -151,7 +153,7 @@ export const BoyishMotifsBanner: React.FC = () => {
         </div>
         <div>
           <span className="text-[10px] text-indigo-700 font-bold block">موشک کاغذی ایده‌ها</span>
-          <span className="text-xs font-black text-slate-900">تایید ۱۲ ساعته امانت</span>
+          <span className="text-xs font-black text-slate-900">فرصت طلایی یک‌هفته‌ای</span>
         </div>
       </div>
     </div>

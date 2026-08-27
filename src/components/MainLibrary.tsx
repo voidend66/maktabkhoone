@@ -89,17 +89,14 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           <div className="lg:col-span-7 space-y-4">
             <div className="flex items-center gap-2 flex-wrap">
               <SloganBadge />
-              <span className="bg-amber-400 text-slate-950 font-black text-[10px] px-2.5 py-1 rounded-full shadow-xs">
-                به ویژه دبستانی‌ها 🎒
-              </span>
             </div>
 
-            <h1 className="text-3xl sm:text-4xl font-black leading-tight text-amber-300 tracking-tight">
-              سامانه امانت کتاب مَکـتَب‌خـانه 📚
+            <h1 className="text-3xl sm:text-4xl font-['Lalezar',cursive] leading-tight text-amber-300 tracking-normal">
+              سامانه تبادل و امانت کتاب مَکـتَب‌خـونه 📚
             </h1>
 
             <p className="text-cyan-100 text-sm sm:text-base leading-relaxed font-medium">
-              کتاب‌های خود را در مکتب‌خانه با دوستان و همکلاسی‌هایتان امانت بدهید، کتاب‌های جذاب جدید بخوانید و با تایید ۱۲ ساعته از خانه، در لیگ کتابخوانی مدرسه مدال افتخار کسب کنید!
+              به دنیایی از کتاب‌های دوستان‌تان وارد شوید و یک عالمه کتاب جذاب و خواندنی بخوانید! کتاب‌های خود را در مکتب‌خونه به دوستان و همکلاسی‌هایتان امانت بدهید؛ برای مطالعه هر کتاب یک هفته فرصت طلایی دارید و در لیگ کتابخوانی مدرسه مدال افتخار کسب کنید.
             </p>
 
             {/* Quick Stats Grid */}

@@ -79,6 +79,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   const [bookCategory, setBookCategory] = useState(CATEGORIES[1]);
   const [bookCondition, setBookCondition] = useState<BookCondition>('عالی (نو)');
   const [bookCoverImage, setBookCoverImage] = useState('https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600');
+  const [bookCoverPreview, setBookCoverPreview] = useState('');
   const [bookDescription, setBookDescription] = useState('');
 
   const [errorMessage, setErrorMessage] = useState('');
@@ -89,26 +90,38 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   // Handle Photo Upload directly to SQLite / disk storage
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      if (file.size > 10 * 1024 * 1024) {
-        setErrorMessage('حجم عکس باید کمتر از ۱۰ مگابایت باشد.');
-        return;
-      }
-      setIsUploading(true);
-      setErrorMessage('');
+    if (!file) return;
 
-      try {
-        const uploadRes = await api.uploadImage(file);
-        if (uploadRes.success && uploadRes.fileUrl) {
-          setBookCoverImage(uploadRes.fileUrl);
-        } else {
-          setErrorMessage(uploadRes.message || 'خطا در آپلود عکس روی سرور');
-        }
-      } catch (err: any) {
-        setErrorMessage(err.message || 'خطا در آپلود فایل');
-      } finally {
-        setIsUploading(false);
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      setErrorMessage('فقط فرمت‌های تصویری معتبر (JPG, JPEG, PNG, WEBP) مجاز هستند.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMessage('حجم عکس باید کمتر از ۱۰ مگابایت باشد.');
+      return;
+    }
+
+    // Instant local preview
+    const localUrl = URL.createObjectURL(file);
+    setBookCoverPreview(localUrl);
+    setIsUploading(true);
+    setErrorMessage('');
+
+    try {
+      const uploadRes = await api.uploadImage(file);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        setBookCoverImage(uploadRes.fileUrl);
+      } else {
+        setErrorMessage(uploadRes.message || 'خطا در آپلود عکس روی سرور');
+        setBookCoverPreview('');
       }
+    } catch (err: any) {
+      setErrorMessage(err.message || 'خطا در آپلود فایل');
+      setBookCoverPreview('');
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -178,6 +191,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
     setBookAuthor('');
     setBookDescription('');
     setBookCoverImage('https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=600');
+    setBookCoverPreview('');
     setErrorMessage('');
   };
 
@@ -555,25 +569,41 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                     </div>
 
                     {/* Photo Upload Input */}
-                    <div>
-                      <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                    <div className="space-y-2">
+                      <label className="block text-[11px] font-bold text-slate-700">
                         آپلود عکس جلد کتاب (اختیاری):
                       </label>
-                      <div className="flex items-center gap-3">
-                        <label className="cursor-pointer px-3 py-2 bg-white hover:bg-slate-50 text-cyan-700 text-xs font-bold rounded-xl border border-cyan-300 flex items-center gap-1.5 transition">
-                          <Upload className="w-3.5 h-3.5" />
-                          <span>انتخاب عکس از دستگاه</span>
+                      <div className="flex items-center gap-3 flex-wrap">
+                        <label
+                          className={`cursor-pointer px-3 py-2 text-xs font-bold rounded-xl border flex items-center gap-1.5 transition ${
+                            isUploading
+                              ? 'bg-slate-100 text-slate-400 border-slate-300 cursor-wait'
+                              : 'bg-white hover:bg-slate-50 text-cyan-700 border-cyan-300 shadow-xs'
+                          }`}
+                        >
+                          {isUploading ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-cyan-600" />
+                          ) : (
+                            <Upload className="w-3.5 h-3.5" />
+                          )}
+                          <span>{isUploading ? 'در حال آپلود عکس...' : 'انتخاب عکس از دستگاه'}</span>
                           <input
                             type="file"
-                            accept="image/*"
+                            accept="image/jpeg,image/png,image/webp,image/jpg"
                             onChange={handleImageUpload}
+                            disabled={isUploading}
                             className="hidden"
                           />
                         </label>
-                        {bookCoverImage && (
-                          <div className="flex items-center gap-1 text-[11px] text-emerald-700 font-bold">
-                            <ImageIcon className="w-3.5 h-3.5" />
-                            <span>تصویر انتخاب شد</span>
+
+                        {(bookCoverPreview || (bookCoverImage && bookCoverImage.startsWith('/uploads'))) && (
+                          <div className="flex items-center gap-2 bg-emerald-50 text-emerald-800 px-2.5 py-1 rounded-xl border border-emerald-200 text-[11px] font-bold animate-in fade-in">
+                            <img
+                              src={bookCoverPreview || bookCoverImage}
+                              alt="پیش‌نمایش"
+                              className="w-6 h-7 rounded-md object-cover border border-emerald-300"
+                            />
+                            <span>{isUploading ? 'در حال ارسال...' : 'عکس با موفقیت انتخاب و ذخیره شد ✓'}</span>
                           </div>
                         )}
                       </div>

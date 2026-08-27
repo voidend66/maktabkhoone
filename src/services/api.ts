@@ -98,6 +98,15 @@ export const api = {
   },
 
   // Users APIs
+  async updateUser(id: string, data: Partial<User>) {
+    const res = await fetch(`${API_BASE}/users/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    return await res.json();
+  },
+
   async approveUser(id: string) {
     const res = await fetch(`${API_BASE}/users/${id}/approve`, { method: 'POST' });
     return await res.json();

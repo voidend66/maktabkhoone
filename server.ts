@@ -48,26 +48,43 @@ if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
-// Multer Storage Configuration
+// Multer Storage Configuration (Strict image validation & Unique file naming)
+const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
+const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
     cb(null, UPLOADS_DIR);
   },
   filename: (_req, file, cb) => {
-    const ext = path.extname(file.originalname) || '.jpg';
-    const uniqueSuffix = Date.now() + '-' + crypto.randomBytes(6).toString('hex');
+    let ext = path.extname(file.originalname).toLowerCase();
+    if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
+      if (file.mimetype === 'image/png') ext = '.png';
+      else if (file.mimetype === 'image/webp') ext = '.webp';
+      else ext = '.jpg';
+    }
+    // Unique name using timestamp + random crypto bytes
+    const uniqueSuffix = `${Date.now()}-${crypto.randomBytes(8).toString('hex')}`;
     cb(null, `img-${uniqueSuffix}${ext}`);
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10 Megabytes limit
+  },
   fileFilter: (_req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = file.mimetype.toLowerCase();
+
+    const isMimeValid = ALLOWED_IMAGE_MIMES.includes(mime) || mime.startsWith('image/');
+    const isExtValid = ALLOWED_IMAGE_EXTENSIONS.includes(ext) || ext === '';
+
+    if (isMimeValid && isExtValid) {
       cb(null, true);
     } else {
-      cb(new Error('فقط فایل‌های تصویری (JPEG, PNG, WebP) مجاز هستند.'));
+      cb(new Error('فقط فایل‌های تصویری با فرمت‌های مجاز (JPG, JPEG, PNG, WEBP) قابل بارگذاری هستند.'));
     }
   }
 });
@@ -346,26 +363,43 @@ async function startServer() {
   /**
    * --------------------------------------------------------------------------
    * API: آپلود مستقیم فایل تصویر بر روی سرور و بازگرداندن URL واقعی
+   * با بررسی دقیق فرمت فایل، محدودیت حجم ۱۰ مگابایت و نامگذاری امن
    * --------------------------------------------------------------------------
    */
-  app.post('/api/upload', upload.single('file'), (req: Request, res: Response): any => {
-    try {
+  app.post('/api/upload', (req: Request, res: Response): any => {
+    upload.single('file')(req, res, (err: any) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({
+              success: false,
+              message: 'حجم فایل عکس بیش از حد مجاز (حداکثر ۱۰ مگابایت) است.'
+            });
+          }
+          return res.status(400).json({
+            success: false,
+            message: `خطای بارگذاری فایل: ${err.message}`
+          });
+        }
+        return res.status(400).json({
+          success: false,
+          message: err.message || 'فقط فرمت‌های تصویری معتبر (JPG, JPEG, PNG, WEBP) مجاز هستند.'
+        });
+      }
+
       if (!req.file) {
-        return res.status(400).json({ success: false, message: 'هیچ فایلی ارسال نشده است.' });
+        return res.status(400).json({ success: false, message: 'هیچ فایل تصویری ارسال نشده است.' });
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
       return res.json({
         success: true,
-        message: 'تصویر با موفقیت روی سرور بارگذاری شد.',
+        message: 'تصویر با موفقیت روی سرور ذخیره شد.',
         fileUrl,
         filename: req.file.filename,
         size: req.file.size
       });
-    } catch (err: any) {
-      console.error('Upload error:', err);
-      return res.status(500).json({ success: false, message: err.message || 'خطا در بارگذاری فایل' });
-    }
+    });
   });
 
   /**
@@ -810,6 +844,24 @@ async function startServer() {
    */
   app.get('/api/users', (_req: Request, res: Response) => {
     res.json({ success: true, users: dbService.getAllUsers() });
+  });
+
+  app.put('/api/users/:id', (req: Request, res: Response): any => {
+    try {
+      const { name, className, avatar, password } = req.body || {};
+      const updates: Partial<User> = {};
+      if (name) updates.name = name;
+      if (className) updates.className = className;
+      if (avatar) updates.avatar = avatar;
+      if (password) updates.password = password;
+
+      const user = dbService.updateUser(req.params.id, updates);
+      if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+      res.json({ success: true, user });
+    } catch (err: any) {
+      console.error('Update User Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در به‌روزرسانی اطلاعات کاربر.' });
+    }
   });
 
   app.post('/api/users/:id/approve', (req: Request, res: Response): any => {

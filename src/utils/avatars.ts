@@ -6,8 +6,90 @@ export interface AvatarOption {
   url: string;
 }
 
+export const ADMIN_SPECIAL_AVATARS: AvatarOption[] = [
+  {
+    id: 'avatar_admin_royal',
+    name: 'آواتار ویژه راهبر مکتب‌خانه',
+    description: 'آواتار ۳ بعدی اختصاصی مدیریت و راهبری با ردای زرین و نشان کتاب خرد',
+    bg: 'bg-amber-100 border-amber-400',
+    url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+      <defs>
+        <radialGradient id="bgAdmin" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="%23fbbf24"/><stop offset="60%" stop-color="%23d97706"/><stop offset="100%" stop-color="%2378350f"/></radialGradient>
+        <linearGradient id="skinAdmin" x1="0%" y1="0%" x2="0%" y2="100%"><stop offset="0%" stop-color="%23fff7ed"/><stop offset="100%" stop-color="%23fed7aa"/></linearGradient>
+        <linearGradient id="robeAdmin" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%231e1b4b"/><stop offset="100%" stop-color="%230f172a"/></linearGradient>
+        <linearGradient id="goldTrim" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%23fef08a"/><stop offset="100%" stop-color="%23eab308"/></linearGradient>
+        <filter id="shadowAdmin" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.35"/></filter>
+      </defs>
+      <circle cx="60" cy="60" r="56" fill="url(%23bgAdmin)"/>
+      <circle cx="60" cy="60" r="53" fill="none" stroke="%23fef08a" stroke-width="2.5" opacity="0.8"/>
+      <!-- Royal Dark Robe with Gold Trim -->
+      <path d="M22,108 C22,80 38,72 60,72 C82,72 98,80 98,108 Z" fill="url(%23robeAdmin)" filter="url(%23shadowAdmin)"/>
+      <path d="M48,72 L60,94 L72,72" fill="none" stroke="url(%23goldTrim)" stroke-width="4.5" stroke-linecap="round"/>
+      <!-- Gold Medal of Wisdom -->
+      <circle cx="60" cy="98" r="7" fill="url(%23goldTrim)" filter="url(%23shadowAdmin)"/>
+      <text x="60" y="101" font-size="7" font-weight="bold" fill="%2378350f" text-anchor="middle">👑</text>
+      <!-- Head & Skin -->
+      <rect x="52" y="64" width="16" height="18" rx="6" fill="url(%23skinAdmin)"/>
+      <ellipse cx="60" cy="48" rx="26" ry="28" fill="url(%23skinAdmin)" filter="url(%23shadowAdmin)"/>
+      <!-- Neat Scholarly Hair -->
+      <path d="M34,36 C34,22 45,16 60,16 C75,16 86,22 86,36 Z" fill="%2327272a"/>
+      <!-- Big Golden Crown of Leadership -->
+      <polygon points="38,20 44,6 52,14 60,4 68,14 76,6 82,20" fill="url(%23goldTrim)" stroke="%23ca8a04" stroke-width="1.5" filter="url(%23shadowAdmin)"/>
+      <circle cx="60" cy="6" r="2.5" fill="%23ef4444"/>
+      <circle cx="44" cy="8" r="2" fill="%233b82f6"/>
+      <circle cx="76" cy="8" r="2" fill="%2310b981"/>
+      <!-- Stylish Smart Glasses -->
+      <rect x="36" y="44" width="20" height="13" rx="4" fill="none" stroke="%23d97706" stroke-width="3"/>
+      <rect x="64" y="44" width="20" height="13" rx="4" fill="none" stroke="%23d97706" stroke-width="3"/>
+      <line x1="56" y1="50" x2="64" y2="50" stroke="%23d97706" stroke-width="3"/>
+      <!-- Confident Eyes & Smile -->
+      <circle cx="46" cy="50" r="4.5" fill="%230f172a"/>
+      <circle cx="74" cy="50" r="4.5" fill="%230f172a"/>
+      <circle cx="48" cy="48" r="1.8" fill="%23ffffff"/>
+      <circle cx="76" cy="48" r="1.8" fill="%23ffffff"/>
+      <path d="M48,62 Q60,70 72,62" stroke="%23b45309" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+    </svg>`
+  },
+  {
+    id: 'avatar_admin_wise_owl',
+    name: 'آواتار جغد دانای مکتب‌خانه',
+    description: 'آواتار ۳ بعدی نماد خرد، دانش و مطالعه با کلاه فارغ‌التحصیلی',
+    bg: 'bg-emerald-100 border-emerald-400',
+    url: `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+      <defs>
+        <radialGradient id="bgOwl" cx="50%" cy="30%" r="70%"><stop offset="0%" stop-color="%2334d399"/><stop offset="100%" stop-color="%23065f46"/></radialGradient>
+        <linearGradient id="feather" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" stop-color="%2392400e"/><stop offset="100%" stop-color="%23451a03"/></linearGradient>
+        <filter id="shadowOwl" x="-10%" y="-10%" width="120%" height="120%"><feDropShadow dx="0" dy="3" stdDeviation="3" flood-opacity="0.3"/></filter>
+      </defs>
+      <circle cx="60" cy="60" r="56" fill="url(%23bgOwl)"/>
+      <circle cx="60" cy="60" r="53" fill="none" stroke="%23a7f3d0" stroke-width="2.5" opacity="0.8"/>
+      <!-- Owl Body -->
+      <ellipse cx="60" cy="68" rx="34" ry="36" fill="url(%23feather)" filter="url(%23shadowOwl)"/>
+      <ellipse cx="60" cy="74" rx="22" ry="24" fill="%23fef3c7"/>
+      <!-- Huge Glasses -->
+      <circle cx="45" cy="54" r="16" fill="%23ffffff" stroke="%23f59e0b" stroke-width="3.5" filter="url(%23shadowOwl)"/>
+      <circle cx="75" cy="54" r="16" fill="%23ffffff" stroke="%23f59e0b" stroke-width="3.5" filter="url(%23shadowOwl)"/>
+      <line x1="61" y1="54" x2="59" y2="54" stroke="%23f59e0b" stroke-width="4"/>
+      <!-- Sparkle Eyes -->
+      <circle cx="45" cy="54" r="9" fill="%231e293b"/>
+      <circle cx="75" cy="54" r="9" fill="%231e293b"/>
+      <circle cx="48" cy="51" r="3.5" fill="%23ffffff"/>
+      <circle cx="78" cy="51" r="3.5" fill="%23ffffff"/>
+      <!-- Beak -->
+      <polygon points="60,60 55,68 65,68" fill="%23f97316"/>
+      <!-- Grad Hat (Mortarboard) -->
+      <polygon points="60,12 94,22 60,32 26,22" fill="%231e1b4b" filter="url(%23shadowOwl)"/>
+      <rect x="46" y="28" width="28" height="10" rx="3" fill="%230f172a"/>
+      <circle cx="60" cy="22" r="3" fill="%23fbbf24"/>
+      <line x1="60" y1="22" x2="84" y2="34" stroke="%23fbbf24" stroke-width="2.5"/>
+      <circle cx="84" cy="35" r="2.5" fill="%23ef4444"/>
+    </svg>`
+  }
+];
+
 // Ultra-Cute 3D Cartoon Avatars without personal names
 export const FANTASY_AVATARS: AvatarOption[] = [
+  ...ADMIN_SPECIAL_AVATARS,
   {
     id: 'avatar_curly_glasses',
     name: '',

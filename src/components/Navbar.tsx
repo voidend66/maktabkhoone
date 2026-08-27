@@ -39,7 +39,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenPrintModal,
   onOpenBaleOtp
 }) => {
-  const { currentUser, setCurrentUser, users, switchUserRoleDemo, requests } = useApp();
+  const { currentUser, setCurrentUser, logoutUser, users, switchUserRoleDemo, requests } = useApp();
 
   // Count pending requests for current user
   const pendingRequestsForMe = currentUser
@@ -56,7 +56,7 @@ export const Navbar: React.FC<NavbarProps> = ({
     <header className="relative lg:sticky lg:top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
       {/* Main Navigation */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between py-1.5 sm:py-3 gap-2 sm:gap-4">
+        <div className="flex items-center justify-between py-2 sm:py-3 gap-2 sm:gap-4">
           {/* Prominent Logo & Brand Title */}
           <div
             className="flex items-center gap-2 sm:gap-3.5 cursor-pointer group py-0.5"
@@ -128,7 +128,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <BookPlus className="w-4.5 h-4.5 text-cyan-600" />
-                  کتاب‌های من
+                  طاقچه شخصی
                 </button>
 
                 <button
@@ -217,11 +217,16 @@ export const Navbar: React.FC<NavbarProps> = ({
                 </div>
 
                 <button
-                  onClick={() => setCurrentUser(null)}
-                  title="خروج از حساب"
-                  className="p-2 sm:p-2.5 text-slate-500 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 sm:border-transparent"
+                  onClick={() => {
+                    if (confirm('آیا قصد خروج از حساب کاربری را دارید؟')) {
+                      logoutUser();
+                    }
+                  }}
+                  title="خروج از حساب کاربری"
+                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1"
                 >
-                  <LogOut className="w-5 h-5" />
+                  <LogOut className="w-4 h-4 text-rose-500" />
+                  <span className="hidden sm:inline">خروج</span>
                 </button>
               </div>
             ) : (
@@ -297,7 +302,7 @@ export const Navbar: React.FC<NavbarProps> = ({
           {/* Row 2: 4 items depending on user state */}
           {currentUser ? (
             <>
-              {/* Item 5: My Books */}
+              {/* Item 5: My Bookshelf */}
               <button
                 onClick={() => setActiveTab('my_books')}
                 className={`flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border text-xs font-bold transition shadow-2xs active:scale-95 ${
@@ -307,7 +312,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <BookPlus className={`w-5 h-5 ${activeTab === 'my_books' ? 'text-white' : 'text-cyan-600'}`} />
-                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">کتاب‌های من</span>
+                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">طاقچه من</span>
               </button>
 
               {/* Item 6: Requests */}
