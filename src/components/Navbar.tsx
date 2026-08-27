@@ -198,7 +198,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                   </div>
                 </div>
 
-                {onOpenGuide && (
+                {onOpenGuide && currentUser?.role !== 'admin' && (
                   <button
                     onClick={onOpenGuide}
                     title="راهنما و آموزش مکتب‌خانه"

@@ -800,5 +800,29 @@ export const dbService = {
       systemConfig: this.getSystemConfig(),
       systemLogs: this.getSystemLogs()
     };
+  },
+
+  getRawDatabase(): DatabaseSchema {
+    return memoryDb;
+  },
+
+  restoreDatabase(rawJson: any): boolean {
+    if (!rawJson || typeof rawJson !== 'object') {
+      throw new Error('فایل پشتیبان نامعتبر است.');
+    }
+    
+    // Core validation: should have at least users or books, or be an empty schema structure
+    memoryDb = {
+      users: Array.isArray(rawJson.users) ? rawJson.users : [],
+      books: Array.isArray(rawJson.books) ? rawJson.books : [],
+      requests: Array.isArray(rawJson.requests) ? rawJson.requests : [],
+      schoolClasses: Array.isArray(rawJson.schoolClasses) ? rawJson.schoolClasses : [],
+      feedbacks: Array.isArray(rawJson.feedbacks) ? rawJson.feedbacks : [],
+      settings: typeof rawJson.settings === 'object' && rawJson.settings !== null ? rawJson.settings : {},
+      systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : []
+    };
+    
+    saveToDisk();
+    return true;
   }
 };

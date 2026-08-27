@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const ReadingLeague: React.FC = () => {
-  const { users } = useApp();
+  const { users, currentUser } = useApp();
   const [showPrintModal, setShowPrintModal] = useState(false);
 
   const studentUsers = users.filter((u) => u.status === 'approved' && u.role === 'student');
@@ -61,14 +61,24 @@ export const ReadingLeague: React.FC = () => {
             با اشتراک‌گذاری کتاب‌های جدید، مطالعه مستمر با چراغ مطالعه و کسب رضایت اعضا هنگام امانت، مدال‌های افتخار مکتب خونه دریافت کنید و نام خود را در برد عمومی ثبت کنید!
           </p>
 
-          <div className="pt-2">
+          <div className="pt-2 flex items-center gap-3 flex-wrap">
             <button
               onClick={() => setShowPrintModal(true)}
-              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black px-5 py-3 rounded-2xl text-xs shadow-lg shadow-amber-500/20 transition flex items-center gap-2"
+              className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black px-5 py-3 rounded-2xl text-xs shadow-lg shadow-amber-500/20 transition flex items-center gap-2 cursor-pointer"
             >
               <Printer className="w-4 h-4 text-slate-950" />
-              <span>دریافت خروجی چاپی برای نصب در برد دیواری</span>
+              <span>
+                {currentUser?.role === 'admin'
+                  ? '🖨️ خروجی رسمی کارنامه و پوستر برد مدرسه (ویژه مدیر)'
+                  : 'دریافت خروجی چاپی برای نصب در برد دیواری'}
+              </span>
             </button>
+
+            {currentUser?.role === 'admin' && (
+              <span className="text-[10px] bg-emerald-500/20 text-emerald-300 font-bold border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+                ✨ دسترسی مدیریت فعال: قالب دوگانه پوستر رنگی و کارنامه رسمی ممهور
+              </span>
+            )}
           </div>
         </div>
 

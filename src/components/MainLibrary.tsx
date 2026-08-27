@@ -293,7 +293,7 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5 sm:gap-6 px-6 sm:px-0 max-w-sm sm:max-w-none mx-auto">
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-6 px-1.5 sm:px-0 max-w-none mx-auto">
           {filteredBooks.map((book) => (
             <BookCard
               key={book.id}

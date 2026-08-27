@@ -2306,6 +2306,49 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
+   * API: پشتیبان‌گیری و بازیابی کل اطلاعات دیتابیس (Backup & Restore System)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/admin/backup', (_req: Request, res: Response): any => {
+    try {
+      const rawData = dbService.getRawDatabase();
+      res.setHeader('Content-disposition', `attachment; filename=maktabkhune-backup-${Date.now()}.json`);
+      res.setHeader('Content-type', 'application/json');
+      return res.send(JSON.stringify(rawData, null, 2));
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: 'خطا در خروجی گرفتن از اطلاعات: ' + err.message });
+    }
+  });
+
+  const jsonUpload = multer({ limits: { fileSize: 50 * 1024 * 1024 } }); // 50MB limit
+
+  app.post('/api/admin/restore', jsonUpload.single('backupFile'), (req: Request, res: Response): any => {
+    try {
+      let rawJson: any = null;
+
+      if (req.file) {
+        const fileContent = req.file.buffer.toString('utf-8');
+        rawJson = JSON.parse(fileContent);
+      } else if (req.body && req.body.backupData) {
+        rawJson = typeof req.body.backupData === 'string' ? JSON.parse(req.body.backupData) : req.body.backupData;
+      } else if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+        rawJson = req.body;
+      }
+
+      if (!rawJson) {
+        return res.status(400).json({ success: false, message: 'هیچ فایل پشتیبان یا داده معتبری جهت بازیابی پیدا نشد.' });
+      }
+
+      dbService.restoreDatabase(rawJson);
+      dbService.addSystemLog('info', 'بازیابی موفقیت‌آمیز کل اطلاعات سامانه از طریق فایل پشتیبان توسط مدیر');
+      return res.json({ success: true, message: 'اطلاعات با موفقیت بازیابی شد و آماده استفاده است.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: 'خطا در بازیابی فایل دیتابیس: ' + err.message });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
    * API: تنظیمات سامانه و قوانین ثبت‌نام و امانت
    * --------------------------------------------------------------------------
    */

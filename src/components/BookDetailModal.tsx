@@ -63,17 +63,17 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
       <div className="bg-white rounded-3xl max-w-2xl w-full overflow-hidden shadow-2xl border border-slate-100 my-8 animate-in fade-in zoom-in duration-200">
         {/* Header Modal Bar */}
-        <div className="p-4 sm:p-6 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-xs px-3 py-1 rounded-full font-bold">
+        <div className="p-4 sm:p-6 bg-gradient-to-r from-indigo-900 via-indigo-800 to-slate-900 text-white flex items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="bg-indigo-500/30 border border-indigo-400/30 text-indigo-200 text-[10px] sm:text-xs px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
               {book.category}
             </span>
-            <span className="text-xs text-slate-300">شناسه کتاب: #{book.id}</span>
+            <span className="text-[10px] sm:text-xs text-slate-300 truncate max-w-[130px] sm:max-w-none">شناسه: #{book.id}</span>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+            className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition shrink-0 cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>

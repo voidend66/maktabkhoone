@@ -231,14 +231,18 @@ function MainAppContent() {
               نسخه سامانه: v{APP_VERSION} (فاز عملیاتی)
             </span>
             <span>•</span>
-            <button
-              onClick={() => setShowGuideModal(true)}
-              className="text-xs text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer"
-            >
-              <HelpCircle className="w-3.5 h-3.5" />
-              راهنمای امانت و قوانین
-            </button>
-            <span>•</span>
+            {currentUser?.role !== 'admin' && (
+              <>
+                <button
+                  onClick={() => setShowGuideModal(true)}
+                  className="text-xs text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-1 cursor-pointer"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  راهنمای امانت و قوانین
+                </button>
+                <span>•</span>
+              </>
+            )}
             <button
               onClick={() => setActiveTab('rules')}
               className="text-xs text-amber-300 hover:text-amber-200 font-bold flex items-center gap-1 cursor-pointer"

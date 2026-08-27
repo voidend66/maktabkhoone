@@ -34,7 +34,10 @@ import {
   Crown,
   UserPlus,
   Shield,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Database,
+  Download,
+  Upload
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -58,7 +61,8 @@ export const AdminPanel: React.FC = () => {
     updateSystemConfig,
     verifyPaymentByAdmin,
     makeAdmin,
-    addAdminByPhone
+    addAdminByPhone,
+    refreshData
   } = useApp();
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -66,6 +70,59 @@ export const AdminPanel: React.FC = () => {
     'pending_users' | 'bank_card' | 'lending_history' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
   >('pending_users');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Backup and Restore states & handlers
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [restoreError, setRestoreError] = useState<string | null>(null);
+  const [restoreSuccess, setRestoreSuccess] = useState<boolean>(false);
+
+  const handleDownloadBackup = () => {
+    window.location.href = '/api/admin/backup';
+  };
+
+  const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const confirmRestore = window.confirm(
+      '⚠️ هشدار بسیار مهم!\n\nآیا از بازیابی و بازنشانی دیتابیس اطمینان کامل دارید؟\nبا این کار، تمامی کتب، امانت‌ها، کاربران و سوابق فعلی سایت پاک شده و با اطلاعات فایل بکاپ جایگزین خواهند شد.'
+    );
+    if (!confirmRestore) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsRestoring(true);
+    setRestoreError(null);
+    setRestoreSuccess(false);
+
+    const formData = new FormData();
+    formData.append('backupFile', file);
+
+    try {
+      const res = await fetch('/api/admin/restore', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setRestoreSuccess(true);
+        if (typeof fetchSystemLogs === 'function') {
+          fetchSystemLogs();
+        }
+        await refreshData();
+        alert('✅ اطلاعات دیتابیس با موفقیت به فایل پشتیبان بازگردانی شد.');
+      } else {
+        setRestoreError(data.message || 'خطا در خواندن فایل پشتیبان.');
+      }
+    } catch (err: any) {
+      setRestoreError(err.message || 'خطای شبکه در ارتباط با سرور.');
+    } finally {
+      setIsRestoring(false);
+      e.target.value = '';
+    }
+  };
 
   // Payment Archive State
   const [paymentSearch, setPaymentSearch] = useState('');
@@ -1397,6 +1454,78 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* Section 3: Backup and Restore Database Panel */}
+          <div className="border-t border-slate-200 pt-8 mt-8 space-y-6">
+            <div>
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Database className="w-5 h-5 text-indigo-600" />
+                <span>پشتیبان‌گیری و بازیابی هوشمند کل اطلاعات (دیتابیس):</span>
+              </h4>
+              <p className="text-xs text-slate-500 mt-1 font-medium">
+                از این بخش می‌توانید یک بکاپ جامع از کلیه اطلاعات سامانه (کاربران، کتب، امانت‌ها، کلاس‌ها، لاگ‌ها و تنظیمات) دانلود کرده و در صورت نیاز مجدداً بازیابی کنید.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Backup Card */}
+              <div className="p-5 bg-indigo-50/40 border border-indigo-100 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="space-y-1">
+                  <span className="text-xs font-black text-indigo-950 block">۱. دریافت فایل پشتیبان (بکاپ کامل)</span>
+                  <p className="text-[11px] text-indigo-900/80 leading-relaxed font-medium">
+                    با کلیک روی دکمه زیر، فایل پشتیبان کاملی با فرمت JSON دریافت خواهید کرد که شامل تمام اطلاعات ثبت شده در کتابخانه مدرسه است. این فایل را در جای امن نگهداری کنید تا به راحتی کل سایت را بازنشانی کنید.
+                  </p>
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadBackup}
+                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                  >
+                    <Download className="w-4 h-4" />
+                    <span>دانلود بکاپ جامع دیتابیس (.json)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Restore Card */}
+              <div className="p-5 bg-rose-50/20 border border-rose-100 rounded-2xl flex flex-col justify-between space-y-4">
+                <div className="space-y-1">
+                  <span className="text-xs font-black text-rose-950 block">۲. بازنشانی و بازیابی اطلاعات (Restore)</span>
+                  <p className="text-[11px] text-rose-900/80 leading-relaxed font-medium">
+                    فایل بکاپ دانلود شده قبلی خود را انتخاب کنید. سامانه به صورت خودکار اطلاعات را اعتبارسنجی کرده و کل وضعیت کتابخانه (اعضا، کلاس‌ها، کتاب‌ها و امانت‌ها) را دقیقاً به همان لحظه بازمی‌گرداند.
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <label className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs">
+                      <Upload className="w-4 h-4 text-emerald-400" />
+                      <span>{isRestoring ? 'در حال بازیابی...' : 'انتخاب و آپلود فایل پشتیبان'}</span>
+                      <input
+                        type="file"
+                        accept=".json"
+                        onChange={handleUploadBackup}
+                        disabled={isRestoring}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {restoreSuccess && (
+                    <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 p-2 rounded-xl animate-in fade-in">
+                      ✅ پایگاه داده با موفقیت بازنویسی و بازیابی شد. اطلاعات به‌روزرسانی گردید.
+                    </p>
+                  )}
+
+                  {restoreError && (
+                    <p className="text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-xl animate-in fade-in">
+                      ❌ خطا در بازیابی فایل بکاپ: {restoreError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
