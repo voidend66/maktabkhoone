@@ -200,11 +200,11 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
-              className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full bg-slate-50 border border-slate-200/95 rounded-2xl py-2.5 px-4 text-xs font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition cursor-pointer shadow-2xs hover:border-indigo-400"
             >
-              <option value="newest">جدیدترین کتاب‌ها</option>
-              <option value="rating">بالاترین امتیاز و محبوبیت</option>
-              <option value="reviews">بیشترین نظرات و گفتگو</option>
+              <option value="newest" className="font-semibold text-slate-900">✨ جدیدترین کتاب‌ها</option>
+              <option value="rating" className="font-semibold text-slate-900">⭐ بالاترین امتیاز و محبوبیت</option>
+              <option value="reviews" className="font-semibold text-slate-900">💬 بیشترین نظرات و گفتگو</option>
             </select>
           </div>
         </div>

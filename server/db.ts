@@ -27,6 +27,8 @@ export interface SystemLog {
   level: 'info' | 'warn' | 'error' | 'db';
   message: string;
   details?: string;
+  userName?: string;
+  userPhone?: string;
 }
 
 interface DatabaseSchema {
@@ -226,7 +228,16 @@ seedInitialDataIfEmpty();
 // Database Access Service
 // ==========================================
 
+// ---- SYSTEM LOG LISTENERS ----
+type SystemLogListener = (log: SystemLog) => void;
+const logListeners: SystemLogListener[] = [];
+
+export function addSystemLogListener(fn: SystemLogListener) {
+  logListeners.push(fn);
+}
+
 export const dbService = {
+  // .... existing code ...
   // ---- USERS ----
   getAllUsers(): User[] {
     return memoryDb.users.map((u) => ({
@@ -732,20 +743,38 @@ export const dbService = {
   },
 
   // ---- SYSTEM LOGS ----
-  addSystemLog(level: 'info' | 'warn' | 'error' | 'db', message: string, details?: string): SystemLog {
+  addSystemLog(
+    level: 'info' | 'warn' | 'error' | 'db',
+    message: string,
+    details?: string,
+    userName?: string,
+    userPhone?: string
+  ): SystemLog {
     if (!memoryDb.systemLogs) memoryDb.systemLogs = [];
     const newLog: SystemLog = {
       id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      timestamp: new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+      timestamp: `${new Date().toLocaleDateString('fa-IR')} ${new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
       level,
       message,
-      details
+      details,
+      userName,
+      userPhone
     };
     memoryDb.systemLogs.unshift(newLog);
     if (memoryDb.systemLogs.length > 500) {
       memoryDb.systemLogs = memoryDb.systemLogs.slice(0, 500);
     }
     saveToDisk();
+
+    // Trigger registered log listeners (e.g. Bale notifications for errors)
+    logListeners.forEach((listener) => {
+      try {
+        listener(newLog);
+      } catch (e) {
+        console.error('Error in log listener:', e);
+      }
+    });
+
     return newLog;
   },
 

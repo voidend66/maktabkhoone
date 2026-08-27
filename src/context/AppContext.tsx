@@ -52,8 +52,10 @@ interface AppContextType {
   updateProfile: (data: Partial<User>) => Promise<{ success: boolean; message?: string; user?: User }>;
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
-  rejectUser: (userId: string) => void;
+  rejectUser: (userId: string, reason?: string) => void;
   deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
+  makeAdmin: (id: string) => Promise<{ success: boolean; message?: string }>;
+  addAdminByPhone: (data: { phone: string; name?: string; password?: string }) => Promise<{ success: boolean; message?: string }>;
   addBook: (book: {
     title: string;
     author: string;
@@ -343,12 +345,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Admin Reject User
-  const rejectUser = async (userId: string) => {
+  const rejectUser = async (userId: string, reason?: string) => {
     setUsers((prev) =>
       prev.map((u) => (u.id === userId ? { ...u, status: 'rejected' as const } : u))
     );
     try {
-      await api.rejectUser(userId);
+      await api.rejectUser(userId, reason);
     } catch (e) {
       console.error('Error rejecting user on server:', e);
     }
@@ -864,6 +866,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Promote user to admin
+  const makeAdmin = async (id: string) => {
+    try {
+      const res = await api.makeAdmin(id);
+      if (res.success && res.user) {
+        setUsers((prev) => prev.map((u) => (u.id === id ? res.user : u)));
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ارتقای کاربر' };
+    }
+  };
+
+  // Add new admin by phone
+  const addAdminByPhone = async (data: { phone: string; name?: string; password?: string }) => {
+    try {
+      const res = await api.addAdminByPhone(data);
+      if (res.success && res.user) {
+        setUsers((prev) => {
+          const idx = prev.findIndex((u) => u.id === res.user.id);
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = res.user;
+            return updated;
+          }
+          return [res.user, ...prev];
+        });
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ثبت مدیر جدید' };
+    }
+  };
+
   // Reset to initial clean state
   const resetToDefaults = () => {
     setUsers([]);
@@ -898,6 +934,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         approveUser,
         rejectUser,
         deleteUser,
+        makeAdmin,
+        addAdminByPhone,
         addBook,
         deleteBook,
         requestBookLoan,

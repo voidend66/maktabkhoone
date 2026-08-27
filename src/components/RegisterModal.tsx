@@ -303,10 +303,10 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                       <select
                         value={className}
                         onChange={(e) => setClassName(e.target.value)}
-                        className="w-full text-xs pr-9 pl-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-cyan-500 font-bold text-slate-800"
+                        className="w-full text-xs sm:text-sm pr-9 pl-3 py-3 bg-slate-50 border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 font-bold text-slate-800 shadow-2xs hover:border-cyan-400 transition cursor-pointer"
                       >
                         {schoolClasses.map((c) => (
-                          <option key={c.id} value={c.name}>
+                          <option key={c.id} value={c.name} className="py-2 text-slate-900 font-semibold">
                             {c.name}
                           </option>
                         ))}

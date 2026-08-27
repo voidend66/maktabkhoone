@@ -59,63 +59,63 @@ export const Navbar: React.FC<NavbarProps> = ({
       {/* Main Navigation */}
       <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between py-2 sm:py-3 gap-2 sm:gap-4">
-          {/* Prominent Logo & Brand Title */}
+          {/* Prominent Logo & Brand Title (Compact in Header) */}
           <div
-            className="flex items-center gap-2 sm:gap-3.5 cursor-pointer group py-0.5"
+            className="flex items-center gap-2 cursor-pointer group py-0.5 shrink-0"
             onClick={() => setActiveTab('library')}
           >
-            <MaktabKhanehLogo size="lg" showSlogan={true} />
+            <MaktabKhanehLogo size="md" showSlogan={false} />
           </div>
 
-          {/* Navigation Items */}
-          <nav className="hidden lg:flex items-center gap-0.5 xl:gap-1.5 shrink min-w-0">
+          {/* Navigation Items (Scrollable & Responsive) */}
+          <nav className="hidden lg:flex items-center gap-1 xl:gap-2 shrink min-w-0 overflow-x-auto no-scrollbar py-1">
             <button
               onClick={() => setActiveTab('library')}
-              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+              className={`px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                 activeTab === 'library'
                   ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <BookOpen className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+              <BookOpen className="w-4 h-4 text-cyan-600 shrink-0" />
               <span>کتابخانه</span>
             </button>
 
             <button
               onClick={() => setActiveTab('league')}
-              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+              className={`px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                 activeTab === 'league'
                   ? 'bg-amber-50 text-amber-900 border border-amber-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Trophy className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-500 shrink-0" />
+              <Trophy className="w-4 h-4 text-amber-500 shrink-0" />
               <span>لیگ</span>
             </button>
 
             {/* Features & Benefits Tab */}
             <button
               onClick={() => setActiveTab('benefits')}
-              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+              className={`px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                 activeTab === 'benefits'
                   ? 'bg-orange-50 text-orange-900 border border-orange-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <Sparkles className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-orange-500 shrink-0" />
+              <Sparkles className="w-4 h-4 text-orange-500 shrink-0" />
               <span>مزایا</span>
             </button>
 
             {/* Top Site Rules Tab */}
             <button
               onClick={() => setActiveTab('rules')}
-              className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+              className={`px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                 activeTab === 'rules'
                   ? 'bg-emerald-50 text-emerald-800 border border-emerald-200 shadow-2xs'
                   : 'text-slate-700 hover:bg-slate-100'
               }`}
             >
-              <ShieldCheck className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-emerald-600 shrink-0" />
+              <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>قوانین</span>
             </button>
 
@@ -123,43 +123,31 @@ export const Navbar: React.FC<NavbarProps> = ({
               <>
                 <button
                   onClick={() => setActiveTab('my_books')}
-                  className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+                  className={`px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                     activeTab === 'my_books'
                       ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <BookPlus className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+                  <BookPlus className="w-4 h-4 text-cyan-600 shrink-0" />
                   <span>طاقچه</span>
                 </button>
 
                 <button
                   onClick={() => setActiveTab('requests')}
-                  className={`relative px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+                  className={`relative px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                     activeTab === 'requests'
                       ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
                       : 'text-slate-700 hover:bg-slate-100'
                   }`}
                 >
-                  <ArrowLeftRight className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
+                  <ArrowLeftRight className="w-4 h-4 text-cyan-600 shrink-0" />
                   <span>درخواست‌ها</span>
                   {pendingRequestsForMe > 0 && (
-                    <span className="w-4.5 h-4.5 rounded-full bg-orange-500 text-white text-[10px] flex items-center justify-center font-bold animate-pulse">
+                    <span className="w-4 h-4 rounded-full bg-orange-500 text-white text-[10px] flex items-center justify-center font-bold animate-pulse">
                       {pendingRequestsForMe}
                     </span>
                   )}
-                </button>
-
-                <button
-                  onClick={() => setActiveTab('profile')}
-                  className={`px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
-                    activeTab === 'profile'
-                      ? 'bg-cyan-50 text-cyan-800 border border-cyan-200 shadow-2xs'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
-                >
-                  <UserIcon className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-cyan-600 shrink-0" />
-                  <span>پروفایل</span>
                 </button>
               </>
             )}
@@ -167,16 +155,16 @@ export const Navbar: React.FC<NavbarProps> = ({
             {(currentUser?.role === 'admin' || currentUser?.id === 'user_admin') && (
               <button
                 onClick={() => setActiveTab('admin')}
-                className={`relative px-2.5 xl:px-3.5 py-1.5 xl:py-2 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap ${
+                className={`relative px-2.5 xl:px-3 py-1.5 rounded-xl font-bold text-xs xl:text-sm flex items-center gap-1.5 transition whitespace-nowrap shrink-0 ${
                   activeTab === 'admin'
                     ? 'bg-cyan-700 text-white shadow-md shadow-cyan-900/20'
                     : 'text-slate-700 hover:bg-slate-100'
                 }`}
               >
-                <ShieldAlert className="w-4 h-4 xl:w-4.5 xl:h-4.5 text-amber-300 shrink-0" />
+                <ShieldAlert className="w-4 h-4 text-amber-300 shrink-0" />
                 <span>مدیریت</span>
                 {pendingApprovalsForAdmin > 0 && (
-                  <span className="w-4.5 h-4.5 rounded-full bg-amber-400 text-slate-950 text-[10px] flex items-center justify-center font-bold">
+                  <span className="w-4 h-4 rounded-full bg-amber-400 text-slate-950 text-[10px] flex items-center justify-center font-bold">
                     {pendingApprovalsForAdmin}
                   </span>
                 )}
@@ -185,37 +173,27 @@ export const Navbar: React.FC<NavbarProps> = ({
           </nav>
 
           {/* User Auth Buttons & Profile Badge */}
-          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 border-r border-slate-200 pr-2 sm:pr-3">
             {currentUser ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
                 <div
                   onClick={() => setActiveTab('profile')}
-                  className="flex items-center gap-2 bg-slate-100/90 hover:bg-slate-200/90 p-1 sm:p-1.5 pr-2 sm:pr-2.5 rounded-xl sm:rounded-2xl cursor-pointer transition border border-slate-200 max-w-[170px] sm:max-w-[240px]"
+                  title="نمایش پروفایل کاربری"
+                  className="flex items-center gap-2 bg-slate-100/90 hover:bg-slate-200/90 p-1 sm:p-1.5 px-2 rounded-xl sm:rounded-2xl cursor-pointer transition border border-slate-200 max-w-[140px] sm:max-w-[190px]"
                 >
                   <img
                     src={currentUser.avatar}
                     alt={currentUser.name}
-                    className="w-8 h-8 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl object-cover ring-2 ring-cyan-500 shadow-xs shrink-0"
+                    className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl object-cover ring-2 ring-cyan-500 shadow-xs shrink-0"
                   />
                   <div className="text-right min-w-0 flex-1">
                     <div className="flex items-center gap-1">
-                      <span className="text-xs sm:text-sm font-black text-slate-900 truncate block">
+                      <span className="text-xs font-black text-slate-900 truncate block">
                         {currentUser.name}
                       </span>
-                      {currentUser.status === 'pending' ? (
-                        <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded-full font-bold shrink-0 whitespace-nowrap">
-                          <Clock className="w-2.5 h-2.5" />
-                          در انتظار
-                        </span>
-                      ) : (
-                        <span className="hidden md:inline-flex items-center gap-0.5 text-[9px] text-cyan-800 bg-cyan-100 px-1.5 py-0.5 rounded-full font-bold shrink-0 whitespace-nowrap">
-                          <CheckCircle2 className="w-2.5 h-2.5 text-cyan-600" />
-                          عضو
-                        </span>
-                      )}
                     </div>
                     <div className="text-[10px] text-cyan-700 font-bold leading-none mt-0.5 truncate block">
-                      {currentUser.className}
+                      {currentUser.role === 'admin' ? 'مدیر سیستم' : currentUser.className}
                     </div>
                   </div>
                 </div>
@@ -224,10 +202,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <button
                     onClick={onOpenGuide}
                     title="راهنما و آموزش مکتب‌خانه"
-                    className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition border border-cyan-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                    className="px-2.5 py-1.5 text-xs font-bold text-cyan-800 bg-cyan-50 hover:bg-cyan-100 rounded-xl transition border border-cyan-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                   >
                     <HelpCircle className="w-4 h-4 text-cyan-600 shrink-0" />
-                    <span className="hidden md:inline">راهنمای سامانه</span>
+                    <span className="hidden xl:inline">راهنما</span>
                   </button>
                 )}
 
@@ -238,10 +216,10 @@ export const Navbar: React.FC<NavbarProps> = ({
                     }
                   }}
                   title="خروج از حساب کاربری"
-                  className="px-2.5 py-1.5 sm:px-3 sm:py-2 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
+                  className="px-2.5 py-1.5 text-xs font-bold text-slate-600 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition border border-slate-200 flex items-center gap-1 shrink-0 whitespace-nowrap cursor-pointer"
                 >
                   <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span className="hidden sm:inline">خروج</span>
+                  <span className="hidden xl:inline">خروج</span>
                 </button>
               </div>
             ) : (

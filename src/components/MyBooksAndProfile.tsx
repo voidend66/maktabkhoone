@@ -254,6 +254,47 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
           </div>
         </div>
 
+        {/* Bale Notification Status Bar */}
+        <div className="bg-gradient-to-r from-emerald-50 via-teal-50 to-sky-50 border border-teal-200/80 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold text-lg shrink-0 shadow-xs">
+              💬
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="font-black text-slate-800 text-xs sm:text-sm">اطلاع‌رسانی پیام‌رسان بله</span>
+                {currentUser.baleChatId ? (
+                  <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2.5 py-0.5 rounded-full border border-emerald-300 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" /> متصل شد
+                  </span>
+                ) : (
+                  <span className="bg-amber-100 text-amber-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-amber-300">
+                    در انتظار اتصال
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                {currentUser.baleChatId
+                  ? 'چت بله شما با موفقیت متصل است. اعلانات تایید مدیر، امانت کتاب و پرداخت‌ها در بله برای شما ارسال می‌شود.'
+                  : 'جهت دریافت اعلانات لحظه‌ای تایید حساب توسط مدیر، درخواست‌های امانت و پرداخت، ربات بله را روشن کنید.'}
+              </p>
+            </div>
+          </div>
+
+          <a
+            href={`bale://bale.ai/im?p=@Maktabkhano_bot&start=user_${currentUser.id}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => {
+              // Fallback to web link if desktop app isn't open
+              window.open(`https://web.bale.ai/#/im?p=@Maktabkhano_bot&start=user_${currentUser.id}`, '_blank');
+            }}
+            className="w-full sm:w-auto text-center bg-teal-600 hover:bg-teal-700 active:bg-teal-800 text-white font-black text-xs px-4 py-2.5 rounded-xl shadow-xs transition shrink-0 flex items-center justify-center gap-2"
+          >
+            <span>{currentUser.baleChatId ? '🔄 به‌روزرسانی اتصال بله' : '📲 اتصال به ربات بله'}</span>
+          </a>
+        </div>
+
         {/* Compact Stats and Medals Summary (Clean & Minimalist) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">

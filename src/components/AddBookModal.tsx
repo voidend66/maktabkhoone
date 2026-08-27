@@ -182,10 +182,10 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
               <select
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                className="w-full text-xs sm:text-sm p-3 bg-slate-50 border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 font-bold text-slate-800 shadow-2xs hover:border-teal-400 transition cursor-pointer"
               >
                 {CATEGORIES.filter((c) => c !== 'همه تصنیف‌ها').map((c) => (
-                  <option key={c} value={c}>
+                  <option key={c} value={c} className="py-2 text-slate-900 font-semibold">
                     {c}
                   </option>
                 ))}
@@ -199,11 +199,11 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
               <select
                 value={condition}
                 onChange={(e) => setCondition(e.target.value as BookCondition)}
-                className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 font-bold text-slate-800"
+                className="w-full text-xs sm:text-sm p-3 bg-slate-50 border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-teal-500/20 focus:border-teal-500 font-bold text-slate-800 shadow-2xs hover:border-teal-400 transition cursor-pointer"
               >
-                <option value="عالی (نو)">عالی (نو و بدون خط‌خوردگی)</option>
-                <option value="خوب">خوب (کاملا تمیز و سالم)</option>
-                <option value="متوسط">متوسط (استفاده شده)</option>
+                <option value="عالی (نو)" className="py-2 text-slate-900 font-semibold">✨ عالی (نو و بدون خط‌خوردگی)</option>
+                <option value="خوب" className="py-2 text-slate-900 font-semibold">👍 خوب (کاملاً تمیز و سالم)</option>
+                <option value="متوسط" className="py-2 text-slate-900 font-semibold">📖 متوسط (استفاده شده)</option>
               </select>
             </div>
           </div>

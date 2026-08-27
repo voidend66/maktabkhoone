@@ -5,7 +5,7 @@ import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
 import crypto from 'crypto';
 import multer from 'multer';
-import { dbService } from './server/db';
+import { dbService, addSystemLogListener } from './server/db';
 import { isAdminPhone } from './src/data/mockData';
 import {
   User,
@@ -113,6 +113,7 @@ export interface OtpSession {
 
 const otpSessions = new Map<string, OtpSession>();
 const chatToSessionMap = new Map<string | number, string>();
+const adminAwaitingRejectReason = new Map<string | number, string>();
 
 /**
  * تبدیل ارقام فارسی و عربی به انگلیسی
@@ -298,13 +299,85 @@ export async function notifyAdminsOnBale(user: User) {
 }
 
 /**
+ * ارسال پیام عمومی به تمامی مدیران ثبت‌شده در پیام‌رسان بله
+ */
+export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any) {
+  try {
+    const allUsers = dbService.getAllUsers();
+    const adminChatIds = new Set<string | number>();
+
+    allUsers.forEach((u) => {
+      if (u.role === 'admin' && u.baleChatId) {
+        adminChatIds.add(u.baleChatId);
+      }
+    });
+
+    const savedSetting = dbService.getSetting('admin_bale_chat_ids');
+    if (savedSetting) {
+      try {
+        const parsed = JSON.parse(savedSetting);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((id) => adminChatIds.add(id));
+        }
+      } catch (e) {}
+    }
+
+    for (const chatId of adminChatIds) {
+      await sendBaleMessage(chatId, text, replyMarkup);
+    }
+  } catch (err) {
+    console.error('Error sending general notification to admins on Bale:', err);
+  }
+}
+
+// Register system log listener to automatically notify admins on Bale whenever an error or warning log is recorded!
+addSystemLogListener((log) => {
+  if (log.level === 'error' || log.level === 'warn') {
+    const icon = log.level === 'error' ? '🚨' : '⚠️';
+    const errorText =
+      `${icon} <b>هشدار لاگ سیستمی (${log.level === 'error' ? 'خطا' : 'هشدار'})</b>\n\n` +
+      `📌 <b>موضوع:</b> ${log.message}\n` +
+      `📝 <b>جزئیات:</b> ${log.details || 'بدون جزئیات تکمیلی'}\n` +
+      (log.userName ? `👤 <b>کاربر مرتبط:</b> ${log.userName} (${log.userPhone || ''})\n` : '') +
+      `⏰ <b>زمان ثبت:</b> ${log.timestamp}`;
+
+    notifyAdminsGeneralOnBale(errorText);
+  }
+});
+
+/**
  * ارسال پیام اعلان به کاربر در پیام‌رسان بله
  */
-export async function notifyUserOnBale(userId: string, text: string) {
+export async function notifyUserOnBale(userId: string, text: string, replyMarkup?: any) {
   try {
     const user = dbService.getUserById(userId);
-    if (user && user.baleChatId) {
-      await sendBaleMessage(user.baleChatId, text);
+    if (!user) {
+      console.log(`⚠️ [Bale Notify] کاربر با شناسه ${userId} یافت نشد.`);
+      return;
+    }
+    if (!user.baleChatId) {
+      console.log(`⚠️ [Bale Notify] چت بله برای کاربر ${user.name} (${userId}) هنوز متصل نشده است.`);
+      dbService.addSystemLog(
+        'warn',
+        `عدم ارسال اعلان بله به (${user.name})`,
+        `چت بله این کاربر هنوز متصل نشده است. متن اعلان: ${text.substring(0, 100)}...`
+      );
+      return;
+    }
+
+    const res = await sendBaleMessage(user.baleChatId, text, replyMarkup);
+    if (res && res.ok) {
+      dbService.addSystemLog(
+        'info',
+        `ارسال اعلان بله به کاربر (${user.name})`,
+        `چت‌آیدی بله: ${user.baleChatId} | متن: ${text.substring(0, 80)}...`
+      );
+    } else {
+      dbService.addSystemLog(
+        'error',
+        `خطا در ارسال اعلان بله به (${user.name})`,
+        `پاسخ بله: ${JSON.stringify(res)}`
+      );
     }
   } catch (err) {
     console.error(`Error notifying user ${userId} on Bale:`, err);
@@ -312,7 +385,7 @@ export async function notifyUserOnBale(userId: string, text: string) {
 }
 
 /**
- * پردازش کلیک روی دکمه‌های شیشه‌ای (Inline Keyboard) پیام‌رسان بله توسط مدیر
+ * پردازش کلیک روی دکمه‌های شیشه‌ای (Inline Keyboard) پیام‌رسان بله توسط مدیر یا کاربر
  */
 export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
   try {
@@ -325,8 +398,8 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
       registerAdminBaleChatId(fromChatId);
     }
 
-    if (data.startsWith('approve_user:') || data.startsWith('reject_user:')) {
-      const isApprove = data.startsWith('approve_user:');
+    // 1. تایید عضویت کاربر توسط مدیر
+    if (data.startsWith('approve_user:')) {
       const userId = data.split(':')[1];
       const targetUser = dbService.getUserById(userId);
 
@@ -339,23 +412,18 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
         return;
       }
 
-      const newStatus = isApprove ? 'approved' : 'rejected';
-      const updatedUser = dbService.updateUser(userId, { status: newStatus });
+      const updatedUser = dbService.updateUser(userId, { status: 'approved' });
 
       dbService.addSystemLog(
         'info',
-        `تغییر وضعیت کاربر (${targetUser.name}) به ${newStatus === 'approved' ? 'تاییدشده' : 'ردشده'} از طریق پیام‌رسان بله`,
+        `تغییر وضعیت کاربر (${targetUser.name}) به تاییدشده از طریق پیام‌رسان بله`,
         `شناسه چت مدیر در بله: ${fromChatId}`
       );
 
       // 1. نمایش هشدار پاپ‌آپ روی صفحه مدیر در بله
-      const alertMessage = isApprove
-        ? `✅ حساب کاربر «${targetUser.name}» با موفقیت تایید شد.`
-        : `❌ حساب کاربر «${targetUser.name}» رد شد.`;
-
       await callBaleApi('answerCallbackQuery', {
         callback_query_id: queryId,
-        text: alertMessage,
+        text: `✅ حساب کاربر «${targetUser.name}» با موفقیت تایید شد.`,
         show_alert: true,
       });
 
@@ -366,9 +434,7 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
           `👤 <b>نام:</b> ${targetUser.name}\n` +
           `🏫 <b>کلاس:</b> ${targetUser.className}\n` +
           `📱 <b>تلفن:</b> <code>${targetUser.phone}</code>\n\n` +
-          (isApprove
-            ? `✅ <b>تایید شد:</b> دسترسی این کاربر توسط مدیر از طریق پیام‌رسان بله تایید شد.`
-            : `❌ <b>رد شد:</b> عضویت این کاربر توسط مدیر رد گردید.`);
+          `✅ <b>تایید شد:</b> دسترسی این کاربر توسط مدیر از طریق پیام‌رسان بله تایید شد.`;
 
         await callBaleApi('editMessageText', {
           chat_id: fromChatId,
@@ -380,13 +446,285 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
 
       // 3. ارسال اعلان اطلاع‌رسانی مستقیم برای دانش‌آموز در بله
       if (targetUser && targetUser.baleChatId) {
-        const userNotification = isApprove
-          ? `🎉 <b>تبریک ${targetUser.name} عزیز!</b>\n\n` +
-            `حساب کاربری شما در مکتب‌خانه توسط مدیر مدرسه تایید شد. اکنون می‌توانید کتاب‌های مورد علاقه خود را امانت بگیرید. 🎒📚`
-          : `⚠️ <b>اطلاعیه مکتب‌خانه</b>\n\n` +
-            `متأسفانه درخواست عضویت شما توسط مدیر مدرسه تایید نشد. جهت کسب اطلاعات بیشتر با مسئول کتابخانه مدرسه تماس بگیرید.`;
+        const userNotification =
+          `🎉 <b>تبریک ${targetUser.name} عزیز!</b>\n\n` +
+          `حساب کاربری شما در مکتب‌خانه توسط مدیر مدرسه تایید و فعال شد. اکنون می‌توانید کتاب‌های مورد علاقه خود را امانت بگیرید. 🎒📚`;
 
         await sendBaleMessage(targetUser.baleChatId, userNotification);
+      }
+      return;
+    }
+
+    // 2. رد عضویت کاربر توسط مدیر (با امکان انتخاب علت)
+    if (data.startsWith('reject_user:')) {
+      const userId = data.split(':')[1];
+      const targetUser = dbService.getUserById(userId);
+
+      if (!targetUser) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ کاربر مورد نظر در دیتابیس سامانه یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      const text =
+        `🎒 <b>انتخاب علت رد عضویت «${targetUser.name}»</b>\n\n` +
+        `لطفاً علت رد عضویت این کاربر را انتخاب نمایید تا علت آن به کاربر اطلاع‌رسانی شود:`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '✍️ نام نامفهوم یا ناقص', callback_data: `rj_rs:${userId}:name` },
+            { text: '🏫 کلاس تحصیلی نادرست', callback_data: `rj_rs:${userId}:class` },
+          ],
+          [
+            { text: '🚫 ثبت‌نام نامعتبر یا غیرمرتبط', callback_data: `rj_rs:${userId}:invalid` },
+            { text: '⌨️ نوشتن علت دلخواه (تایپ متن)', callback_data: `rj_rs:${userId}:custom` },
+          ],
+          [
+            { text: '↩️ لغو و بازگشت', callback_data: `rj_back:${userId}` }
+          ]
+        ]
+      };
+
+      await callBaleApi('editMessageText', {
+        chat_id: fromChatId,
+        message_id: messageId,
+        text: text,
+        reply_markup: replyMarkup,
+        parse_mode: 'HTML',
+      });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: 'لطفاً علت رد عضویت را انتخاب کنید.',
+      });
+      return;
+    }
+
+    // پردازش کدهای دلایل رد عضویت
+    if (data.startsWith('rj_rs:')) {
+      const parts = data.split(':');
+      const userId = parts[1];
+      const reasonCode = parts[2];
+      const targetUser = dbService.getUserById(userId);
+
+      if (!targetUser) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ کاربر مورد نظر یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      if (reasonCode === 'custom') {
+        adminAwaitingRejectReason.set(fromChatId, userId);
+
+        const customPromptText =
+          `⌨️ <b>در حال دریافت علت دلخواه رد عضویت «${targetUser.name}»</b>\n\n` +
+          `لطفاً پیام/علت رد عضویت مورد نظر خود را در کادر چت تایپ کرده و ارسال فرمایید.\n\n` +
+          `<i>مثال: سلام شما اسمتون رو درست وارد نکردید با نام کامل دوباره تلاش کنید</i>`;
+
+        const cancelMarkup = {
+          inline_keyboard: [
+            [
+              { text: '❌ انصراف و بازگشت', callback_data: `rj_back:${userId}` }
+            ]
+          ]
+        };
+
+        await callBaleApi('editMessageText', {
+          chat_id: fromChatId,
+          message_id: messageId,
+          text: customPromptText,
+          reply_markup: cancelMarkup,
+          parse_mode: 'HTML',
+        });
+
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: 'لطفاً علت رد را تایپ کرده و ارسال کنید.',
+        });
+        return;
+      }
+
+      let reasonText = '';
+      if (reasonCode === 'name') {
+        reasonText = 'سلام، شما نام و نام خانوادگی خود را کامل و واقعی وارد نکرده‌اید. لطفاً با نام کامل و واقعی دوباره تلاش کنید.';
+      } else if (reasonCode === 'class') {
+        reasonText = 'سلام، کلاس یا پایه تحصیلی انتخاب شده نامعتبر است. لطفاً کلاس صحیح خود را انتخاب نمایید.';
+      } else {
+        reasonText = 'سلام، درخواست عضویت شما تایید نشد. اطلاعات ارائه‌شده نامعتبر یا نامربوط است.';
+      }
+
+      dbService.updateUser(userId, { status: 'rejected' });
+
+      dbService.addSystemLog(
+        'info',
+        `رد عضویت کاربر (${targetUser.name}) با علت: ${reasonText}`,
+        `توسط مدیر از بله (شناسه چت: ${fromChatId})`
+      );
+
+      const finalAdminText =
+        `🎒 <b>نتیجه بررسی درخواست عضویت در مکتب‌خانه</b>\n\n` +
+        `👤 <b>نام:</b> ${targetUser.name}\n` +
+        `🏫 <b>کلاس:</b> ${targetUser.className}\n` +
+        `📱 <b>تلفن:</b> <code>${targetUser.phone}</code>\n\n` +
+        `❌ <b>عضویت رد شد.</b>\n` +
+        `💬 <b>علت ارسال شده:</b> ${reasonText}`;
+
+      await callBaleApi('editMessageText', {
+        chat_id: fromChatId,
+        message_id: messageId,
+        text: finalAdminText,
+        parse_mode: 'HTML',
+      });
+
+      if (targetUser.baleChatId) {
+        const userNotification =
+          `⚠️ <b>اطلاعیه مکتب‌خانه</b>\n\n` +
+          `درخواست عضویت شما توسط مدیر مدرسه پذیرفته نشد.\n\n` +
+          `📌 <b>توضیح/علت رد عضویت:</b>\n` +
+          `« ${reasonText} »\n\n` +
+          `جهت اصلاح اطلاعات می‌توانید مجدداً در سایت مکتب‌خانه اقدام فرمایید.`;
+        await sendBaleMessage(targetUser.baleChatId, userNotification);
+      }
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: '❌ درخواست عضویت رد شد و علت ارسال گردید.',
+      });
+      return;
+    }
+
+    if (data.startsWith('rj_back:')) {
+      const userId = data.split(':')[1];
+      const targetUser = dbService.getUserById(userId);
+      if (fromChatId) {
+        adminAwaitingRejectReason.delete(fromChatId);
+      }
+
+      if (!targetUser) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ کاربر یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      const statusBadge = targetUser.status === 'approved' ? '✅ تایید شده' : '⏳ در انتظار تایید مدیر';
+      const text =
+        `🎒 <b>درخواست عضویت کاربر جدید در مکتب‌خانه</b>\n\n` +
+        `👤 <b>نام و نام خانوادگی:</b> ${targetUser.name}\n` +
+        `🏫 <b>کلاس / پایه تحصیلی:</b> ${targetUser.className}\n` +
+        `📱 <b>شماره همراه:</b> <code>${targetUser.phone}</code>\n` +
+        `📚 <b>تعداد کتاب‌های اهدا/ثبت‌شده:</b> ${targetUser.booksContributedCount} جلد\n` +
+        `📌 <b>وضعیت حساب:</b> ${statusBadge}\n` +
+        `📅 <b>تاریخ ثبت‌نام:</b> ${targetUser.joinedDate}\n\n` +
+        `آیا دسترسی این دانش‌آموز را جهت امانت گرفتن کتاب از مکتب‌خانه تایید می‌فرمایید؟`;
+
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '✅ تایید حساب کاربر', callback_data: `approve_user:${targetUser.id}` },
+            { text: '❌ رد عضویت کاربر', callback_data: `reject_user:${targetUser.id}` },
+          ],
+        ],
+      };
+
+      await callBaleApi('editMessageText', {
+        chat_id: fromChatId,
+        message_id: messageId,
+        text: text,
+        reply_markup: replyMarkup,
+        parse_mode: 'HTML',
+      });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: 'بازگشت به منوی بررسی.',
+      });
+      return;
+    }
+
+    // 2. پذیرش یا رد درخواست امانت کتاب توسط مالک
+    if (data.startsWith('accept_req:') || data.startsWith('reject_req:')) {
+      const isAccept = data.startsWith('accept_req:');
+      const reqId = data.split(':')[1];
+      const reqItem = dbService.getRequestById(reqId);
+
+      if (!reqItem) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ درخواست مورد نظر یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      if (isAccept) {
+        const updated = dbService.updateRequest(reqId, {
+          status: 'payment_pending',
+          pickupLocation: 'مدرسه (ساعات تفریح)',
+          pickupTime: 'زنگ تفریح اول',
+          acceptedAt: new Date().toLocaleDateString('fa-IR'),
+          paymentStatus: 'pending'
+        });
+
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: `✅ درخواست امانت کتاب «${reqItem.bookTitle}» پذیرفته شد.`,
+          show_alert: true,
+        });
+
+        if (fromChatId && messageId) {
+          await callBaleApi('editMessageText', {
+            chat_id: fromChatId,
+            message_id: messageId,
+            text: `✅ <b>درخواست امانت کتاب «${reqItem.bookTitle}» توسط شما پذیرفته شد.</b>\n\nامانت‌گیرنده: ${reqItem.borrowerName}\nوضعیت: در انتظار پرداخت حق امانت ۱۰,۰۰۰ تومانی`,
+            parse_mode: 'HTML',
+          });
+        }
+
+        if (updated) {
+          notifyUserOnBale(
+            updated.borrowerId,
+            `✅ <b>درخواست امانت شما پذیرفته شد!</b>\n\n` +
+            `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n` +
+            `📍 <b>مکان تحویل پیشنهادی:</b> مدرسه (ساعات تفریح)\n` +
+            `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
+            `لطفاً وارد سامانه شده و نسبت به ثبت فیش پرداخت اقدام فرمایید.`
+          );
+        }
+      } else {
+        dbService.updateBook(reqItem.bookId, { status: 'available' });
+        const updated = dbService.updateRequest(reqId, { status: 'rejected' });
+
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: `❌ درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.`,
+          show_alert: true,
+        });
+
+        if (fromChatId && messageId) {
+          await callBaleApi('editMessageText', {
+            chat_id: fromChatId,
+            message_id: messageId,
+            text: `❌ <b>درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.</b>`,
+            parse_mode: 'HTML',
+          });
+        }
+
+        if (updated) {
+          notifyUserOnBale(
+            updated.borrowerId,
+            `❌ <b>درخواست امانت رد شد</b>\n\nمتأسفانه درخواست امانت کتاب <b>«${updated.bookTitle}»</b> توسط مالک پذیرفته نشد.`
+          );
+        }
       }
     }
   } catch (err) {
@@ -400,10 +738,102 @@ export async function handleIncomingBaleMessage(message: any) {
 
   const text = (message.text || '').trim();
 
+  // Check if this chat is an admin awaiting custom reject reason
+  if (adminAwaitingRejectReason.has(chatId)) {
+    const userId = adminAwaitingRejectReason.get(chatId)!;
+    adminAwaitingRejectReason.delete(chatId);
+
+    const targetUser = dbService.getUserById(userId);
+    if (!targetUser) {
+      await sendBaleMessage(chatId, '❌ کاربر مورد نظر در سیستم یافت نشد.');
+      return;
+    }
+
+    const customReason = text || 'اطلاعات نادرست وارد شده است.';
+
+    // Reject in database
+    dbService.updateUser(userId, { status: 'rejected' });
+
+    dbService.addSystemLog(
+      'info',
+      `رد عضویت کاربر (${targetUser.name}) با علت دلخواه: ${customReason}`,
+      `توسط مدیر از بله (شناسه چت: ${chatId})`
+    );
+
+    // Notify Admin of success
+    const finalAdminText =
+      `🎒 <b>نتیجه بررسی درخواست عضویت در مکتب‌خانه</b>\n\n` +
+      `👤 <b>نام:</b> ${targetUser.name}\n` +
+      `🏫 <b>کلاس:</b> ${targetUser.className}\n` +
+      `📱 <b>تلفن:</b> <code>${targetUser.phone}</code>\n\n` +
+      `❌ <b>عضویت رد شد.</b>\n` +
+      `💬 <b>علت دلخواه ارسال شده:</b> ${customReason}`;
+
+    await sendBaleMessage(chatId, finalAdminText);
+
+    // Send rejection message to user
+    if (targetUser.baleChatId) {
+      const userNotification =
+        `⚠️ <b>اطلاعیه مکتب‌خانه</b>\n\n` +
+        `درخواست عضویت شما توسط مدیر مدرسه پذیرفته نشد.\n\n` +
+        `📌 <b>توضیح/علت رد عضویت:</b>\n` +
+        `« ${customReason} »\n\n` +
+        `جهت اصلاح اطلاعات می‌توانید مجدداً در سایت مکتب‌خانه اقدام فرمایید.`;
+      await sendBaleMessage(targetUser.baleChatId, userNotification);
+    }
+    return;
+  }
+
   // 1. /start
   if (text.startsWith('/start')) {
     const parts = text.split(/\s+/);
     const passedSessionId = parts.length > 1 ? parts[1].trim() : null;
+
+    // Handle deep link /start user_USERID
+    if (passedSessionId && passedSessionId.startsWith('user_')) {
+      const targetUserId = passedSessionId.replace('user_', '');
+      const targetUser = dbService.getUserById(targetUserId);
+      if (targetUser) {
+        dbService.updateUser(targetUser.id, { baleChatId: chatId });
+        if (targetUser.role === 'admin' || isAdminPhone(targetUser.phone)) {
+          registerAdminBaleChatId(chatId);
+        }
+        dbService.addSystemLog(
+          'info',
+          `اتصال موفق چت بله برای کاربر (${targetUser.name})`,
+          `چت‌آیدی بله: ${chatId}`
+        );
+
+        const confirmText =
+          `🎉 <b>سلام ${targetUser.name} عزیز! خوش آمدید.</b> 🎒\n\n` +
+          `✅ حساب کاربری مکتب‌خانه شما با موفقیت به این چت بله متصل گردید.\n\n` +
+          `از این پس کلیه اعلانات زیر به صورت لحظه‌ای برای شما ارسال می‌شود:\n` +
+          `• 🟢 تایید یا رد عضویت توسط مدیر مدرسه\n` +
+          `• 📚 درخواست‌های امانت و پاسخ مالک کتاب\n` +
+          `• 💳 تایید فیش‌های پرداخت حق امانت\n` +
+          `• 💬 نظرات و امتیازات جدید روی کتاب‌های شما`;
+
+        await sendBaleMessage(chatId, confirmText, { remove_keyboard: true });
+        return;
+      }
+    }
+
+    // Handle deep link /start admin
+    if (passedSessionId === 'admin') {
+      registerAdminBaleChatId(chatId);
+      dbService.addSystemLog(
+        'info',
+        `ثبت چت مدیریت بله از لینک مستقیم`,
+        `چت‌آیدی بله: ${chatId}`
+      );
+      await sendBaleMessage(
+        chatId,
+        `👑 <b>مدیر محترم مکتب‌خانه خوش آمدید!</b>\n\n` +
+        `چت بله شما به عنوان شناسه مدیریت اصلی سامانه ثبت گردید. کلیه اعلانات ثبت‌نام، پرداخت‌ها و گزارش‌های خسارت به همراه دکمه‌های تایید/رد مستقیم به همین چت ارسال خواهد شد. 🎒✨`,
+        { remove_keyboard: true }
+      );
+      return;
+    }
 
     let targetSession: OtpSession | undefined;
 
@@ -1116,11 +1546,27 @@ async function startServer() {
   });
 
   app.post('/api/users/:id/reject', (req: Request, res: Response): any => {
+    const { reason } = req.body || {};
     const user = dbService.updateUser(req.params.id, { status: 'rejected' });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
 
-    // Notify user on Bale
-    notifyUserOnBale(user.id, `⚠️ <b>اطلاعیه مکتب‌خانه</b>\n\nمتأسفانه درخواست عضویت شما توسط مدیر مدرسه تایید نشد.`);
+    const reasonText = reason && reason.trim() ? reason.trim() : 'اطلاعات وارد شده ناقص یا نادرست است.';
+
+    dbService.addSystemLog(
+      'info',
+      `رد عضویت کاربر (${user.name}) با علت: ${reasonText}`,
+      `توسط مدیر از پنل وب`
+    );
+
+    // Notify user on Bale with custom reason
+    notifyUserOnBale(
+      user.id,
+      `⚠️ <b>اطلاعیه مکتب‌خانه</b>\n\n` +
+      `درخواست عضویت شما توسط مدیر مدرسه پذیرفته نشد.\n\n` +
+      `📌 <b>توضیح/علت رد عضویت:</b>\n` +
+      `« ${reasonText} »\n\n` +
+      `جهت اصلاح اطلاعات می‌توانید مجدداً در سایت مکتب‌خانه اقدام فرمایید.`
+    );
 
     res.json({ success: true, user });
   });
@@ -1132,6 +1578,16 @@ async function startServer() {
       suspensionReason: reason || 'تخلف در رعایت قوانین امانت کتاب'
     });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+
+    // Notify user on Bale
+    notifyUserOnBale(
+      user.id,
+      `⛔️ <b>هشدار تعلیق حساب مکتب‌خانه</b>\n\n` +
+      `حساب کاربری شما به دلیل زیر موقتاً تعلیق شد:\n` +
+      `📌 <b>علت:</b> ${user.suspensionReason}\n\n` +
+      `جهت برطرف شدن مشکل با مسئول کتابخانه مدرسه تماس بگیرید.`
+    );
+
     res.json({ success: true, user });
   });
 
@@ -1157,6 +1613,133 @@ async function startServer() {
     } catch (err: any) {
       console.error('Delete User Error:', err);
       res.status(500).json({ success: false, message: 'خطای سرور در فرآیند حذف حساب کاربری.' });
+    }
+  });
+
+  // Promote existing user to admin
+  app.post('/api/users/:id/make-admin', (req: Request, res: Response): any => {
+    try {
+      const user = dbService.getUserById(req.params.id);
+      if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+
+      const updated = dbService.updateUser(user.id, {
+        role: 'admin',
+        status: 'approved'
+      });
+
+      dbService.addSystemLog(
+        'info',
+        `ترفیع کاربر به مدیریت سامانه`,
+        `کاربر ${user.name} (${user.phone}) به عنوان مدیر جدید ارتقا یافت.`
+      );
+
+      notifyAdminsGeneralOnBale(
+        `👑 <b>انتصاب مدیر جدید!</b>\n\n` +
+        `کاربر <b>${user.name}</b> (${user.phone}) به عنوان مدیر جدید سامانه مکتب‌خانه منصوب گردید.`
+      );
+
+      // Notify user on Bale if connected
+      notifyUserOnBale(
+        user.id,
+        `👑 <b>ارتقای حساب کاربری!</b>\n\n` +
+        `تبریک ${user.name} عزیز! حساب کاربری شما در مکتب‌خانه به سطح <b>مدیریت سامانه</b> ارتقا یافت.`
+      );
+
+      res.json({ success: true, user: updated, message: `کاربر ${user.name} با موفقیت به عنوان مدیر ارتقا یافت.` });
+    } catch (err: any) {
+      console.error('Make Admin Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ارتقای کاربر به مدیریت.' });
+    }
+  });
+
+  // Add or register new admin by phone number & name
+  app.post('/api/admin/add-admin', (req: Request, res: Response): any => {
+    try {
+      const { phone, name, password } = req.body || {};
+      if (!phone || !phone.trim()) {
+        return res.status(400).json({ success: false, message: 'شماره تلفن مدیر الزامی است.' });
+      }
+
+      const normalizedPhone = phone.trim();
+      let existingUser = dbService.getUserByPhone(normalizedPhone);
+
+      if (existingUser) {
+        // Upgrade existing user to admin
+        const updated = dbService.updateUser(existingUser.id, {
+          role: 'admin',
+          status: 'approved',
+          name: name && name.trim() ? name.trim() : existingUser.name,
+          password: password ? password : existingUser.password
+        });
+
+        dbService.addSystemLog(
+          'info',
+          'افزودن/ترفیع مدیر جدید با شماره تلفن',
+          `کاربر موجود با شماره ${normalizedPhone} به مدیریت ارتقا یافت.`
+        );
+
+        notifyAdminsGeneralOnBale(
+          `👑 <b>افزودن مدیر جدید</b>\n\n` +
+          `شماره تلفن <b>${normalizedPhone}</b> (${updated?.name}) به لیست مدیران اصلی مکتب‌خانه اضافه و فعال گردید.`
+        );
+
+        return res.json({
+          success: true,
+          message: `کاربر ${updated?.name} با شماره ${normalizedPhone} به عنوان مدیر فعال گردید.`,
+          user: updated
+        });
+      } else {
+        // Create brand new admin user
+        const newAdminName = name && name.trim() ? name.trim() : 'مدیر کتابخانه';
+        const newAdminPassword = password || '123456';
+
+        const newAdminUser: User = {
+          id: `u_admin_${Date.now()}`,
+          name: newAdminName,
+          phone: normalizedPhone,
+          className: 'مدیریت کتابخانه',
+          role: 'admin',
+          password: newAdminPassword,
+          rating: 5.0,
+          ratingsCount: 1,
+          booksContributedCount: 0,
+          booksReadCount: 0,
+          medals: [
+            {
+              id: 'm_admin_crown',
+              title: 'راهبر کتابخانه',
+              icon: '👑',
+              description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
+              color: 'bg-amber-100 text-amber-800 border-amber-300'
+            }
+          ],
+          joinedDate: new Date().toLocaleDateString('fa-IR'),
+          avatar: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(newAdminName)}`,
+          status: 'approved'
+        };
+
+        const saved = dbService.createUser(newAdminUser);
+
+        dbService.addSystemLog(
+          'info',
+          'ایجاد حساب مدیر جدید',
+          `مدیر جدید با نام ${newAdminUser.name} و شماره ${normalizedPhone} ایجاد شد.`
+        );
+
+        notifyAdminsGeneralOnBale(
+          `👑 <b>ایجاد حساب مدیر جدید</b>\n\n` +
+          `حساب جدید مدیریت برای <b>${newAdminUser.name}</b> (${normalizedPhone}) ثبت و فعال شد.`
+        );
+
+        return res.json({
+          success: true,
+          message: `حساب مدیریت برای ${newAdminUser.name} با موفقیت ثبت شد.`,
+          user: saved
+        });
+      }
+    } catch (err: any) {
+      console.error('Add Admin Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ثبت مدیر جدید.' });
     }
   });
 
@@ -1188,6 +1771,22 @@ async function startServer() {
       };
 
       const created = dbService.createBook(newBook);
+
+      // Notify owner on Bale
+      notifyUserOnBale(
+        created.ownerId,
+        `📚 <b>ثبت موفق کتاب در مکتب‌خانه!</b>\n\n` +
+        `کتاب <b>«${created.title}»</b> با موفقیت در گنجینه مکتب‌خانه قرار گرفت. با تشکر از مشارکت شما در ترویج کتابخوانی! 🎒✨`
+      );
+
+      // Notify admins on Bale
+      notifyAdminsGeneralOnBale(
+        `📚 <b>کتاب جدید در مکتب‌خانه ثبت شد</b>\n\n` +
+        `📖 <b>عنوان:</b> ${created.title}\n` +
+        `✍️ <b>نویسنده:</b> ${created.author}\n` +
+        `👤 <b>اهداکننده / مالک:</b> ${created.ownerName} (کلاس ${created.ownerClass})`
+      );
+
       res.json({ success: true, book: created });
     } catch (err: any) {
       console.error('Create Book Error:', err);
@@ -1211,6 +1810,17 @@ async function startServer() {
     if (!review) return res.status(400).json({ success: false, message: 'نظر الزامی است.' });
     const updated = dbService.addBookReview(req.params.id, review);
     if (!updated) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+
+    // Notify book owner about the new review
+    if (updated.ownerId) {
+      notifyUserOnBale(
+        updated.ownerId,
+        `💬 <b>نظر جدید روی کتاب شما!</b>\n\n` +
+        `دانش‌آموز <b>${review.userName}</b> روی کتاب <b>«${updated.title}»</b> نظر و امتیاز ⭐ ${review.rating} ثبت کرد:\n` +
+        `<i>"${review.comment}"</i>`
+      );
+    }
+
     res.json({ success: true, book: updated });
   });
 
@@ -1258,11 +1868,30 @@ async function startServer() {
 
       const created = dbService.createRequest(newReq);
 
-      // Notify book owner on Bale
+      // Notify book owner on Bale with interactive accept/reject inline keyboard buttons!
       notifyUserOnBale(
         book.ownerId,
         `📚 <b>درخواست امانت کتاب جدید!</b>\n\n` +
-        `دانش‌آموز <b>${borrower.name}</b> (کلاس ${borrower.className}) درخواست امانت کتاب <b>«${book.title}»</b> شما را ثبت نمود.`
+        `👤 <b>متقاضی:</b> ${borrower.name} (کلاس ${borrower.className})\n` +
+        `📖 <b>کتاب:</b> «${book.title}»\n` +
+        `📅 <b>تاریخ درخواست:</b> ${newReq.createdAt}\n\n` +
+        `آیا با امانت دادن این کتاب موافقت می‌فرمایید؟`,
+        {
+          inline_keyboard: [
+            [
+              { text: '✅ پذیرش درخواست امانت', callback_data: `accept_req:${reqId}` },
+              { text: '❌ رد درخواست', callback_data: `reject_req:${reqId}` },
+            ],
+          ],
+        }
+      );
+
+      // Notify admins on Bale
+      notifyAdminsGeneralOnBale(
+        `🔄 <b>ثبت درخواست امانت جدید</b>\n\n` +
+        `📖 <b>کتاب:</b> «${book.title}»\n` +
+        `👤 <b>امانت‌گیرنده:</b> ${borrower.name} (${borrower.className})\n` +
+        `👤 <b>مالک:</b> ${book.ownerName} (${book.ownerClass})`
       );
 
       res.json({ success: true, request: created });
@@ -1295,10 +1924,12 @@ async function startServer() {
     // Notify borrower on Bale
     notifyUserOnBale(
       updated.borrowerId,
-      `✅ <b>درخواست امانت پذیرفته شد!</b>\n\n` +
+      `✅ <b>درخواست امانت شما پذیرفته شد!</b>\n\n` +
       `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n` +
       `📍 <b>مکان تحویل:</b> ${pickupLocation || 'مدرسه'}\n` +
-      `⏰ <b>زمان تحویل:</b> ${pickupTime || 'ساعات تفریح'}`
+      `⏰ <b>زمان تحویل:</b> ${pickupTime || 'ساعات تفریح'}\n` +
+      `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
+      `لطفاً وارد سامانه شده و فیش پرداخت خود را ثبت فرمایید.`
     );
 
     res.json({ success: true, request: updated });
@@ -1314,7 +1945,7 @@ async function startServer() {
     if (updated) {
       notifyUserOnBale(
         updated.borrowerId,
-        `❌ <b>درخواست امانت رد شد</b>\n\nدرخواست امانت کتاب <b>«${updated.bookTitle}»</b> پذیرفته نشد.`
+        `❌ <b>درخواست امانت رد شد</b>\n\nمتأسفانه درخواست امانت کتاب <b>«${updated.bookTitle}»</b> توسط مالک پذیرفته نشد.`
       );
     }
 
@@ -1334,6 +1965,17 @@ async function startServer() {
       }
     });
     if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    // Notify admins on Bale about payment proof
+    notifyAdminsGeneralOnBale(
+      `💳 <b>ثبت فیش پرداخت حق امانت جدید</b>\n\n` +
+      `📖 <b>کتاب:</b> «${updated.bookTitle}»\n` +
+      `👤 <b>پرداخت‌کننده:</b> ${updated.borrowerName} (${updated.borrowerClass})\n` +
+      `🔢 <b>کد پیگیری:</b> <code>${trackingCode}</code>\n` +
+      `📅 <b>تاریخ پرداخت:</b> ${paymentDate}\n\n` +
+      `لطفاً فیش واریزی را در پنل مدیریت بررسی و تایید فرمایید.`
+    );
+
     res.json({ success: true, request: updated });
   });
 
@@ -1346,6 +1988,22 @@ async function startServer() {
       paymentStatus: 'paid',
       paidAt: new Date().toLocaleDateString('fa-IR')
     });
+
+    // Notify borrower
+    notifyUserOnBale(
+      reqItem.borrowerId,
+      `🎉 <b>فیش پرداخت حق امانت تایید شد!</b>\n\n` +
+      `فیش واریزی شما برای امانت کتاب <b>«${reqItem.bookTitle}»</b> توسط مسئول کتابخانه تایید گردید.\n` +
+      `اکنون می‌توانید جهت تحویل کتاب اقدام فرمایید.`
+    );
+
+    // Notify owner
+    notifyUserOnBale(
+      reqItem.ownerId,
+      `💳 <b>پرداخت حق امانت تایید شد</b>\n\n` +
+      `پرداخت حق امانت کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} تایید گردید. تحویل کتاب مجاز است.`
+    );
+
     res.json({ success: true, request: updated });
   });
 
@@ -1371,6 +2029,22 @@ async function startServer() {
       is12hGraceConfirmed: true,
       dueDate: returnDueDate
     });
+
+    // Notify borrower
+    notifyUserOnBale(
+      reqItem.borrowerId,
+      `📦 <b>تحویل کتاب با موفقیت تایید شد!</b>\n\n` +
+      `شما کتاب <b>«${reqItem.bookTitle}»</b> را تحویل گرفتید.\n` +
+      `📅 <b>مهلت بازگرداندن:</b> ${returnDueDate} (۷ روز)\n\n` +
+      `از مطالعه آن لذت ببرید! 🎒📚`
+    );
+
+    // Notify owner
+    notifyUserOnBale(
+      reqItem.ownerId,
+      `📦 <b>تایید تحویل کتاب</b>\n\n` +
+      `تحویل کتاب <b>«${reqItem.bookTitle}»</b> به ${reqItem.borrowerName} به ثبت رسید.`
+    );
 
     res.json({ success: true, request: updated });
   });
@@ -1398,6 +2072,20 @@ async function startServer() {
       borrowerFeedbackGiven: true
     });
 
+    // Notify owner
+    notifyUserOnBale(
+      reqItem.ownerId,
+      `✅ <b>بازگرداندن کتاب</b>\n\n` +
+      `کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} بازگردانده شد و مجدداً آماده امانت است.`
+    );
+
+    // Notify borrower
+    notifyUserOnBale(
+      reqItem.borrowerId,
+      `✨ <b>تشکر از شما!</b>\n\n` +
+      `بازگرداندن کتاب <b>«${reqItem.bookTitle}»</b> با موفقیت ثبت شد. امیدواریم از مطالعه آن لذت برده باشید.`
+    );
+
     res.json({ success: true, request: updated });
   });
 
@@ -1420,6 +2108,23 @@ async function startServer() {
       isDamagedReported: true,
       damageNotes: damageReason
     });
+
+    // Notify admins on Bale
+    notifyAdminsGeneralOnBale(
+      `🚨 <b>گزارش خسارت به کتاب!</b>\n\n` +
+      `📖 <b>کتاب:</b> «${reqItem.bookTitle}»\n` +
+      `👤 <b>امانت‌گیرنده:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n` +
+      `📝 <b>توضیحات خسارت:</b> ${damageReason}\n\n` +
+      `⚠️ حساب امانت‌گیرنده به طور خودکار تعلیق گردید.`
+    );
+
+    // Notify borrower
+    notifyUserOnBale(
+      borrowerId,
+      `🚨 <b>گزارش خسارت به کتاب</b>\n\n` +
+      `گزارش آسیب به کتاب <b>«${reqItem.bookTitle}»</b> ثبت شد و حساب شما تعلیق گردید.\n` +
+      `📌 <b>توضیحات:</b> ${damageReason}`
+    );
 
     res.json({ success: true, request: updated });
   });

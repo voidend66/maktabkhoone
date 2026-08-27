@@ -114,8 +114,12 @@ export const api = {
     return await res.json();
   },
 
-  async rejectUser(id: string) {
-    const res = await fetch(`${API_BASE}/users/${id}/reject`, { method: 'POST' });
+  async rejectUser(id: string, reason?: string) {
+    const res = await fetch(`${API_BASE}/users/${id}/reject`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason }),
+    });
     return await res.json();
   },
 
@@ -136,6 +140,28 @@ export const api = {
       return await res.json();
     } catch (err: any) {
       return { success: false, message: err.message || 'خطا در حذف کاربر' };
+    }
+  },
+
+  async makeAdmin(id: string): Promise<{ success: boolean; message?: string; user?: any }> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${id}/make-admin`, { method: 'POST' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ترفیع کاربر به مدیر' };
+    }
+  },
+
+  async addAdminByPhone(data: { phone: string; name?: string; password?: string }): Promise<{ success: boolean; message?: string; user?: any }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/add-admin`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ثبت مدیر جدید' };
     }
   },
 

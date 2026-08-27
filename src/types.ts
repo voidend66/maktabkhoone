@@ -181,3 +181,13 @@ export interface SystemConfig {
   paymentWindowHours: number;
   handoverWindowHours: number;
 }
+
+export interface SystemLog {
+  id: string;
+  timestamp: string;
+  level: 'info' | 'warn' | 'error' | 'db';
+  message: string;
+  details?: string;
+  userName?: string;
+  userPhone?: string;
+}

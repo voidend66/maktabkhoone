@@ -30,7 +30,10 @@ import {
   Coins,
   Terminal,
   RotateCcw,
-  Filter
+  Filter,
+  Crown,
+  UserPlus,
+  Shield
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -52,7 +55,9 @@ export const AdminPanel: React.FC = () => {
     updateBankCardInfo,
     systemConfig,
     updateSystemConfig,
-    verifyPaymentByAdmin
+    verifyPaymentByAdmin,
+    makeAdmin,
+    addAdminByPhone
   } = useApp();
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
@@ -66,6 +71,7 @@ export const AdminPanel: React.FC = () => {
   const [logSearch, setLogSearch] = useState('');
   const [logLevelFilter, setLogLevelFilter] = useState<'all' | 'error' | 'warn' | 'info' | 'db'>('all');
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
   const fetchSystemLogs = async () => {
     setIsLoadingLogs(true);
@@ -161,6 +167,47 @@ export const AdminPanel: React.FC = () => {
   const [newClassName, setNewClassName] = useState('');
   const [newClassGrade, setNewClassGrade] = useState('پایه اول');
   const [isExternal, setIsExternal] = useState(false);
+
+  // Add Admin Form State
+  const [adminPhone, setAdminPhone] = useState('');
+  const [adminName, setAdminName] = useState('');
+  const [adminPassword, setAdminPassword] = useState('');
+  const [addAdminSuccessMsg, setAddAdminSuccessMsg] = useState('');
+  const [addAdminErrorMsg, setAddAdminErrorMsg] = useState('');
+  const [isSubmittingAdmin, setIsSubmittingAdmin] = useState(false);
+
+  const handleAddAdminSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!adminPhone.trim()) {
+      setAddAdminErrorMsg('وارد کردن شماره تلفن الزامی است.');
+      return;
+    }
+    setIsSubmittingAdmin(true);
+    setAddAdminSuccessMsg('');
+    setAddAdminErrorMsg('');
+    try {
+      const res = await addAdminByPhone({
+        phone: adminPhone.trim(),
+        name: adminName.trim() || undefined,
+        password: adminPassword.trim() || undefined
+      });
+      if (res.success) {
+        setAddAdminSuccessMsg(res.message || 'حساب مدیریت با موفقیت ثبت/فعال گردید.');
+        setAdminPhone('');
+        setAdminName('');
+        setAdminPassword('');
+        setTimeout(() => setAddAdminSuccessMsg(''), 5000);
+      } else {
+        setAddAdminErrorMsg(res.message || 'خطا در ثبت حساب مدیریت.');
+        setTimeout(() => setAddAdminErrorMsg(''), 5000);
+      }
+    } catch (err: any) {
+      setAddAdminErrorMsg('خطا در برقراری ارتباط با سرور.');
+      setTimeout(() => setAddAdminErrorMsg(''), 5000);
+    } finally {
+      setIsSubmittingAdmin(false);
+    }
+  };
 
   // Editing Class inline
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -423,7 +470,15 @@ export const AdminPanel: React.FC = () => {
                       </button>
 
                       <button
-                        onClick={() => rejectUser(user.id)}
+                        onClick={() => {
+                          const reason = window.prompt(
+                            `لطفاً علت رد عضویت «${user.name}» را بنویسید تا به وی در پیام‌رسان بله اطلاع‌رسانی شود:\n(به عنوان مثال: سلام شما اسمتون رو درست وارد نکردید با نام کامل دوباره تلاش کنید)`,
+                            ""
+                          );
+                          if (reason !== null) {
+                            rejectUser(user.id, reason.trim());
+                          }
+                        }}
                         className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-700 font-bold text-xs rounded-xl transition flex items-center gap-1.5"
                       >
                         <UserX className="w-4 h-4" />
@@ -865,16 +920,16 @@ export const AdminPanel: React.FC = () => {
                 <select
                   value={newClassGrade}
                   onChange={(e) => setNewClassGrade(e.target.value)}
-                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800"
+                  className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200/90 rounded-2xl font-black text-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 transition cursor-pointer shadow-2xs hover:border-indigo-400"
                 >
-                  <option value="پایه اول دبستان">پایه اول دبستان</option>
-                  <option value="پایه دوم دبستان">پایه دوم دبستان</option>
-                  <option value="پایه سوم دبستان">پایه سوم دبستان</option>
-                  <option value="پایه چهارم دبستان">پایه چهارم دبستان</option>
-                  <option value="پایه پنجم دبستان">پایه پنجم دبستان</option>
-                  <option value="پایه ششم دبستان">پایه ششم دبستان</option>
-                  <option value="معلمان و کادر مدرسه">معلمان و کادر مدرسه</option>
-                  <option value="متفرقه / غیره">متفرقه / غیره</option>
+                  <option value="پایه اول دبستان" className="py-2 text-slate-900 font-semibold">پایه اول دبستان</option>
+                  <option value="پایه دوم دبستان" className="py-2 text-slate-900 font-semibold">پایه دوم دبستان</option>
+                  <option value="پایه سوم دبستان" className="py-2 text-slate-900 font-semibold">پایه سوم دبستان</option>
+                  <option value="پایه چهارم دبستان" className="py-2 text-slate-900 font-semibold">پایه چهارم دبستان</option>
+                  <option value="پایه پنجم دبستان" className="py-2 text-slate-900 font-semibold">پایه پنجم دبستان</option>
+                  <option value="پایه ششم دبستان" className="py-2 text-slate-900 font-semibold">پایه ششم دبستان</option>
+                  <option value="معلمان و کادر مدرسه" className="py-2 text-slate-900 font-semibold">معلمان و کادر مدرسه</option>
+                  <option value="متفرقه / غیره" className="py-2 text-slate-900 font-semibold">متفرقه / غیره</option>
                 </select>
               </div>
 
@@ -1095,57 +1150,221 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Tab 4: All Students List */}
+      {/* Tab 4: All Students and Admins List */}
       {activeTab === 'all_users' && (
-        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
-          <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-            <Users className="w-5 h-5 text-indigo-600" />
-            <span>فهرست دانش‌آموزان تاییدشده کتابخانه ({approvedStudents.length} نفر)</span>
-          </h3>
+        <div className="space-y-6">
+          {/* Section 1: Add New Admin Form */}
+          <div className="bg-gradient-to-br from-indigo-50 via-white to-slate-50 rounded-3xl p-6 border border-indigo-100 shadow-sm space-y-4">
+            <div className="flex items-center gap-2.5 border-b border-indigo-100 pb-3">
+              <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <UserPlus className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">ثبت و افزودن مدیر یا مسئول جدید کتابخانه</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  می‌توانید شماره تلفن مدیر جدیدی که هنوز ثبت‌نام نکرده را اضافه کنید یا حساب کاربری فعلی را ترفیع دهید.
+                </p>
+              </div>
+            </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {approvedStudents.map((st) => (
-              <div
-                key={st.id}
-                className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-3 hover:bg-slate-100/80 transition"
-              >
-                <div className="flex items-center gap-3 min-w-0">
-                  <img
-                    src={st.avatar}
-                    alt={st.name}
-                    className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500 shrink-0"
-                  />
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-900 text-sm truncate">{st.name}</div>
-                    <div className="text-xs text-slate-500 truncate">
-                      کلاس {st.className} • ⭐ {st.rating}
-                    </div>
-                    <div className="text-[11px] text-emerald-700 font-semibold mt-1">
-                      {st.booksContributedCount} کتاب • {st.booksReadCount} خوانده
-                    </div>
-                  </div>
-                </div>
+            <form onSubmit={handleAddAdminSubmit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">شماره همراه مدیر (مثال: ۰۹۱۲۳۴۵۶۷۸۹) *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="شماره همراه"
+                  value={adminPhone}
+                  onChange={(e) => setAdminPhone(e.target.value)}
+                  className="w-full text-xs sm:text-sm p-3 bg-white border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-bold text-slate-800 shadow-2xs"
+                />
+              </div>
 
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">نام و نام خانوادگی مسئول (اختیاری)</label>
+                <input
+                  type="text"
+                  placeholder="مثال: آقای حسینی (مسئول پرورشی)"
+                  value={adminName}
+                  onChange={(e) => setAdminName(e.target.value)}
+                  className="w-full text-xs sm:text-sm p-3 bg-white border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-bold text-slate-800 shadow-2xs"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-black text-slate-700">رمز عبور (پیش‌فرض: ۱۲۳۴۵۶)</label>
+                <input
+                  type="password"
+                  placeholder="رمز عبور ورود"
+                  value={adminPassword}
+                  onChange={(e) => setAdminPassword(e.target.value)}
+                  className="w-full text-xs sm:text-sm p-3 bg-white border border-slate-200/90 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-bold text-slate-800 shadow-2xs"
+                />
+              </div>
+
+              <div className="sm:col-span-3 flex justify-end items-center gap-3 pt-2">
+                {addAdminSuccessMsg && (
+                  <span className="text-xs font-black text-emerald-600 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                    ✓ {addAdminSuccessMsg}
+                  </span>
+                )}
+                {addAdminErrorMsg && (
+                  <span className="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl border border-rose-200">
+                    ⚠️ {addAdminErrorMsg}
+                  </span>
+                )}
                 <button
-                  onClick={async () => {
-                    if (
-                      confirm(
-                        `آیا از حذف کامل حساب دانش‌آموز «${st.name}» مطمئن هستید؟ تمام کتاب‌ها و سوابق وی حذف خواهد شد.`
-                      )
-                    ) {
-                      const res = await deleteUser(st.id);
-                      if (!res.success) {
-                        alert(res.message || 'خطا در حذف کاربر');
-                      }
-                    }
-                  }}
-                  title="حذف حساب کاربر"
-                  className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-100/80 rounded-xl transition shrink-0"
+                  type="submit"
+                  disabled={isSubmittingAdmin}
+                  className="bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800 disabled:opacity-50 text-white font-black text-xs px-5 py-3 rounded-2xl shadow-xs transition duration-150 flex items-center justify-center gap-1.5"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <UserPlus className="w-4 h-4" />
+                  <span>{isSubmittingAdmin ? 'در حال ثبت...' : 'افزودن و فعال‌سازی مدیر'}</span>
                 </button>
               </div>
-            ))}
+            </form>
+          </div>
+
+          {/* Section 2: Admins List */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Crown className="w-5 h-5 text-amber-500" />
+              <span>مدیران و مسئولین فعال سامانه ({users.filter(u => u.role === 'admin').length} نفر)</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {users
+                .filter((u) => u.role === 'admin')
+                .map((adm) => (
+                  <div
+                    key={adm.id}
+                    className="p-4 bg-gradient-to-br from-slate-50 to-amber-50/20 rounded-2xl border border-amber-200/60 flex items-center justify-between gap-3 shadow-2xs"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <img
+                        src={adm.avatar}
+                        alt={adm.name}
+                        className="w-12 h-12 rounded-full object-cover ring-2 ring-amber-400 shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-900 text-sm truncate flex items-center gap-1.5">
+                          <span>{adm.name}</span>
+                          <span className="bg-amber-100 text-amber-800 text-[9px] font-black px-1.5 py-0.5 rounded-md border border-amber-300">مدیر</span>
+                        </div>
+                        <div className="text-xs text-slate-500 truncate mt-0.5">
+                          {adm.phone}
+                        </div>
+                        {adm.baleChatId ? (
+                          <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-0.5 mt-1">
+                            💬 پیام‌رسان بله متصل است
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-0.5 mt-1">
+                            💬 فاقد اتصال بله
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {adm.id !== currentUser?.id && (
+                      <button
+                        onClick={async () => {
+                          if (
+                            confirm(
+                              `آیا از حذف کامل حساب مدیریت «${adm.name}» مطمئن هستید؟`
+                            )
+                          ) {
+                            const res = await deleteUser(adm.id);
+                            if (!res.success) {
+                              alert(res.message || 'خطا در حذف مدیر');
+                            }
+                          }
+                        }}
+                        title="حذف حساب مدیر"
+                        className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-50 rounded-xl transition shrink-0"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+                ))}
+            </div>
+          </div>
+
+          {/* Section 3: Students List */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Users className="w-5 h-5 text-indigo-600" />
+              <span>فهرست دانش‌آموزان تاییدشده کتابخانه ({approvedStudents.length} نفر)</span>
+            </h3>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {approvedStudents.map((st) => (
+                <div
+                  key={st.id}
+                  className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3 hover:bg-slate-100/60 transition shadow-2xs"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <img
+                      src={st.avatar}
+                      alt={st.name}
+                      className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500 shrink-0"
+                    />
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-900 text-sm truncate">{st.name}</div>
+                      <div className="text-xs text-slate-500 truncate mt-0.5">
+                        کلاس {st.className} • ⭐ {st.rating}
+                      </div>
+                      <div className="text-[11px] text-emerald-700 font-semibold mt-1">
+                        {st.booksContributedCount} کتاب • {st.booksReadCount} خوانده
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0">
+                    <button
+                      onClick={async () => {
+                        if (
+                          confirm(
+                            `آیا مایل هستید دانش‌آموز «${st.name}» را به مقام مدیریت سامانه مکتب‌خانه ارتقا دهید؟`
+                          )
+                        ) {
+                          const res = await makeAdmin(st.id);
+                          if (res.success) {
+                            alert(res.message || 'کاربر با موفقیت به مدیریت ارتقا یافت.');
+                          } else {
+                            alert(res.message || 'خطا در ارتقای کاربر.');
+                          }
+                        }
+                      }}
+                      title="ترفیع به مدیر سامانه"
+                      className="p-2 text-amber-600 hover:text-amber-800 hover:bg-amber-100/80 rounded-xl transition"
+                    >
+                      <Crown className="w-4 h-4" />
+                    </button>
+
+                    <button
+                      onClick={async () => {
+                        if (
+                          confirm(
+                            `آیا از حذف کامل حساب دانش‌آموز «${st.name}» مطمئن هستید؟ تمام کتاب‌ها و سوابق وی حذف خواهد شد.`
+                          )
+                        ) {
+                          const res = await deleteUser(st.id);
+                          if (!res.success) {
+                            alert(res.message || 'خطا در حذف کاربر');
+                          }
+                        }
+                      }}
+                      title="حذف حساب کاربر"
+                      className="p-2 text-rose-500 hover:text-rose-700 hover:bg-rose-100/80 rounded-xl transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -1220,20 +1439,22 @@ export const AdminPanel: React.FC = () => {
           </div>
 
           {/* Logs List Table */}
-          <div className="border border-slate-200 rounded-2xl overflow-hidden">
-            <div className="max-h-[500px] overflow-y-auto">
+          <div className="border border-slate-200 rounded-3xl overflow-hidden shadow-2xs bg-white">
+            <div className="max-h-[600px] overflow-y-auto">
               {systemLogs.length === 0 ? (
-                <div className="p-8 text-center text-slate-500 text-xs font-bold">
-                  هیچ لاگی در حافظه سامانه یافت نشد.
+                <div className="p-12 text-center text-slate-400 text-xs font-bold space-y-2">
+                  <Terminal className="w-8 h-8 text-slate-300 mx-auto" />
+                  <div>هیچ لاگی در حافظه سامانه یافت نشد.</div>
                 </div>
               ) : (
                 <table className="w-full text-right text-xs">
                   <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200 sticky top-0">
                     <tr>
-                      <th className="p-3 w-28">زمان ثبت</th>
+                      <th className="p-3 w-36">زمان ثبت</th>
                       <th className="p-3 w-24 text-center">نوع</th>
                       <th className="p-3">پیام رویداد</th>
-                      <th className="p-3">جزئیات فنی</th>
+                      <th className="p-3">کاربر مرتبط</th>
+                      <th className="p-3 text-center w-20">جزئیات</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -1244,44 +1465,107 @@ export const AdminPanel: React.FC = () => {
                           const q = logSearch.toLowerCase();
                           return (
                             l.message.toLowerCase().includes(q) ||
-                            (l.details && l.details.toLowerCase().includes(q))
+                            (l.details && l.details.toLowerCase().includes(q)) ||
+                            (l.userName && l.userName.toLowerCase().includes(q)) ||
+                            (l.userPhone && l.userPhone.toLowerCase().includes(q))
                           );
                         }
                         return true;
                       })
-                      .map((log) => (
-                        <tr key={log.id} className="hover:bg-slate-50/80 transition">
-                          <td className="p-3 font-mono text-[11px] text-slate-500 dir-ltr text-right">
-                            {log.timestamp}
-                          </td>
-                          <td className="p-3 text-center">
-                            {log.level === 'error' && (
-                              <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-black">
-                                ERROR
-                              </span>
+                      .map((log) => {
+                        const isExpanded = expandedLogId === log.id;
+                        return (
+                          <React.Fragment key={log.id}>
+                            <tr
+                              onClick={() => setExpandedLogId(isExpanded ? null : log.id)}
+                              className={`hover:bg-slate-50/80 transition cursor-pointer ${isExpanded ? 'bg-indigo-50/20' : ''}`}
+                            >
+                              <td className="p-3 font-mono text-[11px] text-slate-500 dir-ltr text-right whitespace-nowrap">
+                                {log.timestamp}
+                              </td>
+                              <td className="p-3 text-center">
+                                {log.level === 'error' && (
+                                  <span className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded-md text-[10px] font-black border border-rose-200">
+                                    ERROR
+                                  </span>
+                                )}
+                                {log.level === 'warn' && (
+                                  <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-black border border-amber-200">
+                                    WARN
+                                  </span>
+                                )}
+                                {log.level === 'info' && (
+                                  <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 rounded-md text-[10px] font-black border border-cyan-200">
+                                    INFO
+                                  </span>
+                                )}
+                                {log.level === 'db' && (
+                                  <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-black border border-indigo-200">
+                                    DB
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-3 font-bold text-slate-900">{log.message}</td>
+                              <td className="p-3 text-slate-600 font-semibold">
+                                {log.userName ? (
+                                  <span className="inline-flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 text-[10px] text-slate-700">
+                                    👤 {log.userName}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                              <td className="p-3 text-center">
+                                <button className="text-xs text-indigo-600 hover:text-indigo-800 font-black">
+                                  {isExpanded ? 'بستن ▲' : 'مشاهده ▼'}
+                                </button>
+                              </td>
+                            </tr>
+                            {isExpanded && (
+                              <tr className="bg-slate-50/80">
+                                <td colSpan={5} className="p-4 border-t border-b border-slate-200/60">
+                                  <div className="space-y-3 text-xs">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                      <div>
+                                        <span className="font-black text-slate-500 block mb-1">📝 عنوان رویداد:</span>
+                                        <span className="font-black text-slate-900 text-sm bg-white p-2 rounded-xl border border-slate-200 block">
+                                          {log.message}
+                                        </span>
+                                      </div>
+                                      <div>
+                                        <span className="font-black text-slate-500 block mb-1">⏰ زمان دقیق ثبت سیستم:</span>
+                                        <span className="font-mono text-slate-700 font-bold bg-white p-2 rounded-xl border border-slate-200 block dir-ltr text-right">
+                                          {log.timestamp}
+                                        </span>
+                                      </div>
+                                    </div>
+
+                                    {log.userName && (
+                                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-3 rounded-2xl border border-slate-200">
+                                        <div>
+                                          <span className="font-black text-slate-500">👤 کاربر مرتبط:</span>
+                                          <span className="font-bold text-slate-900 mr-2">{log.userName}</span>
+                                        </div>
+                                        <div>
+                                          <span className="font-black text-slate-500">📞 شماره تماس:</span>
+                                          <span className="font-mono text-slate-700 font-bold mr-2">{log.userPhone || 'نامشخص'}</span>
+                                        </div>
+                                      </div>
+                                    )}
+
+                                    <div>
+                                      <span className="font-black text-slate-500 block mb-1">⚙️ جزئیات فنی و لاگ دیتابیس:</span>
+                                      <pre className="font-mono text-slate-700 bg-slate-900 text-slate-200 p-4 rounded-2xl border border-slate-800 overflow-x-auto text-[11px] whitespace-pre-wrap leading-relaxed shadow-inner">
+                                        {log.details || 'بدون جزئیات فنی تکمیلی.'}
+                                      </pre>
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
                             )}
-                            {log.level === 'warn' && (
-                              <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-md text-[10px] font-black">
-                                WARN
-                              </span>
-                            )}
-                            {log.level === 'info' && (
-                              <span className="px-2 py-0.5 bg-cyan-100 text-cyan-800 rounded-md text-[10px] font-black">
-                                INFO
-                              </span>
-                            )}
-                            {log.level === 'db' && (
-                              <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-md text-[10px] font-black">
-                                DB
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-3 font-bold text-slate-900">{log.message}</td>
-                          <td className="p-3 text-slate-500 font-mono text-[11px] max-w-xs truncate">
-                            {log.details || '—'}
-                          </td>
-                        </tr>
-                      ))}
+                          </React.Fragment>
+                        );
+                      })}
                   </tbody>
                 </table>
               )}

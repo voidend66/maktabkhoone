@@ -287,11 +287,11 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
               <select
                 value={className}
                 onChange={(e) => setClassName(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-cyan-500 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white transition"
+                className="w-full px-4 py-2.5 rounded-2xl border border-slate-300/90 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 text-xs sm:text-sm font-bold bg-slate-50 focus:bg-white transition cursor-pointer shadow-2xs hover:border-cyan-400"
               >
-                <option value="">انتخاب کلاس...</option>
+                <option value="" className="py-2 text-slate-900 font-semibold">انتخاب کلاس...</option>
                 {schoolClasses.map((c) => (
-                  <option key={c.id} value={c.name}>
+                  <option key={c.id} value={c.name} className="py-2 text-slate-900 font-semibold">
                     {c.name} ({c.grade})
                   </option>
                 ))}
