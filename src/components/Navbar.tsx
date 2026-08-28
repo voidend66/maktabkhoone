@@ -303,8 +303,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">قوانین مکتب خونه</span>
           </button>
 
-          {/* Row 2: 4 items depending on user state */}
-          {currentUser ? (
+          {/* Row 2: Only for logged-in users with personal tabs */}
+          {currentUser && (
             <>
               {/* Item 5: My Bookshelf */}
               <button
@@ -350,7 +350,7 @@ export const Navbar: React.FC<NavbarProps> = ({
                 <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">پروفایل من</span>
               </button>
 
-              {/* Item 8: Admin or Login */}
+              {/* Item 8: Admin or Logout */}
               {(currentUser?.role === 'admin' || currentUser?.id === 'user_admin') ? (
                 <button
                   onClick={() => setActiveTab('admin')}
@@ -382,41 +382,6 @@ export const Navbar: React.FC<NavbarProps> = ({
                   <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">خروج</span>
                 </button>
               )}
-            </>
-          ) : (
-            <>
-              {/* Row 2 for Guest Users */}
-              <button
-                onClick={onOpenLogin}
-                className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-cyan-300 bg-cyan-50/90 text-cyan-900 text-xs font-black transition shadow-2xs active:scale-95"
-              >
-                <LogIn className="w-5 h-5 text-cyan-600" />
-                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">ورود دانش‌آموز</span>
-              </button>
-
-              <button
-                onClick={onOpenRegister}
-                className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-amber-300 bg-amber-50/90 text-amber-950 text-xs font-black transition shadow-2xs active:scale-95"
-              >
-                <UserPlus className="w-5 h-5 text-amber-600" />
-                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">ثبت‌نام جدید</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('library')}
-                className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-slate-200 bg-white text-slate-700 text-xs font-bold transition shadow-2xs active:scale-95"
-              >
-                <BookOpen className="w-5 h-5 text-slate-500" />
-                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">جستجو کتاب</span>
-              </button>
-
-              <button
-                onClick={() => setActiveTab('rules')}
-                className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-xl border border-emerald-300 bg-emerald-50/90 text-emerald-900 text-xs font-bold transition shadow-2xs active:scale-95"
-              >
-                <HelpCircle className="w-5 h-5 text-emerald-600" />
-                <span className="text-[10px] sm:text-[11px] leading-tight font-extrabold">راهنمای امانت</span>
-              </button>
             </>
           )}
         </div>

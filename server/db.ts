@@ -8,7 +8,8 @@ import {
   MutualFeedback,
   BankCardInfo,
   BookReview,
-  SystemConfig
+  SystemConfig,
+  CustomAvatar
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
@@ -38,6 +39,7 @@ interface DatabaseSchema {
   schoolClasses: SchoolClass[];
   feedbacks: MutualFeedback[];
   settings: Record<string, string>;
+  customAvatars?: CustomAvatar[];
   systemLogs?: SystemLog[];
 }
 
@@ -49,6 +51,7 @@ let memoryDb: DatabaseSchema = {
   schoolClasses: [],
   feedbacks: [],
   settings: {},
+  customAvatars: [],
   systemLogs: []
 };
 
@@ -89,6 +92,7 @@ function loadFromDisk(): boolean {
           schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
           settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
+          customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
         };
         return true;
@@ -107,6 +111,7 @@ function loadFromDisk(): boolean {
           schoolClasses: Array.isArray(parsed.schoolClasses) ? parsed.schoolClasses : [],
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
           settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
+          customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
         };
         return true;
@@ -829,6 +834,36 @@ export const dbService = {
     return true;
   },
 
+  // Custom Avatars management
+  getCustomAvatars(): CustomAvatar[] {
+    return memoryDb.customAvatars || [];
+  },
+
+  addCustomAvatar(avatarData: { name: string; url: string; bg?: string }): CustomAvatar {
+    if (!memoryDb.customAvatars) memoryDb.customAvatars = [];
+    const newAvatar: CustomAvatar = {
+      id: `avatar_custom_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      name: avatarData.name.trim(),
+      url: avatarData.url.trim(),
+      bg: avatarData.bg || 'bg-amber-100 border-amber-300',
+      createdAt: new Date().toLocaleDateString('fa-IR')
+    };
+    memoryDb.customAvatars.push(newAvatar);
+    saveToDisk();
+    return newAvatar;
+  },
+
+  deleteCustomAvatar(id: string): boolean {
+    if (!memoryDb.customAvatars) return false;
+    const initialLen = memoryDb.customAvatars.length;
+    memoryDb.customAvatars = memoryDb.customAvatars.filter((a) => a.id !== id);
+    if (memoryDb.customAvatars.length !== initialLen) {
+      saveToDisk();
+      return true;
+    }
+    return false;
+  },
+
   // Bootstrap full state
   getBootstrapData() {
     return {
@@ -839,6 +874,7 @@ export const dbService = {
       feedbacks: this.getAllFeedbacks(),
       bankCardInfo: this.getBankCardInfo(),
       systemConfig: this.getSystemConfig(),
+      customAvatars: this.getCustomAvatars(),
       systemLogs: this.getSystemLogs()
     };
   },
@@ -860,6 +896,7 @@ export const dbService = {
       schoolClasses: Array.isArray(rawJson.schoolClasses) ? rawJson.schoolClasses : [],
       feedbacks: Array.isArray(rawJson.feedbacks) ? rawJson.feedbacks : [],
       settings: typeof rawJson.settings === 'object' && rawJson.settings !== null ? rawJson.settings : {},
+      customAvatars: Array.isArray(rawJson.customAvatars) ? rawJson.customAvatars : [],
       systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : []
     };
     

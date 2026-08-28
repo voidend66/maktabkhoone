@@ -51,7 +51,10 @@ import {
   Sparkles,
   RefreshCw,
   Phone,
-  HelpCircle
+  HelpCircle,
+  Smile,
+  Image as ImageIcon,
+  Loader2
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -78,16 +81,105 @@ export const AdminPanel: React.FC = () => {
     verifyPaymentByAdmin,
     makeAdmin,
     addAdminByPhone,
+    customAvatars,
+    addCustomAvatar,
+    deleteCustomAvatar,
     refreshData
   } = useApp();
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
+    'pending_users' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
   >('pending_users');
   const [reviewsSubTab, setReviewsSubTab] = useState<'book_reviews' | 'user_feedbacks'>('book_reviews');
   const [reviewSearch, setReviewSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Avatar Management states & handlers
+  const [newAvatarName, setNewAvatarName] = useState('');
+  const [newAvatarUrl, setNewAvatarUrl] = useState('');
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [avatarSuccessMsg, setAvatarSuccessMsg] = useState('');
+  const [avatarErrorMsg, setAvatarErrorMsg] = useState('');
+
+  const handleAvatarFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarErrorMsg('لطفاً یک فایل تصویری (PNG, JPG, WEBP) انتخاب کنید.');
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    setAvatarErrorMsg('');
+    setAvatarSuccessMsg('');
+
+    try {
+      const uploadRes = await api.uploadImage(file);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        setNewAvatarUrl(uploadRes.fileUrl);
+        setAvatarSuccessMsg('تصویر آواتار با موفقیت روی سرور بارگذاری شد.');
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result) {
+            setNewAvatarUrl(reader.result.toString());
+            setAvatarSuccessMsg('تصویر آماده ثبت است.');
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result) {
+          setNewAvatarUrl(reader.result.toString());
+          setAvatarSuccessMsg('تصویر آماده ثبت است.');
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsUploadingAvatar(false);
+    }
+  };
+
+  const handleCreateCustomAvatar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newAvatarName.trim()) {
+      setAvatarErrorMsg('لطفاً نام آواتار را وارد کنید.');
+      return;
+    }
+    if (!newAvatarUrl) {
+      setAvatarErrorMsg('لطفاً یک فایل تصویری PNG برای آواتار بارگذاری کنید.');
+      return;
+    }
+
+    setAvatarErrorMsg('');
+    setAvatarSuccessMsg('');
+    setIsUploadingAvatar(true);
+
+    const res = await addCustomAvatar(newAvatarName.trim(), newAvatarUrl);
+    setIsUploadingAvatar(false);
+
+    if (res.success) {
+      setAvatarSuccessMsg(res.message || 'آواتار جدید با موفقیت اضافه شد.');
+      setNewAvatarName('');
+      setNewAvatarUrl('');
+    } else {
+      setAvatarErrorMsg(res.message || 'خطا در ثبت آواتار.');
+    }
+  };
+
+  const handleDeleteCustomAvatar = async (id: string, name: string) => {
+    if (!window.confirm(`آیا از حذف آواتار «${name}» اطمینان دارید؟`)) return;
+    const res = await deleteCustomAvatar(id);
+    if (res.success) {
+      setAvatarSuccessMsg(res.message || 'آواتار با موفقیت حذف شد.');
+    } else {
+      setAvatarErrorMsg(res.message || 'خطا در حذف آواتار.');
+    }
+  };
 
   // Backup and Restore states & handlers
   const [isRestoring, setIsRestoring] = useState(false);
@@ -634,6 +726,18 @@ export const AdminPanel: React.FC = () => {
         >
           <Terminal className="w-4 h-4 text-emerald-400" />
           <span>لاگ‌های دیتابیس و رویدادها ({systemLogs.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('avatars')}
+          className={`flex-1 min-w-[140px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'avatars'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <Smile className="w-4 h-4 text-pink-400" />
+          <span>مدیریت آواتارها ({customAvatars.length})</span>
         </button>
       </div>
 
@@ -3094,6 +3198,175 @@ export const AdminPanel: React.FC = () => {
                 </table>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Avatar Management */}
+      {activeTab === 'avatars' && (
+        <div className="space-y-6">
+          <div className="bg-gradient-to-r from-pink-500 to-rose-600 rounded-3xl p-6 text-white shadow-lg flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="space-y-1">
+              <h3 className="text-xl font-black flex items-center gap-2">
+                <Smile className="w-6 h-6 text-amber-300" />
+                <span>مدیریت آواتار‌های اختصاصی سامانه</span>
+              </h3>
+              <p className="text-xs text-pink-100 leading-relaxed max-w-2xl">
+                در این بخش می‌توانید آواتارهای سفارشی جدید با فرمت PNG به همراه اسم اختصاصی آپلود و اضافه کنید.
+                آواتارهای افزوده‌شده بلافاصله برای تمامی کاربران در بخش ثبت‌نام، ورود، و ویرایش پروفایل قابل انتخاب خواهند بود.
+              </p>
+            </div>
+          </div>
+
+          {/* Feedback Messages */}
+          {avatarSuccessMsg && (
+            <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-800 rounded-2xl text-xs font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+                <span>{avatarSuccessMsg}</span>
+              </div>
+              <button onClick={() => setAvatarSuccessMsg('')} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {avatarErrorMsg && (
+            <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs font-bold flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                <span>{avatarErrorMsg}</span>
+              </div>
+              <button onClick={() => setAvatarErrorMsg('')} className="text-slate-400 hover:text-slate-600">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Form Card: Add New Avatar */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            <h4 className="text-sm font-black text-slate-900 flex items-center gap-2 border-b border-slate-100 pb-3">
+              <Plus className="w-5 h-5 text-indigo-600" />
+              <span>افزودن آواتار PNG جدید به سامانه:</span>
+            </h4>
+
+            <form onSubmit={handleCreateCustomAvatar} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Avatar Name Input */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">
+                    نام آواتار (عنوان نمایش داده‌شده برای کاربران) <span className="text-rose-500">*</span>:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={newAvatarName}
+                    onChange={(e) => setNewAvatarName(e.target.value)}
+                    placeholder="مثال: آواتار دانش‌آموز پژوهشگر"
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                  />
+                </div>
+
+                {/* PNG Image Upload */}
+                <div>
+                  <label className="block text-xs font-black text-slate-700 mb-1.5">
+                    آپلود تصویر آواتار (فرمت PNG / JPG) <span className="text-rose-500">*</span>:
+                  </label>
+                  <label className="cursor-pointer w-full px-4 py-2 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-900 text-xs font-bold rounded-2xl flex items-center justify-center gap-2 transition">
+                    {isUploadingAvatar ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                    ) : (
+                      <Upload className="w-4 h-4 text-indigo-600" />
+                    )}
+                    <span>{newAvatarUrl ? 'تغییر تصویر آواتار' : 'انتخاب و آپلود فایل PNG'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleAvatarFileUpload}
+                      disabled={isUploadingAvatar}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Image Preview Box */}
+              {newAvatarUrl && (
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-4">
+                  <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-white border border-slate-300 p-1 flex items-center justify-center shadow-xs">
+                    <img src={newAvatarUrl} alt="پیش‌نمایش آواتار" className="w-full h-full object-cover rounded-xl" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-slate-800 block">پیش‌نمایش آواتار انتخاب شده</span>
+                    <span className="text-[11px] text-slate-500 block">{newAvatarName || 'بدون نام'}</span>
+                  </div>
+                </div>
+              )}
+
+              <div className="flex justify-end pt-2">
+                <button
+                  type="submit"
+                  disabled={isUploadingAvatar || !newAvatarName || !newAvatarUrl}
+                  className="px-6 py-3 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 disabled:opacity-50 text-white font-black text-xs rounded-2xl shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
+                  {isUploadingAvatar ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  <span>ثبت و انتشار آواتار جدید</span>
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* List of Custom Avatars */}
+          <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-xs space-y-4">
+            <h4 className="text-sm font-black text-slate-900 flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Smile className="w-5 h-5 text-amber-500" />
+                <span>آواتارهای اختصاصی ثبت‌شده توسط مدیریت ({customAvatars.length})</span>
+              </div>
+            </h4>
+
+            {customAvatars.length === 0 ? (
+              <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
+                <ImageIcon className="w-10 h-10 text-slate-400 mx-auto" />
+                <p className="text-xs font-bold text-slate-600">هنوز آواتار اختصاصی جدیدی ثبت نشده است.</p>
+                <p className="text-[11px] text-slate-400">با استفاده از فرم بالا می‌توانید اولین آواتار PNG سفارشی را اضافه نمایید.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
+                {customAvatars.map((avatar) => (
+                  <div
+                    key={avatar.id}
+                    className="p-3 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col items-center justify-between gap-3 relative group hover:shadow-md transition"
+                  >
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden bg-white border border-slate-200 p-1 flex items-center justify-center shadow-xs">
+                      <img src={avatar.url} alt={avatar.name} className="w-full h-full object-cover rounded-xl" />
+                    </div>
+                    <div className="text-center w-full">
+                      <span className="text-xs font-black text-slate-800 block truncate" title={avatar.name}>
+                        {avatar.name}
+                      </span>
+                      {avatar.createdAt && (
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          {avatar.createdAt}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleDeleteCustomAvatar(avatar.id, avatar.name)}
+                      className="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold rounded-xl border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                      title="حذف این آواتار"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>حذف</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}

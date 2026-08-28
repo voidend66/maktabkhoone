@@ -9,7 +9,8 @@ import {
   RequestStatus,
   RegistrationInput,
   BankCardInfo,
-  SystemConfig
+  SystemConfig,
+  CustomAvatar
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -109,6 +110,9 @@ interface AppContextType {
   deleteFeedback: (feedbackId: string) => Promise<{ success: boolean; message?: string }>;
   updateBankCardInfo: (info: BankCardInfo) => void;
   updateSystemConfig: (config: Partial<SystemConfig>) => Promise<{ success: boolean; message?: string; config?: SystemConfig }>;
+  customAvatars: CustomAvatar[];
+  addCustomAvatar: (name: string, url: string, bg?: string) => Promise<{ success: boolean; message: string; avatar?: CustomAvatar }>;
+  deleteCustomAvatar: (id: string) => Promise<{ success: boolean; message: string }>;
   resetToDefaults: () => void;
   refreshData: () => Promise<void>;
 }
@@ -124,6 +128,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [feedbacks, setFeedbacks] = useState<MutualFeedback[]>([]);
   const [bankCardInfo, setBankCardInfo] = useState<BankCardInfo>(INITIAL_BANK_CARD);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
+  const [customAvatars, setCustomAvatars] = useState<CustomAvatar[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -156,11 +161,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (data.systemConfig) {
           setSystemConfig(data.systemConfig);
         }
+        if (data.customAvatars) {
+          setCustomAvatars(data.customAvatars);
+        }
       }
     } catch (err) {
       console.error('Failed to load bootstrap data from SQLite:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const addCustomAvatar = async (name: string, url: string, bg?: string) => {
+    try {
+      const avatar = await api.addCustomAvatar(name, url, bg);
+      if (avatar) {
+        setCustomAvatars((prev) => [...prev, avatar]);
+        return { success: true, message: 'آواتار جدید با موفقیت اضافه شد.', avatar };
+      }
+      return { success: false, message: 'خطا در افزودن آواتار' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در افزودن آواتار' };
+    }
+  };
+
+  const deleteCustomAvatar = async (id: string) => {
+    try {
+      const ok = await api.deleteCustomAvatar(id);
+      if (ok) {
+        setCustomAvatars((prev) => prev.filter((a) => a.id !== id));
+        return { success: true, message: 'آواتار با موفقیت حذف شد.' };
+      }
+      return { success: false, message: 'حذف آواتار با خطا مواجه شد.' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در حذف آواتار' };
     }
   };
 
@@ -1079,6 +1113,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteFeedback,
         updateBankCardInfo,
         updateSystemConfig,
+        customAvatars,
+        addCustomAvatar,
+        deleteCustomAvatar,
         resetToDefaults,
         refreshData
       }}

@@ -453,20 +453,34 @@ export async function getBaleWebhookInfo() {
 }
 
 /**
- * ذخیره و به‌روزرسانی شناسه چت مدیران برای دریافت اعلانات
+ * ذخیره و به‌روزرسانی شناسه چت مدیران برای دریافت اعلانات (فقط چت‌های خصوصی کاربران، بدون کانال یا گروه)
  */
 export function registerAdminBaleChatId(chatId: string | number) {
   try {
+    const strId = chatId.toString().trim();
+    // Channels or groups have negative IDs or start with @. Valid user private chat IDs are positive numbers.
+    if (!strId || strId.startsWith('@') || strId.startsWith('-') || !/^\d+$/.test(strId)) {
+      return;
+    }
+    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
+    if (channelUsername && strId.toLowerCase() === channelUsername) {
+      return;
+    }
+
     const savedSetting = dbService.getSetting('admin_bale_chat_ids');
-    let adminList: (string | number)[] = [];
+    let adminList: string[] = [];
     if (savedSetting) {
       try {
-        adminList = JSON.parse(savedSetting);
+        const parsed = JSON.parse(savedSetting);
+        if (Array.isArray(parsed)) {
+          adminList = parsed
+            .map(x => x.toString().trim())
+            .filter(id => /^\d+$/.test(id) && !id.startsWith('-') && !id.startsWith('@'));
+        }
       } catch (e) {}
     }
-    const stringList = adminList.map(x => x.toString());
-    if (!stringList.includes(chatId.toString())) {
-      adminList.push(chatId.toString());
+    if (!adminList.includes(strId)) {
+      adminList.push(strId);
       dbService.setSetting('admin_bale_chat_ids', JSON.stringify(adminList));
     }
   } catch (err) {
@@ -485,7 +499,10 @@ export async function notifyAdminsOnBale(user: User) {
     // 1. مدیران ثبت‌شده در دیتابیس
     allUsers.forEach((u) => {
       if (u.role === 'admin' && u.baleChatId) {
-        adminChatIds.add(u.baleChatId.toString());
+        const strId = u.baleChatId.toString().trim();
+        if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
+          adminChatIds.add(strId);
+        }
       }
     });
 
@@ -495,12 +512,24 @@ export async function notifyAdminsOnBale(user: User) {
       try {
         const parsed = JSON.parse(savedSetting);
         if (Array.isArray(parsed)) {
-          parsed.forEach((id) => adminChatIds.add(id.toString()));
+          parsed.forEach((id) => {
+            const strId = id.toString().trim();
+            if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
+              adminChatIds.add(strId);
+            }
+          });
         }
       } catch (e) {}
     }
 
-    if (adminChatIds.size === 0) {
+    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
+    const filteredAdminIds = Array.from(adminChatIds).filter(id => {
+      if (!/^\d+$/.test(id) || id.startsWith('-') || id.startsWith('@')) return false;
+      if (channelUsername && id.toLowerCase() === channelUsername) return false;
+      return true;
+    });
+
+    if (filteredAdminIds.length === 0) {
       console.log('⚠️ [Bale Notify] هیچ چت‌آیدی مدیری برای ارسال پیام ثبت نشده است.');
       return;
     }
@@ -525,7 +554,7 @@ export async function notifyAdminsOnBale(user: User) {
       ],
     };
 
-    for (const chatId of adminChatIds) {
+    for (const chatId of filteredAdminIds) {
       await sendBaleMessage(chatId, text, replyMarkup);
     }
   } catch (err) {
@@ -543,7 +572,10 @@ export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any)
 
     allUsers.forEach((u) => {
       if (u.role === 'admin' && u.baleChatId) {
-        adminChatIds.add(u.baleChatId.toString());
+        const strId = u.baleChatId.toString().trim();
+        if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
+          adminChatIds.add(strId);
+        }
       }
     });
 
@@ -552,12 +584,24 @@ export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any)
       try {
         const parsed = JSON.parse(savedSetting);
         if (Array.isArray(parsed)) {
-          parsed.forEach((id) => adminChatIds.add(id.toString()));
+          parsed.forEach((id) => {
+            const strId = id.toString().trim();
+            if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
+              adminChatIds.add(strId);
+            }
+          });
         }
       } catch (e) {}
     }
 
-    for (const chatId of adminChatIds) {
+    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
+    const filteredAdminIds = Array.from(adminChatIds).filter(id => {
+      if (!/^\d+$/.test(id) || id.startsWith('-') || id.startsWith('@')) return false;
+      if (channelUsername && id.toLowerCase() === channelUsername) return false;
+      return true;
+    });
+
+    for (const chatId of filteredAdminIds) {
       await sendBaleMessage(chatId, text, replyMarkup);
     }
   } catch (err) {
@@ -626,6 +670,13 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
   try {
     const queryId = callbackQuery.id;
     const data = callbackQuery.data || '';
+    const chatType = callbackQuery.message?.chat?.type;
+    
+    // Strict isolation: Never process callback queries from channels or groups
+    if (chatType && chatType !== 'private') {
+      return;
+    }
+
     const fromChatId = callbackQuery.message?.chat?.id || callbackQuery.from?.id;
     const messageId = callbackQuery.message?.message_id;
 
@@ -1106,6 +1157,23 @@ export async function handleIncomingBaleMessage(message: any) {
   const chatId = message.chat?.id || message.from?.id;
   if (!chatId) return;
 
+  // STRICT CHANNEL & GROUP ISOLATION:
+  // Never process or reply to messages originating from channels, supergroups, or groups.
+  // The bot only interacts directly with individual users in 1-on-1 private chat sessions.
+  const chatType = message.chat?.type;
+  if (chatType && chatType !== 'private') {
+    return;
+  }
+
+  const chatIdStr = String(chatId).trim();
+  const chatUsername = (message.chat?.username || '').replace(/^@/, '').trim().toLowerCase();
+  const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
+
+  // If chatId is negative (channel/group in Telegram/Bale protocol) or matches channel username
+  if (chatIdStr.startsWith('-') || chatIdStr.startsWith('@') || (channelUsername && (chatUsername === channelUsername || chatIdStr.toLowerCase() === channelUsername))) {
+    return;
+  }
+
   const text = (message.text || '').trim();
 
   // Check if this chat is an admin awaiting custom reject reason
@@ -1487,6 +1555,50 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
+   * API: مدیریت آواتارهای اختصاصی توسط مدیر
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/avatars', (_req: Request, res: Response) => {
+    try {
+      const customAvatars = dbService.getCustomAvatars();
+      res.json({ success: true, customAvatars });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'خطا در دریافت لیست آواتارها' });
+    }
+  });
+
+  app.post('/api/avatars', (req: Request, res: Response): any => {
+    try {
+      const { name, url, bg } = req.body || {};
+      if (!name || !url) {
+        return res.status(400).json({ success: false, message: 'نام و تصویر آواتار الزامی است.' });
+      }
+      const avatar = dbService.addCustomAvatar({ name, url, bg });
+      dbService.addSystemLog('info', `آواتار جدید با نام «${name}» توسط مدیریت اضافه شد.`);
+      return res.json({ success: true, avatar, message: 'آواتار جدید با موفقیت اضافه شد.' });
+    } catch (err: any) {
+      console.error('Error adding avatar:', err);
+      return res.status(500).json({ success: false, message: err.message || 'خطا در افزودن آواتار' });
+    }
+  });
+
+  app.delete('/api/avatars/:id', (req: Request, res: Response): any => {
+    try {
+      const { id } = req.params;
+      const ok = dbService.deleteCustomAvatar(id);
+      if (!ok) {
+        return res.status(404).json({ success: false, message: 'آواتار مورد نظر یافت نشد.' });
+      }
+      dbService.addSystemLog('info', `آواتار با شناسه ${id} توسط مدیریت حذف شد.`);
+      return res.json({ success: true, message: 'آواتار با موفقیت حذف شد.' });
+    } catch (err: any) {
+      console.error('Error deleting avatar:', err);
+      return res.status(500).json({ success: false, message: 'خطا در حذف آواتار' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
    * Webhook API: دریافت آپدیت‌های ارسالی از پیام‌رسان بله
    * --------------------------------------------------------------------------
    */
@@ -1495,6 +1607,11 @@ async function startServer() {
     try {
       const update = req.body;
       if (!update) return;
+
+      // Ignore channel posts and edited channel posts completely
+      if (update.channel_post || update.edited_channel_post) {
+        return;
+      }
 
       if (update.message) {
         await handleIncomingBaleMessage(update.message);
@@ -2446,7 +2563,7 @@ async function startServer() {
       `💳 <b>ثبت فیش پرداخت حق امانت جدید</b>\n\n` +
       `📖 <b>کتاب:</b> «${updated.bookTitle}»\n` +
       `👤 <b>پرداخت‌کننده:</b> ${updated.borrowerName} (${updated.borrowerClass})\n` +
-      `🔢 <b>کد پیگیری:</b> <code>${trackingCode}</code>\n` +
+      `🔢 <b>کد پیگیری:</b> <code>${trackingCode || 'ثبت نشده'}</code>\n` +
       `📅 <b>تاریخ پرداخت:</b> ${paymentDate}\n\n` +
       `لطفاً فیش واریزی را در پنل مدیریت بررسی و تایید فرمایید.`
     );

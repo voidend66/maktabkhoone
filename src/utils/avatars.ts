@@ -1,9 +1,12 @@
+import { CustomAvatar } from '../types';
+
 export interface AvatarOption {
   id: string;
   name: string; // Left blank or short label without human personal names as requested
   description: string;
   bg: string;
   url: string;
+  isCustom?: boolean;
 }
 
 export const ADMIN_SPECIAL_AVATARS: AvatarOption[] = [
@@ -352,8 +355,23 @@ export const STUDENT_AVATARS: AvatarOption[] = [
 
 export const FANTASY_AVATARS: AvatarOption[] = [...ADMIN_SPECIAL_AVATARS, ...STUDENT_AVATARS];
 
-export const getAvailableAvatars = (isAdmin: boolean = false): AvatarOption[] => {
-  return isAdmin ? [...ADMIN_SPECIAL_AVATARS, ...STUDENT_AVATARS] : STUDENT_AVATARS;
+export const getAvailableAvatars = (
+  isAdmin: boolean = false,
+  customAvatars: CustomAvatar[] = []
+): AvatarOption[] => {
+  const formattedCustom: AvatarOption[] = (customAvatars || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    description: c.name,
+    bg: c.bg || 'bg-amber-100 border-amber-300',
+    url: c.url,
+    isCustom: true
+  }));
+
+  if (isAdmin) {
+    return [...formattedCustom, ...ADMIN_SPECIAL_AVATARS, ...STUDENT_AVATARS];
+  }
+  return [...formattedCustom, ...STUDENT_AVATARS];
 };
 
 export const isAdminAvatar = (urlOrId?: string): boolean => {

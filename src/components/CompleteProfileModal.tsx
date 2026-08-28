@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { STUDENT_AVATARS } from '../utils/avatars';
+import { getAvailableAvatars } from '../utils/avatars';
 import {
   User,
   CheckCircle2,
@@ -20,7 +20,8 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({
   onClose,
   onComplete
 }) => {
-  const { currentUser, updateProfile, schoolClasses, systemConfig } = useApp();
+  const { currentUser, updateProfile, schoolClasses, systemConfig, customAvatars } = useApp();
+  const availableAvatars = getAvailableAvatars(currentUser?.role === 'admin', customAvatars);
 
   const [name, setName] = useState(
     currentUser?.name && !currentUser.name.startsWith('کاربر بله') ? currentUser.name : ''
@@ -28,7 +29,7 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({
   const [className, setClassName] = useState(
     currentUser?.className || (schoolClasses.length > 0 ? schoolClasses[0].name : 'کلاس ۱/۱')
   );
-  const [avatar, setAvatar] = useState(currentUser?.avatar || STUDENT_AVATARS[0].url);
+  const [avatar, setAvatar] = useState(currentUser?.avatar || availableAvatars[0]?.url || '');
 
   const [errorMessage, setErrorMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -147,25 +148,31 @@ export const CompleteProfileModal: React.FC<CompleteProfileModalProps> = ({
               </div>
             </div>
 
-            {/* Avatar Selector - 3D Animated Avatars */}
+            {/* Avatar Selector */}
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-2 flex items-center gap-1.5">
                 <Smile className="w-4 h-4 text-amber-500" />
-                <span>انتخاب آواتار کارتونی ۳ بعدی دانش‌آموز:</span>
+                <span>انتخاب آواتار حساب کاربری:</span>
               </label>
-              <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
-                {STUDENT_AVATARS.map((av) => (
+              <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 max-h-48 overflow-y-auto p-1 bg-slate-50 rounded-2xl border border-slate-200">
+                {availableAvatars.map((av) => (
                   <div
                     key={av.id}
                     onClick={() => setAvatar(av.url)}
-                    className={`relative rounded-2xl p-1 cursor-pointer border-2 transition flex items-center justify-center ${av.bg} ${
+                    title={av.name || av.description}
+                    className={`relative rounded-2xl p-1 cursor-pointer border-2 transition flex flex-col items-center justify-center ${av.bg || 'bg-white'} ${
                       avatar === av.url ? 'border-cyan-600 scale-105 shadow-md ring-2 ring-cyan-400' : 'border-slate-200 opacity-80 hover:opacity-100'
                     }`}
                   >
+                    {av.isCustom && (
+                      <span className="absolute -top-1 -right-1 px-1 py-0.2 bg-amber-500 text-white text-[8px] font-bold rounded-full">
+                        جدید
+                      </span>
+                    )}
                     <img
                       src={av.url}
-                      alt={av.description}
-                      className="w-10 h-10 object-contain rounded-xl"
+                      alt={av.name || av.description}
+                      className="w-10 h-10 object-cover rounded-xl"
                     />
                   </div>
                 ))}

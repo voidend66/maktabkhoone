@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { NewBookInput, BookCondition } from '../types';
 import { CATEGORIES } from '../data/mockData';
-import { STUDENT_AVATARS } from '../utils/avatars';
+import { getAvailableAvatars } from '../utils/avatars';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 import { RulesModal } from './RulesModal';
 import { api } from '../services/api';
@@ -34,7 +34,8 @@ interface RegisterModalProps {
 }
 
 export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLogin, onOpenRules }) => {
-  const { registerUser, schoolClasses, users, systemConfig } = useApp();
+  const { registerUser, schoolClasses, users, systemConfig, customAvatars } = useApp();
+  const availableAvatars = getAvailableAvatars(false, customAvatars);
   const minRequired = systemConfig?.minBooksForRegistration ?? 3;
   const maxAllowed = systemConfig?.maxBooksForRegistration ?? 5;
 
@@ -45,7 +46,7 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [avatar, setAvatar] = useState(STUDENT_AVATARS[0].url);
+  const [avatar, setAvatar] = useState(() => availableAvatars[0]?.url || '');
   const [agreedToRules, setAgreedToRules] = useState(false);
   const [showRulesModal, setShowRulesModal] = useState(false);
 
@@ -252,24 +253,34 @@ export const RegisterModal: React.FC<RegisterModalProps> = ({ onClose, onOpenLog
                   </div>
                 )}
 
-                {/* 3D Avatar Selector */}
+                {/* 3D & Custom Avatar Selector */}
                 <div>
                   <label className="text-xs font-black text-slate-700 block mb-2">
-                    انتخاب آواتار کارتونی و ۳ بعدی حساب کاربری 🎨:
+                    انتخاب آواتار حساب کاربری 🎨:
                   </label>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                    {STUDENT_AVATARS.map((item) => (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 max-h-56 overflow-y-auto p-1">
+                    {availableAvatars.map((item) => (
                       <div
                         key={item.id}
                         onClick={() => setAvatar(item.url)}
-                        title={item.description}
-                        className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border transition ${
+                        title={item.name || item.description}
+                        className={`flex flex-col items-center justify-center p-2 rounded-2xl border transition cursor-pointer relative ${
                           avatar === item.url
                             ? 'border-cyan-500 bg-cyan-50 ring-2 ring-cyan-500 scale-105 shadow-md'
                             : 'border-slate-200 bg-slate-50 opacity-80 hover:opacity-100 hover:border-cyan-300'
                         }`}
                       >
-                        <img src={item.url} alt="آواتار کارتونی ۳ بعدی" className="w-14 h-14 rounded-full shadow-xs object-cover" />
+                        {item.isCustom && (
+                          <span className="absolute top-1 right-1 px-1.5 py-0.5 bg-amber-500 text-white text-[9px] font-bold rounded-full">
+                            جدید
+                          </span>
+                        )}
+                        <img src={item.url} alt={item.name || "آواتار"} className="w-12 h-12 rounded-full shadow-xs object-cover" />
+                        {item.name && (
+                          <span className="text-[10px] font-bold text-slate-700 mt-1 truncate max-w-[90px] text-center">
+                            {item.name}
+                          </span>
+                        )}
                       </div>
                     ))}
                   </div>

@@ -7,7 +7,8 @@ import {
   BankCardInfo,
   RegistrationInput,
   BookReview,
-  SystemConfig
+  SystemConfig,
+  CustomAvatar
 } from '../types';
 
 const API_BASE = '/api';
@@ -20,6 +21,8 @@ export interface BootstrapResponse {
   feedbacks: MutualFeedback[];
   bankCardInfo: BankCardInfo;
   systemConfig?: SystemConfig;
+  customAvatars?: CustomAvatar[];
+  systemLogs?: any[];
 }
 
 export const api = {
@@ -397,6 +400,35 @@ export const api = {
         successful: 0,
         failed: 0
       };
+    }
+  },
+
+  // Custom Avatars Management
+  async addCustomAvatar(name: string, url: string, bg?: string): Promise<CustomAvatar | null> {
+    try {
+      const res = await fetch(`${API_BASE}/avatars`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, url, bg })
+      });
+      if (!res.ok) throw new Error('Failed to add avatar');
+      const data = await res.json();
+      return data.avatar;
+    } catch (err) {
+      console.error('API addCustomAvatar error:', err);
+      return null;
+    }
+  },
+
+  async deleteCustomAvatar(id: string): Promise<boolean> {
+    try {
+      const res = await fetch(`${API_BASE}/avatars/${id}`, {
+        method: 'DELETE'
+      });
+      return res.ok;
+    } catch (err) {
+      console.error('API deleteCustomAvatar error:', err);
+      return false;
     }
   },
 

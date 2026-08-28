@@ -64,7 +64,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
   const isBorrower = currentUser?.id === request.borrowerId;
   const isOwner = currentUser?.id === request.ownerId;
   const targetUserName = isBorrower ? request.ownerName : request.borrowerName;
-  const targetUserRoleTitle = isBorrower ? 'مالک کتاب' : 'امانت‌گیرنده کتاب';
+  const targetUserRoleTitle = isBorrower ? 'مالک کتاب (قرض‌دهنده)' : 'امانت‌گیرنده (قرض‌گیرنده)';
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -146,7 +146,11 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
           <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-900 leading-relaxed flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
             <span>
-              <strong>ثبت عودت نیم‌روزی (۱۲ ساعته):</strong> پس از رد و بدل شدن کتاب در زنگ تفریح، این فرم برای ارزیابی امانت‌داری تکمیل می‌شود.
+              {isOwner ? (
+                <><strong>پس گرفتن کتاب و ارزیابی امانت‌گیرنده:</strong> نظر و امتیاز شما به خوش‌قولی و نگهداری کتاب توسط {targetUserName} ثبت می‌شود.</>
+              ) : (
+                <><strong>ارزیابی تجربه امانت از مالک کتاب:</strong> نظر و امتیاز شما به همکاری و کیفیت تحویل کتاب توسط {targetUserName} ثبت می‌شود.</>
+              )}
             </span>
           </div>
 
@@ -161,7 +165,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
           <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800">
-                ⏰ ۱. تحویل و پس دادن به موقع:
+                {isOwner ? '⏰ ۱. خوش‌قولی در پس دادن به موقع کتاب:' : '⏰ ۱. خوش‌قولی و تحویل به موقع کتاب:'}
               </label>
               <span className="text-xs font-extrabold text-indigo-700">
                 {punctualityScore} از ۵
@@ -173,7 +177,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
                   type="button"
                   key={star}
                   onClick={() => setPunctualityScore(star)}
-                  className="p-1 hover:scale-110 transition"
+                  className="p-1 hover:scale-110 transition cursor-pointer"
                 >
                   <Star
                     className={`w-5 h-5 ${
@@ -189,7 +193,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
           <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800">
-                ✨ ۲. تمیز و سالم نگه داشتن کتاب:
+                {isOwner ? '✨ ۲. حفظ سلامت، پاکیزگی و جلد کتاب:' : '✨ ۲. مطابقت سلامت و تمیزی کتاب با مشخصات:'}
               </label>
               <span className="text-xs font-extrabold text-indigo-700">
                 {conditionScore} از ۵
@@ -201,7 +205,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
                   type="button"
                   key={star}
                   onClick={() => setConditionScore(star)}
-                  className="p-1 hover:scale-110 transition"
+                  className="p-1 hover:scale-110 transition cursor-pointer"
                 >
                   <Star
                     className={`w-5 h-5 ${
@@ -229,7 +233,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
                   type="button"
                   key={star}
                   onClick={() => setBehaviorScore(star)}
-                  className="p-1 hover:scale-110 transition"
+                  className="p-1 hover:scale-110 transition cursor-pointer"
                 >
                   <Star
                     className={`w-5 h-5 ${
@@ -245,7 +249,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
           <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-800">
-                🤝 ۴. خوش‌قولی و قابلیت اعتماد:
+                🤝 ۴. امانت‌داری و مسئولیت‌پذیری کلی:
               </label>
               <span className="text-xs font-extrabold text-indigo-700">
                 {reliabilityScore} از ۵
@@ -257,7 +261,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
                   type="button"
                   key={star}
                   onClick={() => setReliabilityScore(star)}
-                  className="p-1 hover:scale-110 transition"
+                  className="p-1 hover:scale-110 transition cursor-pointer"
                 >
                   <Star
                     className={`w-5 h-5 ${
@@ -278,7 +282,11 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
               rows={3}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="نظر خود را درباره تعهد، اخلاق یا نگهداری کتاب بنویسید..."
+              placeholder={
+                isOwner
+                  ? "نظر و تجربه خود را درباره امانت دادن کتاب به این دانش‌آموز بنویسید..."
+                  : "نظر و تجربه خود را درباره دریافت کتاب از این مالک بنویسید..."
+              }
               className="w-full text-xs p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 font-medium"
             />
 

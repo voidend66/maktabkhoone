@@ -195,6 +195,14 @@ export interface SystemConfig {
   websiteBaseUrl?: string;
 }
 
+export interface CustomAvatar {
+  id: string;
+  name: string;
+  url: string;
+  bg?: string;
+  createdAt?: string;
+}
+
 export interface SystemLog {
   id: string;
   timestamp: string;

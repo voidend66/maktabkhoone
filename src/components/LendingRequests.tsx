@@ -24,7 +24,8 @@ import {
   AlertTriangle,
   FileCheck,
   Upload,
-  Loader2
+  Loader2,
+  Star
 } from 'lucide-react';
 
 export const LendingRequests: React.FC = () => {
@@ -407,20 +408,39 @@ export const LendingRequests: React.FC = () => {
                       <>
                         <button
                           onClick={() => setSelectedRequestForFeedback(req)}
-                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black rounded-xl shadow-sm transition flex items-center gap-1.5"
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-black rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
                         >
                           <ShieldCheck className="w-4 h-4" />
-                          <span>ثبت پس‌گرفتن کتاب & امتیازدهی</span>
+                          <span>ثبت پس‌گرفتن کتاب & ثبت نظر درباره قرض‌گیرنده</span>
                         </button>
 
                         <button
                           onClick={() => setDamageReportingReq(req)}
-                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition flex items-center gap-1"
+                          className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-xl border border-rose-200 transition flex items-center gap-1 cursor-pointer"
                         >
                           <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
                           <span>گزارش آسیب کتاب (مسدودی حساب)</span>
                         </button>
                       </>
+                    )}
+
+                    {req.status === 'returned' && (
+                      <div className="flex items-center gap-2 flex-wrap">
+                        {!req.ownerFeedbackGiven ? (
+                          <button
+                            onClick={() => setSelectedRequestForFeedback(req)}
+                            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 active:scale-95 text-slate-950 text-xs font-black rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <Star className="w-4 h-4 fill-slate-950 text-slate-950" />
+                            <span>ثبت نظر و امتیاز درباره قرض‌گیرنده ({req.borrowerName})</span>
+                          </button>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs px-3 py-1.5 rounded-xl font-bold">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                            <span>نظر شما در مورد قرض‌گیرنده ثبت گردید</span>
+                          </span>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -559,14 +579,19 @@ export const LendingRequests: React.FC = () => {
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
-                        if (!trackingCode.trim()) return;
+                        if (!receiptImage.trim()) {
+                          setReceiptUploadError('بارگذاری تصویر / اسکرین‌شات فیش واریزی الزامی است.');
+                          return;
+                        }
                         submitPaymentProof(req.id, {
-                          trackingCode: trackingCode.trim(),
+                          trackingCode: trackingCode.trim() || undefined,
                           paymentDate: paymentDate.trim(),
-                          receiptImage: receiptImage.trim() || undefined
+                          receiptImage: receiptImage.trim()
                         });
                         setTrackingCode('');
                         setReceiptImage('');
+                        setReceiptPreviewUrl('');
+                        setReceiptUploadError('');
                       }}
                       className="space-y-3 bg-white p-4 rounded-2xl border border-amber-200"
                     >
@@ -578,16 +603,15 @@ export const LendingRequests: React.FC = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div>
                           <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                            کد پیگیری یا شماره ارجاع بانکی <span className="text-rose-500">*</span>:
+                            کد پیگیری یا شماره ارجاع بانکی (اختیاری):
                           </label>
                           <input
                             type="text"
                             value={trackingCode}
                             onChange={(e) => setTrackingCode(e.target.value)}
-                            placeholder="مثلا: 894520136"
+                            placeholder="مثلا: 894520136 (در صورت وجود)"
                             className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-900"
                             dir="ltr"
-                            required
                           />
                         </div>
 
@@ -603,7 +627,7 @@ export const LendingRequests: React.FC = () => {
 
                         <div className="sm:col-span-2 space-y-2">
                           <label className="block text-[11px] font-bold text-slate-700">
-                            تصویر / اسکرین‌شات فیش واریز:
+                            تصویر / اسکرین‌شات فیش واریز <span className="text-rose-500 font-black">* (الزامی)</span>:
                           </label>
 
                           <div className="flex items-center gap-3 flex-wrap">
@@ -702,7 +726,7 @@ export const LendingRequests: React.FC = () => {
                     </div>
                     {req.paymentProof && (
                       <div className="text-[11px] text-slate-600 font-bold bg-white p-2.5 rounded-xl border border-sky-100 flex items-center gap-4 flex-wrap">
-                        <span>کد پیگیری: <strong className="text-sky-800" dir="ltr">{req.paymentProof.trackingCode}</strong></span>
+                        <span>کد پیگیری: <strong className="text-sky-800" dir="ltr">{req.paymentProof.trackingCode || 'ثبت نشده'}</strong></span>
                         <span>زمان واریز: {req.paymentProof.paymentDate}</span>
                       </div>
                     )}
@@ -754,11 +778,30 @@ export const LendingRequests: React.FC = () => {
                   <div className="flex justify-end">
                     <button
                       onClick={() => setSelectedRequestForFeedback(req)}
-                      className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 text-white text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5"
+                      className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
                     >
                       <ShieldCheck className="w-4 h-4 text-amber-300" />
                       <span>ثبت پس‌دادن کتاب & امتیازدهی به مالک</span>
                     </button>
+                  </div>
+                )}
+
+                {req.status === 'returned' && (
+                  <div className="flex justify-end pt-2">
+                    {!req.borrowerFeedbackGiven ? (
+                      <button
+                        onClick={() => setSelectedRequestForFeedback(req)}
+                        className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-sky-600 hover:from-cyan-700 hover:to-sky-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Star className="w-4 h-4 text-amber-300 fill-amber-300" />
+                        <span>ثبت نظر و امتیازدهی به مالک کتاب ({req.ownerName})</span>
+                      </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 text-xs px-3 py-1.5 rounded-xl font-bold">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                        <span>نظر و امتیاز شما برای مالک ثبت شد</span>
+                      </span>
+                    )}
                   </div>
                 )}
               </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { STUDENT_AVATARS, ADMIN_SPECIAL_AVATARS } from '../utils/avatars';
+import { getAvailableAvatars, ADMIN_SPECIAL_AVATARS } from '../utils/avatars';
 import { User, Sparkles, X, Check, Save, ShieldCheck, Upload, Camera, Loader2 } from 'lucide-react';
 import { api } from '../services/api';
 import { CameraCaptureModal } from './CameraCaptureModal';
@@ -10,7 +10,8 @@ interface EditProfileModalProps {
 }
 
 export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) => {
-  const { currentUser, updateUser, schoolClasses } = useApp();
+  const { currentUser, updateUser, schoolClasses, customAvatars } = useApp();
+  const availableAvatars = getAvailableAvatars(false, customAvatars);
 
   if (!currentUser) return null;
 
@@ -224,26 +225,37 @@ export const EditProfileModal: React.FC<EditProfileModalProps> = ({ onClose }) =
               </button>
             </div>
 
-            {/* Standard 3D Student Avatars */}
-            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5 max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
-              {STUDENT_AVATARS.map((av) => {
+            {/* Standard & Custom Avatars */}
+            <div className="grid grid-cols-4 sm:grid-cols-5 gap-2.5 max-h-56 overflow-y-auto p-2 bg-slate-50 rounded-2xl border border-slate-200">
+              {availableAvatars.map((av) => {
                 const isSelected = selectedAvatar === av.url;
                 return (
                   <button
                     type="button"
                     key={av.id}
                     onClick={() => setSelectedAvatar(av.url)}
+                    title={av.name || av.description}
                     className={`relative p-1 rounded-2xl border-2 transition flex flex-col items-center justify-center ${
                       isSelected
                         ? 'border-cyan-600 bg-cyan-100 ring-2 ring-cyan-500/50 shadow-sm'
                         : 'border-slate-200 bg-white hover:border-slate-300'
                     }`}
                   >
+                    {av.isCustom && (
+                      <span className="absolute top-0.5 right-0.5 px-1 py-0.2 bg-amber-500 text-white text-[8px] font-bold rounded-full">
+                        جدید
+                      </span>
+                    )}
                     <img
                       src={av.url}
-                      alt="avatar"
+                      alt={av.name || "avatar"}
                       className="w-12 h-12 rounded-xl object-cover"
                     />
+                    {av.name && (
+                      <span className="text-[9px] font-bold text-slate-700 mt-0.5 truncate max-w-[70px] text-center">
+                        {av.name}
+                      </span>
+                    )}
                     {isSelected && (
                       <span className="absolute -top-1 -right-1 w-4 h-4 bg-cyan-600 text-white rounded-full flex items-center justify-center text-[9px] font-black">
                         ✓
