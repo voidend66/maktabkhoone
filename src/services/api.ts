@@ -198,6 +198,13 @@ export const api = {
     return await res.json();
   },
 
+  async deleteBookReview(bookId: string, reviewId: string) {
+    const res = await fetch(`${API_BASE}/books/${bookId}/reviews/${reviewId}`, {
+      method: 'DELETE'
+    });
+    return await res.json();
+  },
+
   // Requests APIs
   async createRequest(bookId: string, borrowerId: string) {
     const res = await fetch(`${API_BASE}/requests`, {
@@ -254,20 +261,30 @@ export const api = {
     return await res.json();
   },
 
-  async returnAndFeedback(id: string, feedback?: MutualFeedback) {
+  async returnAndFeedback(
+    id: string,
+    payload?: { feedback?: MutualFeedback; isDamaged?: boolean; damageReason?: string; damagePhotoUrl?: string } | MutualFeedback
+  ) {
+    let bodyData: any = {};
+    if (payload && 'rating' in payload && 'comment' in payload) {
+      bodyData = { feedback: payload };
+    } else if (payload) {
+      bodyData = payload;
+    }
+
     const res = await fetch(`${API_BASE}/requests/${id}/return-and-feedback`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ feedback })
+      body: JSON.stringify(bodyData)
     });
     return await res.json();
   },
 
-  async reportDamage(id: string, borrowerId: string, damageReason: string) {
+  async reportDamage(id: string, borrowerId: string, damageReason: string, damagePhotoUrl?: string) {
     const res = await fetch(`${API_BASE}/requests/${id}/report-damage`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ borrowerId, damageReason })
+      body: JSON.stringify({ borrowerId, damageReason, damagePhotoUrl })
     });
     return await res.json();
   },
@@ -293,6 +310,13 @@ export const api = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(feedback)
+    });
+    return await res.json();
+  },
+
+  async deleteFeedback(id: string) {
+    const res = await fetch(`${API_BASE}/feedbacks/${id}`, {
+      method: 'DELETE'
     });
     return await res.json();
   },
@@ -327,6 +351,52 @@ export const api = {
       return await res.json();
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
+    }
+  },
+
+  // Bale Channel APIs
+  async testBaleChannel(channelUsername?: string): Promise<{ success: boolean; message: string; baleResponse?: any }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/bale/test-channel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ channelUsername })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
+    }
+  },
+
+  async publishBookToBale(bookId: string, siteBaseUrl?: string): Promise<{ success: boolean; message: string; withPhoto?: boolean }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/bale/publish-book/${bookId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteBaseUrl })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
+    }
+  },
+
+  async publishAllBooksToBale(siteBaseUrl?: string): Promise<{ success: boolean; message: string; total: number; successful: number; failed: number }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/bale/publish-all-books`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteBaseUrl })
+      });
+      return await res.json();
+    } catch (e: any) {
+      return {
+        success: false,
+        message: e.message || 'خطا در ارتباط با سرور',
+        total: 0,
+        successful: 0,
+        failed: 0
+      };
     }
   },
 

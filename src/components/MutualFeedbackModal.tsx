@@ -1,13 +1,39 @@
 import React, { useState } from 'react';
 import { LendingRequest } from '../types';
-import { X, Star, CheckCircle2, ShieldCheck, Heart, ThumbsUp, Sparkles } from 'lucide-react';
+import { useApp } from '../context/AppContext';
+import { api } from '../services/api';
+import {
+  X,
+  Star,
+  CheckCircle2,
+  ShieldCheck,
+  Heart,
+  Sparkles,
+  Lock,
+  EyeOff,
+  AlertTriangle,
+  Upload,
+  Loader2,
+  Trash2,
+  FileCheck
+} from 'lucide-react';
 
 interface MutualFeedbackModalProps {
   request: LendingRequest | null;
   onClose: () => void;
   onSubmitFeedback: (
     requestId: string,
-    feedback: { punctuality: number; condition: number; behavior: number; reliability: number; comment: string }
+    feedback: {
+      punctuality: number;
+      condition: number;
+      behavior: number;
+      reliability: number;
+      comment: string;
+      isConfidentialToAdmin?: boolean;
+      isDamaged?: boolean;
+      damageDescription?: string;
+      damagePhotoUrl?: string;
+    }
   ) => void;
 }
 
@@ -16,13 +42,65 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
   onClose,
   onSubmitFeedback
 }) => {
+  const { currentUser } = useApp();
+
   const [punctualityScore, setPunctualityScore] = useState(5);
   const [conditionScore, setConditionScore] = useState(5);
   const [behaviorScore, setBehaviorScore] = useState(5);
   const [reliabilityScore, setReliabilityScore] = useState(5);
   const [comment, setComment] = useState('');
+  const [isConfidentialToAdmin, setIsConfidentialToAdmin] = useState(false);
+
+  // Damage reporting state
+  const [isDamaged, setIsDamaged] = useState(false);
+  const [damageDescription, setDamageDescription] = useState('');
+  const [damagePhotoUrl, setDamagePhotoUrl] = useState('');
+  const [damagePhotoPreview, setDamagePhotoPreview] = useState('');
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+  const [uploadError, setUploadError] = useState('');
 
   if (!request) return null;
+
+  const isBorrower = currentUser?.id === request.borrowerId;
+  const isOwner = currentUser?.id === request.ownerId;
+  const targetUserName = isBorrower ? request.ownerName : request.borrowerName;
+  const targetUserRoleTitle = isBorrower ? 'مالک کتاب' : 'امانت‌گیرنده کتاب';
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      setUploadError('فقط فرمت‌های تصویری معتبر (JPG, PNG, WEBP) مجاز هستند.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setUploadError('حجم فایل تصویر باید کمتر از ۱۰ مگابایت باشد.');
+      return;
+    }
+
+    const localUrl = URL.createObjectURL(file);
+    setDamagePhotoPreview(localUrl);
+    setIsUploadingPhoto(true);
+    setUploadError('');
+
+    try {
+      const res = await api.uploadImage(file);
+      if (res.success && res.fileUrl) {
+        setDamagePhotoUrl(res.fileUrl);
+      } else {
+        setUploadError(res.message || 'خطا در بارگذاری تصویر آسیب');
+        setDamagePhotoPreview('');
+      }
+    } catch (err: any) {
+      setUploadError(err.message || 'خطا در ارتباط با سرور آپلود');
+      setDamagePhotoPreview('');
+    } finally {
+      setIsUploadingPhoto(false);
+    }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,7 +109,11 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
       condition: conditionScore,
       behavior: behaviorScore,
       reliability: reliabilityScore,
-      comment
+      comment: comment.trim(),
+      isConfidentialToAdmin,
+      isDamaged,
+      damageDescription: isDamaged ? damageDescription.trim() : undefined,
+      damagePhotoUrl: isDamaged ? damagePhotoUrl.trim() : undefined
     });
     onClose();
   };
@@ -40,12 +122,14 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-lg w-full overflow-hidden shadow-2xl border border-slate-100 my-8">
         {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-900 via-slate-900 to-indigo-950 text-white p-5 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <ShieldCheck className="w-6 h-6 text-indigo-300" />
+        <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white p-5 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="w-6 h-6 text-cyan-300" />
             <div>
-              <h3 className="font-bold text-base">ثبت بازخورد و ارزیابی امانت‌داری</h3>
-              <p className="text-xs text-indigo-200">کتاب: «{request.bookTitle}»</p>
+              <h3 className="font-bold text-base">
+                ثبت نظر و ارزیابی {targetUserRoleTitle} ({targetUserName})
+              </h3>
+              <p className="text-xs text-slate-300">کتاب: «{request.bookTitle}»</p>
             </div>
           </div>
 
@@ -62,14 +146,14 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
           <div className="p-3 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-900 leading-relaxed flex items-center gap-2">
             <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
             <span>
-              <strong>ثبت عودت نیم‌روزی (۱۲ ساعته):</strong> پس از پس دادن کتاب در زنگ تفریح، این فرم توسط والدین یا دانش‌آموز در خانه تکمیل می‌شود.
+              <strong>ثبت عودت نیم‌روزی (۱۲ ساعته):</strong> پس از رد و بدل شدن کتاب در زنگ تفریح، این فرم برای ارزیابی امانت‌داری تکمیل می‌شود.
             </span>
           </div>
 
           <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-950 leading-relaxed flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-amber-600 shrink-0" />
             <span>
-              ارزیابی شما مدال‌های افتخار (بهترین در پس دادن به موقع، تمیز نگهداشتن، اخلاق و خوش‌قولی) را برای همکلاسی شما فعال می‌سازد.
+              امتیاز و ستاره‌های شما روی اعتبار {targetUserName} اثرگذار است و مدال‌های امانت‌داری را برای وی فعال می‌کند.
             </span>
           </div>
 
@@ -185,18 +269,156 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
             </div>
           </div>
 
-          {/* Optional Comment */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold text-slate-700 block">
-              پیام تشکر یا یادداشت صمیمانه:
+          {/* Comment & Confidential Toggle */}
+          <div className="space-y-2 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <label className="text-xs font-bold text-slate-800 block">
+              متن نظر یا پیام شما درباره {targetUserName}:
             </label>
             <textarea
-              rows={2}
+              rows={3}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="مثلا: بسیار خوش‌برخورد و تمیز بودن. کتاب رو خیلی خوب نگه داشتن!"
-              className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="نظر خود را درباره تعهد، اخلاق یا نگهداری کتاب بنویسید..."
+              className="w-full text-xs p-3 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-cyan-500 font-medium"
             />
+
+            {/* Confidential Checkbox Feature */}
+            <div className="pt-2 border-t border-slate-200/80">
+              <label className="flex items-start gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isConfidentialToAdmin}
+                  onChange={(e) => setIsConfidentialToAdmin(e.target.checked)}
+                  className="mt-1 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                />
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                    <Lock className="w-3.5 h-3.5 text-amber-600" />
+                    <span>ارسال نظر به صورت محرمانه (فقط برای مدیر سایت)</span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-relaxed">
+                    اگر این گزینه فعال باشد، متن نظر شما به {targetUserName} نشان داده نخواهد شد و فقط مدیر مکتب‌خانه آن را می‌بیند.
+                    <span className="text-indigo-700 font-bold block mt-0.5">
+                      (توجه: ستاره‌ها و امتیازدهی در هر صورت بر روی میانگین امتیاز کاربر اعمال خواهد شد.)
+                    </span>
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {/* Damage Reporting Option (Especially for Owner or Borrower) */}
+          <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200 space-y-3">
+            <label className="flex items-center gap-2.5 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={isDamaged}
+                onChange={(e) => setIsDamaged(e.target.checked)}
+                className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+              />
+              <span className="text-xs font-black text-rose-900 flex items-center gap-1.5">
+                <AlertTriangle className="w-4 h-4 text-rose-600" />
+                گزارش آسیب دیدن کتاب (پارگی، خط‌خوردگی، آب‌خوردگی)
+              </span>
+            </label>
+
+            {isDamaged && (
+              <div className="space-y-3 pt-2 border-t border-rose-200 animate-in fade-in">
+                <p className="text-[11px] text-rose-800 leading-relaxed font-medium">
+                  طبق قوانین مکتب‌خانه، گزارش آسیب به همراه تصویر مستند برای مدیر سایت ارسال شده و حساب کاربری فرد خاطی تا زمان جبران خسارت و جلب رضایت به حالت تعلیق درمی‌آید.
+                </p>
+
+                <div>
+                  <label className="block text-[11px] font-bold text-rose-950 mb-1">
+                    علت و شرح آسیب وارده به کتاب <span className="text-rose-600">*</span>:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={damageDescription}
+                    onChange={(e) => setDamageDescription(e.target.value)}
+                    placeholder="مثلا: چند صفحه از فصل سوم کنده شده و جلد پشت لک شده است..."
+                    className="w-full text-xs p-2.5 bg-white border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 font-medium"
+                    required={isDamaged}
+                  />
+                </div>
+
+                {/* Photo Upload for Damage */}
+                <div className="space-y-2">
+                  <label className="block text-[11px] font-bold text-rose-950">
+                    عکس از آسیب کتاب (برای ارسال به مدیر):
+                  </label>
+
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <label
+                      className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black shadow-2xs flex items-center gap-2 transition ${
+                        isUploadingPhoto
+                          ? 'bg-slate-200 text-slate-500 cursor-wait'
+                          : 'bg-white hover:bg-rose-100 text-rose-800 border border-rose-300'
+                      }`}
+                    >
+                      {isUploadingPhoto ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                      ) : (
+                        <Upload className="w-4 h-4 text-rose-600" />
+                      )}
+                      <span>
+                        {isUploadingPhoto ? 'در حال ارسال عکس...' : 'بارگذاری عکس آسیب دیدگی'}
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/jpg"
+                        onChange={handlePhotoUpload}
+                        disabled={isUploadingPhoto}
+                        className="hidden"
+                      />
+                    </label>
+                    <span className="text-[10px] text-slate-500">
+                      (فرمت‌های مجاز: JPG, PNG - حداکثر ۱۰ مگابایت)
+                    </span>
+                  </div>
+
+                  {(damagePhotoPreview || damagePhotoUrl) && (
+                    <div className="flex items-center justify-between p-2.5 bg-white border border-rose-300 rounded-xl">
+                      <div className="flex items-center gap-2.5">
+                        <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-rose-200 bg-slate-100 shrink-0">
+                          <img
+                            src={damagePhotoPreview || damagePhotoUrl}
+                            alt="پیش‌نمایش آسیب"
+                            className="w-full h-full object-cover"
+                          />
+                        </div>
+                        <div>
+                          <span className="text-xs font-bold text-rose-900 block">
+                            عکس آسیب با موفقیت پیوست شد ✓
+                          </span>
+                          <span className="text-[10px] text-slate-500 font-mono dir-ltr">
+                            {damagePhotoUrl || 'در حال آماده‌سازی...'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {!isUploadingPhoto && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDamagePhotoUrl('');
+                            setDamagePhotoPreview('');
+                          }}
+                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg transition flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          حذف
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {uploadError && (
+                    <p className="text-[11px] text-rose-600 font-bold">{uploadError}</p>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Submit Action */}
@@ -210,10 +432,11 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
             </button>
             <button
               type="submit"
-              className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-100 transition flex items-center gap-1.5"
+              disabled={isDamaged && !damageDescription.trim()}
+              className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-indigo-600 hover:from-cyan-700 hover:to-indigo-700 text-white text-xs font-black rounded-xl shadow-md transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>ثبت ارزیابی و تکمیل امانت</span>
+              <span>ثبت ارزیابی و تکمیل بازگشت کتاب</span>
             </button>
           </div>
         </form>

@@ -1,4 +1,5 @@
 import React from 'react';
+import { useApp } from '../context/AppContext';
 import {
   ShieldCheck,
   BookOpen,
@@ -22,6 +23,9 @@ interface RulesProps {
 }
 
 export const RulesContent: React.FC = () => {
+  const { systemConfig } = useApp();
+  const feeAmount = (systemConfig?.loanFeeAmount ?? 10000).toLocaleString('fa-IR');
+  const adminName = systemConfig?.supportAdminName || 'مدیر مکتب‌خانه';
   return (
     <div className="space-y-6 text-slate-800 dir-rtl">
       {/* Header Banner */}
@@ -110,7 +114,7 @@ export const RulesContent: React.FC = () => {
             <h3 className="font-black text-slate-900 text-sm">هزینه امانت و پرداخت کارت به کارت</h3>
           </div>
           <p className="text-xs text-slate-600 leading-relaxed">
-            هزینه امانت گرفتن هر کتاب <strong>مبلغ مناسب ۱۰,۰۰۰ تومان</strong> است. این مبلغ برای خرید کتاب‌های جدید برای کتابخانه مدرسه و هزینه‌های پشتیبانی و نگهداری سایت گرفته می‌شود. پرداخت به صورت <strong>کارت به کارت</strong> انجام شده و اطلاعات شماره کارت در صفحه امانت نمایش داده می‌شود. امانت‌گیرنده اطلاعات پرداخت (کد پیگیری، تاریخ و فیش) را بارگذاری کرده و تایید پرداخت و تکمیل امانت پس از تایید مدیر سایت (پارسا فیض) صورت می‌پذیرد.
+            هزینه امانت گرفتن هر کتاب <strong>مبلغ {feeAmount} تومان</strong> است. این مبلغ برای خرید کتاب‌های جدید برای کتابخانه مدرسه و هزینه‌های پشتیبانی و نگهداری سایت گرفته می‌شود. پرداخت به صورت <strong>کارت به کارت</strong> انجام شده و اطلاعات شماره کارت در صفحه امانت نمایش داده می‌شود. امانت‌گیرنده اطلاعات پرداخت (کد پیگیری، تاریخ و فیش) را بارگذاری کرده و تایید پرداخت و تکمیل امانت پس از تایید مدیر سایت ({adminName}) صورت می‌پذیرد.
           </p>
         </div>
 

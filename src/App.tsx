@@ -19,9 +19,28 @@ import { APP_VERSION, APP_BUILD_DATE } from './version';
 import { api } from './services/api';
 
 function MainAppContent() {
-  const { requestBookLoan, currentUser, resetToDefaults } = useApp();
+  const { requestBookLoan, currentUser, resetToDefaults, books } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
+
+  // Deep Link Handling (e.g. from Bale Channel post ?book=id)
+  useEffect(() => {
+    if (books && books.length > 0) {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const bookId = urlParams.get('book');
+        if (bookId) {
+          const targetBook = books.find((b) => b.id === bookId);
+          if (targetBook) {
+            setSelectedBookForDetail(targetBook);
+            setActiveTab('library');
+          }
+        }
+      } catch (err) {
+        console.warn('Error reading book deep link param:', err);
+      }
+    }
+  }, [books]);
 
   // Unified Auth Modal (Login / Register via Bale)
   const [showAuthModal, setShowAuthModal] = useState(false);

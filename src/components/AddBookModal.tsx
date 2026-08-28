@@ -2,9 +2,10 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { BookCondition } from '../types';
 import { CATEGORIES } from '../data/mockData';
-import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload, Loader2, Trash2, Sparkles, Camera } from 'lucide-react';
+import { X, BookPlus, Image as ImageIcon, CheckCircle2, Upload, Loader2, Trash2, Sparkles, Camera, Crop } from 'lucide-react';
 import { api } from '../services/api';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { ImageCropperModal } from './ImageCropperModal';
 
 interface AddBookModalProps {
   onClose: () => void;
@@ -27,6 +28,8 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
   const [error, setError] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [showCropperModal, setShowCropperModal] = useState(false);
+  const [imageToCrop, setImageToCrop] = useState<string | null>(null);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -46,6 +49,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
     // Instant local preview
     const localUrl = URL.createObjectURL(file);
     setPreviewUrl(localUrl);
+    setImageToCrop(localUrl);
     setIsUploading(true);
     setError('');
 
@@ -70,6 +74,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
     // Instant local preview
     const localUrl = URL.createObjectURL(file);
     setPreviewUrl(localUrl);
+    setImageToCrop(localUrl);
     setIsUploading(true);
     setError('');
 
@@ -90,9 +95,32 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
     }
   };
 
+  const handleCropConfirmed = async (croppedFile: File, croppedDataUrl: string) => {
+    setPreviewUrl(croppedDataUrl);
+    setImageToCrop(croppedDataUrl);
+    setIsUploading(true);
+    setError('');
+    setShowCropperModal(false);
+
+    try {
+      const uploadRes = await api.uploadImage(croppedFile);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        setUploadedCover(uploadRes.fileUrl);
+        setCustomCoverUrl('');
+      } else {
+        setError(uploadRes.message || 'خطا در ذخیره تصویر برش‌خورده');
+      }
+    } catch (err: any) {
+      setError(err.message || 'خطا در ارسال تصویر برش‌خورده');
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const handleRemoveUploadedCover = () => {
     setUploadedCover('');
     setPreviewUrl('');
+    setImageToCrop(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -292,14 +320,29 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                   </div>
 
                   {!isUploading && (
-                    <button
-                      type="button"
-                      onClick={handleRemoveUploadedCover}
-                      title="حذف و انتخاب عکس دیگر"
-                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setImageToCrop(previewUrl || uploadedCover);
+                          setShowCropperModal(true);
+                        }}
+                        title="تنظیم کادر و برش عکس جلد کتاب"
+                        className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 border border-indigo-200"
+                      >
+                        <Crop className="w-3.5 h-3.5" />
+                        <span>برش و تنظیم کادر ✂️</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleRemoveUploadedCover}
+                        title="حذف و انتخاب عکس دیگر"
+                        className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   )}
                 </div>
               )}
@@ -379,6 +422,15 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
           onCapture={handleCameraCapture}
           title="عکاسی از جلد کتاب با دوربین"
           facingMode="environment"
+        />
+
+        <ImageCropperModal
+          isOpen={showCropperModal}
+          imageSrc={imageToCrop}
+          onClose={() => setShowCropperModal(false)}
+          onConfirmCrop={handleCropConfirmed}
+          aspectRatio="3:4"
+          title="تنظیم کادر و برش عکس جلد کتاب 📸"
         />
       </div>
     </div>

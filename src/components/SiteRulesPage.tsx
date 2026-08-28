@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useApp } from '../context/AppContext';
 import {
   ShieldCheck,
   BookOpen,
@@ -12,16 +13,23 @@ import {
   HelpCircle,
   PhoneCall,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MessageCircle
 } from 'lucide-react';
 import { MaktabKhanehHouseLogo, SloganBadge } from './MaktabKhanehBranding';
 
 export const SiteRulesPage: React.FC = () => {
+  const { systemConfig } = useApp();
   const [openSection, setOpenSection] = useState<number | null>(null);
 
   const toggleAccordion = (index: number) => {
     setOpenSection(openSection === index ? null : index);
   };
+
+  const supportPhone = systemConfig?.supportPhone || '09121112233';
+  const supportBaleId = systemConfig?.supportBaleId || 'maktabkhune_admin';
+  const supportAdminName = systemConfig?.supportAdminName || 'مسئول مکتب‌خانه';
+  const supportHours = systemConfig?.supportHours || 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰';
 
   const rulesList = [
     {
@@ -230,21 +238,34 @@ export const SiteRulesPage: React.FC = () => {
       </div>
 
       {/* Help & Support Banner */}
-      <div className="bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg flex flex-col sm:flex-row items-center justify-between gap-6">
-        <div className="space-y-2 text-center sm:text-right">
-          <h3 className="text-lg sm:text-xl font-black text-amber-300 flex items-center justify-center sm:justify-start gap-2">
+      <div className="bg-gradient-to-r from-cyan-600 via-sky-600 to-indigo-800 rounded-3xl p-6 sm:p-8 text-white shadow-lg flex flex-col md:flex-row items-center justify-between gap-6">
+        <div className="space-y-2 text-center md:text-right">
+          <h3 className="text-lg sm:text-xl font-black text-amber-300 flex items-center justify-center md:justify-start gap-2">
             <HelpCircle className="w-6 h-6" />
             <span>سوال یا مشکلی در قوانین دارید؟</span>
           </h3>
           <p className="text-xs sm:text-sm text-cyan-100 font-medium">
-            تیم پشتیبانی و مدیران مکتب خونه در خدمت شما هستند تا تجربه امانت کتابی آسان و امن داشته باشید.
+            تیم پشتیبانی ({supportAdminName}) در خدمت شما هستند تا تجربه امانت کتابی آسان و امن داشته باشید.
           </p>
+          <div className="text-[11px] text-cyan-200 font-bold flex items-center justify-center md:justify-start gap-2 pt-1">
+            <Clock className="w-3.5 h-3.5" />
+            <span>ساعات پاسخگویی: {supportHours}</span>
+          </div>
         </div>
 
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="bg-white/10 backdrop-blur-md px-5 py-3 rounded-2xl border border-white/20 text-center">
+        <div className="flex items-center gap-3 shrink-0 flex-wrap justify-center">
+          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 text-center min-w-[130px]">
             <span className="text-[10px] text-cyan-200 block font-bold">تلفن پشتیبانی</span>
-            <span className="text-sm font-black text-amber-300 dir-ltr">09121112233</span>
+            <a href={`tel:${supportPhone}`} className="text-sm font-black text-amber-300 dir-ltr hover:underline">
+              {supportPhone}
+            </a>
+          </div>
+
+          <div className="bg-white/10 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/20 text-center min-w-[130px]">
+            <span className="text-[10px] text-cyan-200 block font-bold">آیدی بله پشتیبان</span>
+            <span className="text-sm font-black text-amber-300 dir-ltr">
+              @{supportBaleId.replace('@', '')}
+            </span>
           </div>
         </div>
       </div>

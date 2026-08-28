@@ -129,6 +129,7 @@ export interface LendingRequest {
   extensionRequestedAt?: string;
   isDamagedReported?: boolean;
   damageNotes?: string;
+  damagePhotoUrl?: string;
 }
 
 export interface SchoolClass {
@@ -151,6 +152,10 @@ export interface MutualFeedback {
   behaviorScore: number; // 1-5
   reliabilityScore: number; // 1-5
   comment: string;
+  isConfidentialToAdmin?: boolean; // If true, comment is hidden from toUser, but visible to admin and fromUser
+  isDamaged?: boolean;
+  damageDescription?: string;
+  damagePhotoUrl?: string;
   date: string;
 }
 
@@ -181,6 +186,13 @@ export interface SystemConfig {
   loanDurationDays: number;
   paymentWindowHours: number;
   handoverWindowHours: number;
+  supportPhone?: string;
+  supportBaleId?: string;
+  supportAdminName?: string;
+  supportHours?: string;
+  baleChannelUsername?: string;
+  autoPublishBooksToBale?: boolean;
+  websiteBaseUrl?: string;
 }
 
 export interface SystemLog {

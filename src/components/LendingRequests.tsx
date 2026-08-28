@@ -52,6 +52,11 @@ export const LendingRequests: React.FC = () => {
   // Damage reporting state
   const [damageReportingReq, setDamageReportingReq] = useState<LendingRequest | null>(null);
   const [damageReason, setDamageReason] = useState('پارگی صفحات و کثیف شدن جلد کتاب');
+  const [damagePhotoUrl, setDamagePhotoUrl] = useState('');
+  const [damagePhotoPreview, setDamagePhotoPreview] = useState('');
+  const [isUploadingDamagePhoto, setIsUploadingDamagePhoto] = useState(false);
+  const [damagePhotoError, setDamagePhotoError] = useState('');
+  const [feedbackSuccessToast, setFeedbackSuccessToast] = useState<string | null>(null);
 
   // Card-to-Card payment proof state
   const [submittingProofReqId, setSubmittingProofReqId] = useState<string | null>(null);
@@ -132,12 +137,60 @@ export const LendingRequests: React.FC = () => {
 
   const handleConfirmReportDamage = () => {
     if (!damageReportingReq) return;
-    reportDamageAndSuspendUser(damageReportingReq.id, damageReportingReq.borrowerId, damageReason);
+    reportDamageAndSuspendUser(
+      damageReportingReq.id,
+      damageReportingReq.borrowerId,
+      damageReason,
+      damagePhotoUrl || undefined
+    );
+    setFeedbackSuccessToast('گزارش آسیب دیدن کتاب با موفقیت ثبت شد و برای مدیر ارسال گردید.');
+    setTimeout(() => setFeedbackSuccessToast(null), 5000);
     setDamageReportingReq(null);
+    setDamagePhotoUrl('');
+    setDamagePhotoPreview('');
+  };
+
+  const handleDamagePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type) && !file.type.startsWith('image/')) {
+      setDamagePhotoError('فقط فرمت‌های تصویری معتبر (JPG, PNG, WEBP) مجاز هستند.');
+      return;
+    }
+
+    const localUrl = URL.createObjectURL(file);
+    setDamagePhotoPreview(localUrl);
+    setIsUploadingDamagePhoto(true);
+    setDamagePhotoError('');
+
+    try {
+      const res = await api.uploadImage(file);
+      if (res.success && res.fileUrl) {
+        setDamagePhotoUrl(res.fileUrl);
+      } else {
+        setDamagePhotoError(res.message || 'خطا در آپلود عکس');
+        setDamagePhotoPreview('');
+      }
+    } catch (err: any) {
+      setDamagePhotoError(err.message || 'خطا در اتصال به سرور آپلود');
+      setDamagePhotoPreview('');
+    } finally {
+      setIsUploadingDamagePhoto(false);
+    }
   };
 
   return (
     <div className="space-y-6 pb-12">
+      {/* Global Feedback Toast */}
+      {feedbackSuccessToast && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-emerald-600 text-white px-6 py-3.5 rounded-2xl shadow-xl border-2 border-emerald-400 text-sm font-black flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4">
+          <CheckCircle2 className="w-5 h-5 text-emerald-100" />
+          <span>{feedbackSuccessToast}</span>
+        </div>
+      )}
+
       {/* Title Header */}
       <div className="flex items-center justify-between flex-wrap gap-4 bg-white p-6 rounded-3xl border-2 border-cyan-200 shadow-sm">
         <div className="flex items-center gap-3">
@@ -858,9 +911,9 @@ export const LendingRequests: React.FC = () => {
       {/* Damage Reporting Modal */}
       {damageReportingReq && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-400 space-y-4">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-rose-400 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center gap-2 text-rose-600">
-              <AlertTriangle className="w-6 h-6" />
+              <AlertTriangle className="w-6 h-6 shrink-0" />
               <h3 className="font-black text-slate-900 text-base">گزارش آسیب دیدن کتاب و درخواست تعلیق حساب</h3>
             </div>
 
@@ -870,15 +923,73 @@ export const LendingRequests: React.FC = () => {
 
             <div>
               <label className="text-xs font-black text-slate-700 block mb-1">
-                علت و شرح آسیب وارده به کتاب:
+                علت و شرح آسیب وارده به کتاب <span className="text-rose-600">*</span>:
               </label>
               <textarea
                 rows={3}
                 value={damageReason}
                 onChange={(e) => setDamageReason(e.target.value)}
+                placeholder="مثلا: پارگی صفحات، ریختن چای، خط خوردگی..."
                 className="w-full text-xs p-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-rose-500 font-bold"
                 required
               />
+            </div>
+
+            {/* Damage Photo Upload */}
+            <div className="space-y-2">
+              <label className="block text-[11px] font-bold text-slate-700">
+                عکس از آسیب کتاب (اختیاری):
+              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <label
+                  className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black shadow-2xs flex items-center gap-2 transition ${
+                    isUploadingDamagePhoto
+                      ? 'bg-slate-200 text-slate-500 cursor-wait'
+                      : 'bg-rose-50 hover:bg-rose-100 text-rose-800 border border-rose-200'
+                  }`}
+                >
+                  {isUploadingDamagePhoto ? (
+                    <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                  ) : (
+                    <Upload className="w-4 h-4 text-rose-600" />
+                  )}
+                  <span>{isUploadingDamagePhoto ? 'در حال ارسال...' : 'بارگذاری عکس آسیب کتاب'}</span>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/jpg"
+                    onChange={handleDamagePhotoUpload}
+                    disabled={isUploadingDamagePhoto}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {(damagePhotoPreview || damagePhotoUrl) && (
+                <div className="flex items-center justify-between p-2.5 bg-rose-50 border border-rose-200 rounded-xl">
+                  <div className="flex items-center gap-2.5">
+                    <img
+                      src={damagePhotoPreview || damagePhotoUrl}
+                      alt="پیش نمایش آسیب"
+                      className="w-12 h-12 rounded-lg object-cover border border-rose-200"
+                    />
+                    <span className="text-xs font-bold text-rose-900">عکس آسیب ثبت شد ✓</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDamagePhotoUrl('');
+                      setDamagePhotoPreview('');
+                    }}
+                    className="text-xs text-rose-600 font-bold hover:underline"
+                  >
+                    حذف
+                  </button>
+                </div>
+              )}
+
+              {damagePhotoError && (
+                <p className="text-[11px] text-rose-600 font-bold">{damagePhotoError}</p>
+              )}
             </div>
 
             <div className="pt-2 flex justify-end gap-2">
@@ -892,7 +1003,8 @@ export const LendingRequests: React.FC = () => {
               <button
                 type="button"
                 onClick={handleConfirmReportDamage}
-                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl shadow-md shadow-rose-600/20"
+                disabled={!damageReason.trim()}
+                className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl shadow-md shadow-rose-600/20 disabled:opacity-50"
               >
                 تایید گزارش آسیب & مسدودی حساب
               </button>
@@ -905,7 +1017,11 @@ export const LendingRequests: React.FC = () => {
       <MutualFeedbackModal
         request={selectedRequestForFeedback}
         onClose={() => setSelectedRequestForFeedback(null)}
-        onSubmitFeedback={completeReturnAndSubmitFeedback}
+        onSubmitFeedback={(reqId, feedbackData) => {
+          completeReturnAndSubmitFeedback(reqId, feedbackData);
+          setFeedbackSuccessToast('نظر و ارزیابی شما با موفقیت ثبت شد ✓');
+          setTimeout(() => setFeedbackSuccessToast(null), 5000);
+        }}
       />
     </div>
   );

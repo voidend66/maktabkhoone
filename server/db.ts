@@ -504,6 +504,23 @@ export const dbService = {
     });
   },
 
+  deleteBookReview(bookId: string, reviewId: string): Book | null {
+    const book = this.getBookById(bookId);
+    if (!book) return null;
+
+    const existingReviews = Array.isArray(book.reviews) ? book.reviews : [];
+    const filteredReviews = existingReviews.filter((r) => r.id !== reviewId && r.userId !== reviewId);
+
+    const totalScore = filteredReviews.reduce((sum, r) => sum + r.rating, 0);
+    const newRating = filteredReviews.length > 0 ? Number((totalScore / filteredReviews.length).toFixed(1)) : 0;
+
+    return this.updateBook(bookId, {
+      reviews: filteredReviews,
+      reviewsCount: filteredReviews.length,
+      rating: newRating
+    });
+  },
+
   // ---- LENDING REQUESTS ----
   getAllRequests(): LendingRequest[] {
     return memoryDb.requests.map((r) => ({
@@ -670,6 +687,16 @@ export const dbService = {
     return newFb;
   },
 
+  deleteFeedback(id: string): boolean {
+    const initialLen = memoryDb.feedbacks.length;
+    memoryDb.feedbacks = memoryDb.feedbacks.filter((fb) => fb.id !== id);
+    if (memoryDb.feedbacks.length !== initialLen) {
+      saveToDisk();
+      return true;
+    }
+    return false;
+  },
+
   getSetting(key: string): string | null {
     return memoryDb.settings[key] || null;
   },
@@ -714,7 +741,14 @@ export const dbService = {
           loanFeeAmount: parsed.loanFeeAmount ?? 10000,
           loanDurationDays: parsed.loanDurationDays ?? 7,
           paymentWindowHours: parsed.paymentWindowHours ?? 3,
-          handoverWindowHours: parsed.handoverWindowHours ?? 12
+          handoverWindowHours: parsed.handoverWindowHours ?? 12,
+          supportPhone: parsed.supportPhone ?? '09121112233',
+          supportBaleId: parsed.supportBaleId ?? 'maktabkhune_admin',
+          supportAdminName: parsed.supportAdminName ?? 'پارسا فیض (مسئول مکتب‌خانه)',
+          supportHours: parsed.supportHours ?? 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
+          baleChannelUsername: parsed.baleChannelUsername ?? '@maktabkhune_books',
+          autoPublishBooksToBale: parsed.autoPublishBooksToBale ?? true,
+          websiteBaseUrl: parsed.websiteBaseUrl ?? ''
         };
       } catch (e) {
         // fallback
@@ -727,7 +761,14 @@ export const dbService = {
       loanFeeAmount: 10000,
       loanDurationDays: 7,
       paymentWindowHours: 3,
-      handoverWindowHours: 12
+      handoverWindowHours: 12,
+      supportPhone: '09121112233',
+      supportBaleId: 'maktabkhune_admin',
+      supportAdminName: 'پارسا فیض (مسئول مکتب‌خانه)',
+      supportHours: 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
+      baleChannelUsername: '@maktabkhune_books',
+      autoPublishBooksToBale: true,
+      websiteBaseUrl: ''
     };
   },
 

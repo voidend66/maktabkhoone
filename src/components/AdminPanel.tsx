@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
+import { api } from '../services/api';
 import {
   ShieldAlert,
   UserCheck,
@@ -37,7 +38,20 @@ import {
   ArrowLeftRight,
   Database,
   Download,
-  Upload
+  Upload,
+  MessageSquare,
+  Lock,
+  EyeOff,
+  AlertTriangle,
+  Star,
+  Send,
+  Radio,
+  Share2,
+  ExternalLink,
+  Sparkles,
+  RefreshCw,
+  Phone,
+  HelpCircle
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -51,6 +65,8 @@ export const AdminPanel: React.FC = () => {
     rejectUser,
     deleteUser,
     deleteBook,
+    deleteBookReview,
+    deleteFeedback,
     schoolClasses,
     addSchoolClass,
     updateSchoolClass,
@@ -67,8 +83,10 @@ export const AdminPanel: React.FC = () => {
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'lending_history' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
+    'pending_users' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs'
   >('pending_users');
+  const [reviewsSubTab, setReviewsSubTab] = useState<'book_reviews' | 'user_feedbacks'>('book_reviews');
+  const [reviewSearch, setReviewSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   // Backup and Restore states & handlers
@@ -188,6 +206,26 @@ export const AdminPanel: React.FC = () => {
   const [loanDuration, setLoanDuration] = useState(systemConfig?.loanDurationDays ?? 7);
   const [paymentHours, setPaymentHours] = useState(systemConfig?.paymentWindowHours ?? 3);
   const [handoverHours, setHandoverHours] = useState(systemConfig?.handoverWindowHours ?? 12);
+
+  // Support and Contact State
+  const [supportPhone, setSupportPhone] = useState(systemConfig?.supportPhone ?? '09121112233');
+  const [supportBaleId, setSupportBaleId] = useState(systemConfig?.supportBaleId ?? 'maktabkhune_admin');
+  const [supportAdminName, setSupportAdminName] = useState(systemConfig?.supportAdminName ?? 'پارسا فیض (مسئول مکتب‌خانه)');
+  const [supportHours, setSupportHours] = useState(systemConfig?.supportHours ?? 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰');
+
+  // Bale Channel Integration State
+  const [baleChannelUsername, setBaleChannelUsername] = useState(systemConfig?.baleChannelUsername ?? '@maktabkhune_books');
+  const [autoPublishBooks, setAutoPublishBooks] = useState(systemConfig?.autoPublishBooksToBale ?? true);
+  const [websiteBaseUrl, setWebsiteBaseUrl] = useState(systemConfig?.websiteBaseUrl || (typeof window !== 'undefined' ? window.location.origin : ''));
+
+  // Testing & Channel Action States
+  const [isTestingChannel, setIsTestingChannel] = useState(false);
+  const [channelTestStatus, setChannelTestStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [isPublishingAll, setIsPublishingAll] = useState(false);
+  const [publishAllStatus, setPublishAllStatus] = useState<{ success: boolean; message: string; total?: number; successful?: number; failed?: number } | null>(null);
+  const [publishingBookId, setPublishingBookId] = useState<string | null>(null);
+  const [bookPublishFeedback, setBookPublishFeedback] = useState<{ bookId: string; success: boolean; message: string } | null>(null);
+
   const [configSaveMsg, setConfigSaveMsg] = useState('');
   const [isSavingConfig, setIsSavingConfig] = useState(false);
 
@@ -200,6 +238,17 @@ export const AdminPanel: React.FC = () => {
       setLoanDuration(systemConfig.loanDurationDays ?? 7);
       setPaymentHours(systemConfig.paymentWindowHours ?? 3);
       setHandoverHours(systemConfig.handoverWindowHours ?? 12);
+      setSupportPhone(systemConfig.supportPhone ?? '09121112233');
+      setSupportBaleId(systemConfig.supportBaleId ?? 'maktabkhune_admin');
+      setSupportAdminName(systemConfig.supportAdminName ?? 'پارسا فیض (مسئول مکتب‌خانه)');
+      setSupportHours(systemConfig.supportHours ?? 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰');
+      setBaleChannelUsername(systemConfig.baleChannelUsername ?? '@maktabkhune_books');
+      setAutoPublishBooks(systemConfig.autoPublishBooksToBale ?? true);
+      if (systemConfig.websiteBaseUrl) {
+        setWebsiteBaseUrl(systemConfig.websiteBaseUrl);
+      } else if (typeof window !== 'undefined') {
+        setWebsiteBaseUrl(window.location.origin);
+      }
     }
   }, [systemConfig]);
 
@@ -214,10 +263,17 @@ export const AdminPanel: React.FC = () => {
         loanFeeAmount: Number(loanFee) || 10000,
         loanDurationDays: Number(loanDuration) || 7,
         paymentWindowHours: Number(paymentHours) || 3,
-        handoverWindowHours: Number(handoverHours) || 12
+        handoverWindowHours: Number(handoverHours) || 12,
+        supportPhone: supportPhone.trim(),
+        supportBaleId: supportBaleId.trim(),
+        supportAdminName: supportAdminName.trim(),
+        supportHours: supportHours.trim(),
+        baleChannelUsername: baleChannelUsername.trim(),
+        autoPublishBooksToBale: autoPublishBooks,
+        websiteBaseUrl: websiteBaseUrl.trim()
       });
       if (res.success) {
-        setConfigSaveMsg('قوانین و تنظیمات سامانه با موفقیت در پایگاه داده ذخیره شد ✓');
+        setConfigSaveMsg('قوانین، اطلاعات پشتیبانی و تنظیمات کانال بله با موفقیت ذخیره شد ✓');
       } else {
         setConfigSaveMsg(res.message || 'خطا در ذخیره تنظیمات');
       }
@@ -226,6 +282,82 @@ export const AdminPanel: React.FC = () => {
     } finally {
       setIsSavingConfig(false);
       setTimeout(() => setConfigSaveMsg(''), 5000);
+    }
+  };
+
+  const handleTestChannel = async () => {
+    if (!baleChannelUsername.trim()) {
+      alert('لطفاً ابتدا نام کاربری یا شناسه کانال بله را وارد کنید.');
+      return;
+    }
+    setIsTestingChannel(true);
+    setChannelTestStatus(null);
+    try {
+      const res = await api.testBaleChannel(baleChannelUsername.trim());
+      setChannelTestStatus({
+        success: res.success,
+        message: res.message
+      });
+    } catch (err: any) {
+      setChannelTestStatus({
+        success: false,
+        message: 'خطا در برقراری ارتباط با سرور'
+      });
+    } finally {
+      setIsTestingChannel(false);
+    }
+  };
+
+  const handlePublishAllBooks = async () => {
+    const confirmPublish = window.confirm(
+      `📢 آیا از انتشار تمام ${books.length} کتاب موجود در کتابخانه به کانال بله (${baleChannelUsername}) اطمینان دارید؟`
+    );
+    if (!confirmPublish) return;
+
+    setIsPublishingAll(true);
+    setPublishAllStatus(null);
+    try {
+      const effectiveUrl = websiteBaseUrl.trim() || (typeof window !== 'undefined' ? window.location.origin : '');
+      const res = await api.publishAllBooksToBale(effectiveUrl);
+      setPublishAllStatus({
+        success: res.success,
+        message: res.message,
+        total: res.total,
+        successful: res.successful,
+        failed: res.failed
+      });
+    } catch (err: any) {
+      setPublishAllStatus({
+        success: false,
+        message: 'خطا در انجام عملیات انتشار همگانی'
+      });
+    } finally {
+      setIsPublishingAll(false);
+    }
+  };
+
+  const handlePublishSingleBook = async (bookId: string, bookTitle: string) => {
+    setPublishingBookId(bookId);
+    setBookPublishFeedback(null);
+    try {
+      const effectiveUrl = websiteBaseUrl.trim() || (typeof window !== 'undefined' ? window.location.origin : '');
+      const res = await api.publishBookToBale(bookId, effectiveUrl);
+      setBookPublishFeedback({
+        bookId,
+        success: res.success,
+        message: res.message
+      });
+      setTimeout(() => {
+        setBookPublishFeedback((curr) => (curr?.bookId === bookId ? null : curr));
+      }, 4000);
+    } catch (err: any) {
+      setBookPublishFeedback({
+        bookId,
+        success: false,
+        message: 'خطا در انتشار کتاب در بله'
+      });
+    } finally {
+      setPublishingBookId(null);
     }
   };
 
@@ -430,6 +562,18 @@ export const AdminPanel: React.FC = () => {
         >
           <ArrowLeftRight className="w-4 h-4 text-amber-400" />
           <span>تاریخچه کل امانت‌ها ({requests.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('reviews_feedbacks')}
+          className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'reviews_feedbacks'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <MessageSquare className="w-4 h-4 text-cyan-400" />
+          <span>نظرات و بازخوردها</span>
         </button>
 
         <button
@@ -1255,6 +1399,467 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
+      {/* Tab: Reviews, Confidential Feedbacks & Damage Reports */}
+      {activeTab === 'reviews_feedbacks' && (
+        <div className="space-y-6">
+          {/* Header Card */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs flex items-center justify-between flex-wrap gap-4">
+            <div className="flex items-center gap-3">
+              <div className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl border border-indigo-100">
+                <MessageSquare className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-black text-slate-900 text-lg">
+                  مدیریت نظرات کتاب‌ها، بازخوردهای محرمانه و گزارش‌های آسیب
+                </h3>
+                <p className="text-xs text-slate-500 font-medium">
+                  مشاهده، نظارت و حذف نظرات ثبت‌شده کاربران به همراه بررسی گزارش‌های خسارت و نظرات محرمانه
+                </p>
+              </div>
+            </div>
+
+            {/* Sub Tabs */}
+            <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200 gap-1">
+              <button
+                type="button"
+                onClick={() => setReviewsSubTab('book_reviews')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  reviewsSubTab === 'book_reviews'
+                    ? 'bg-white text-indigo-900 shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <BookOpen className="w-4 h-4 text-indigo-600" />
+                <span>
+                  نظرات کتاب‌ها (
+                  {books.reduce((acc, b) => acc + (b.reviews?.length || 0), 0)}
+                  )
+                </span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setReviewsSubTab('user_feedbacks')}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 ${
+                  reviewsSubTab === 'user_feedbacks'
+                    ? 'bg-white text-indigo-900 shadow-xs font-black'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                <span>
+                  بازخوردهای امانت & گزارش آسیب (
+                  {requests.filter((r) => r.feedbackForOwner || r.feedbackForBorrower || r.damageReason).length}
+                  )
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sub Tab 1: Book Reviews */}
+          {reviewsSubTab === 'book_reviews' && (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-400" />
+                  <span>فهرست کل نظرات و امتیازات ثبت‌شده برای کتب مدرسه:</span>
+                </h4>
+
+                <div className="relative w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={reviewSearch}
+                    onChange={(e) => setReviewSearch(e.target.value)}
+                    placeholder="جستجو در نظرات، نام کتاب یا نویسنده..."
+                    className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const allBookReviews = books.flatMap((b) =>
+                  (b.reviews || []).map((r) => ({
+                    ...r,
+                    bookId: b.id,
+                    bookTitle: b.title,
+                    bookCover: b.coverImage,
+                    bookCategory: b.category,
+                    bookOwner: b.ownerName
+                  }))
+                );
+
+                const filtered = allBookReviews.filter(
+                  (r) =>
+                    !reviewSearch ||
+                    r.bookTitle.includes(reviewSearch) ||
+                    r.userName.includes(reviewSearch) ||
+                    r.comment.includes(reviewSearch)
+                );
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-12 text-center text-slate-400 space-y-2">
+                      <MessageSquare className="w-10 h-10 mx-auto text-slate-300" />
+                      <p className="text-xs font-bold">هیچ نظری یافت نشد.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filtered.map((rev) => (
+                      <div
+                        key={`${rev.bookId}-${rev.id}`}
+                        className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3 shadow-2xs hover:border-indigo-300 transition"
+                      >
+                        {/* Book header */}
+                        <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/80">
+                          <div className="flex items-center gap-2.5">
+                            <img
+                              src={rev.bookCover}
+                              alt={rev.bookTitle}
+                              className="w-9 h-12 rounded-lg object-cover border border-slate-200 shrink-0"
+                            />
+                            <div>
+                              <h5 className="font-black text-xs text-slate-900 line-clamp-1">
+                                {rev.bookTitle}
+                              </h5>
+                              <span className="text-[10px] text-slate-500 block">
+                                مالک: {rev.bookOwner} • دسته‌بندی: {rev.bookCategory}
+                              </span>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (confirm(`آیا از حذف این نظر توسط «${rev.userName}» اطمینان دارید؟`)) {
+                                deleteBookReview(rev.bookId, rev.id);
+                              }
+                            }}
+                            className="p-1.5 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl border border-slate-200 hover:border-rose-200 transition shadow-2xs flex items-center gap-1 text-[11px] font-bold"
+                            title="حذف نظر توسط مدیر"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>حذف نظر</span>
+                          </button>
+                        </div>
+
+                        {/* Reviewer info and comment */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <img
+                              src={rev.userAvatar}
+                              alt={rev.userName}
+                              className="w-7 h-7 rounded-full object-cover border border-slate-200"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-slate-800">
+                                {rev.userName}
+                              </span>
+                              <span className="text-[10px] text-slate-500 mr-1.5">
+                                (کلاس {rev.userClass})
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-amber-500 text-xs font-black">
+                            <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                            <span>{rev.rating} از ۵</span>
+                          </div>
+                        </div>
+
+                        <p className="text-xs text-slate-700 leading-relaxed font-medium bg-white p-3 rounded-xl border border-slate-200">
+                          {rev.comment}
+                        </p>
+
+                        <div className="text-[10px] text-slate-400 text-left dir-ltr">
+                          {rev.date}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
+          {/* Sub Tab 2: Mutual Feedbacks, Confidential Comments & Damage Reports */}
+          {reviewsSubTab === 'user_feedbacks' && (
+            <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
+              <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-slate-100">
+                <h4 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>بازخوردهای امانت، نظرات محرمانه و گزارش‌های آسیب کاربران:</span>
+                </h4>
+
+                <div className="relative w-72">
+                  <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={reviewSearch}
+                    onChange={(e) => setReviewSearch(e.target.value)}
+                    placeholder="جستجو در نام کاربر، کتاب یا شرح آسیب..."
+                    className="w-full text-xs pr-9 pl-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              {(() => {
+                const feedbackItems: Array<{
+                  requestId: string;
+                  bookTitle: string;
+                  bookCover: string;
+                  evaluatorRole: 'borrower' | 'owner';
+                  evaluatorName: string;
+                  evaluatorClass: string;
+                  targetRole: 'owner' | 'borrower';
+                  targetName: string;
+                  targetClass: string;
+                  feedback: any;
+                  damageReason?: string;
+                  damagePhotoUrl?: string;
+                }> = [];
+
+                requests.forEach((req) => {
+                  if (req.feedbackForOwner) {
+                    feedbackItems.push({
+                      requestId: req.id,
+                      bookTitle: req.bookTitle,
+                      bookCover: req.bookCover,
+                      evaluatorRole: 'borrower',
+                      evaluatorName: req.borrowerName,
+                      evaluatorClass: req.borrowerClass,
+                      targetRole: 'owner',
+                      targetName: req.ownerName,
+                      targetClass: req.ownerClass,
+                      feedback: req.feedbackForOwner,
+                      damageReason: req.feedbackForOwner.damageDescription,
+                      damagePhotoUrl: req.feedbackForOwner.damagePhotoUrl
+                    });
+                  }
+
+                  if (req.feedbackForBorrower) {
+                    feedbackItems.push({
+                      requestId: req.id,
+                      bookTitle: req.bookTitle,
+                      bookCover: req.bookCover,
+                      evaluatorRole: 'owner',
+                      evaluatorName: req.ownerName,
+                      evaluatorClass: req.ownerClass,
+                      targetRole: 'borrower',
+                      targetName: req.borrowerName,
+                      targetClass: req.borrowerClass,
+                      feedback: req.feedbackForBorrower,
+                      damageReason: req.feedbackForBorrower.damageDescription || req.damageReason,
+                      damagePhotoUrl: req.feedbackForBorrower.damagePhotoUrl || req.damagePhotoUrl
+                    });
+                  } else if (req.damageReason) {
+                    // Solo damage report without full feedback
+                    feedbackItems.push({
+                      requestId: req.id,
+                      bookTitle: req.bookTitle,
+                      bookCover: req.bookCover,
+                      evaluatorRole: 'owner',
+                      evaluatorName: req.ownerName,
+                      evaluatorClass: req.ownerClass,
+                      targetRole: 'borrower',
+                      targetName: req.borrowerName,
+                      targetClass: req.borrowerClass,
+                      feedback: {
+                        punctuality: 1,
+                        condition: 1,
+                        behavior: 3,
+                        reliability: 1,
+                        comment: 'گزارش خسارت فیزیکی وارده به کتاب',
+                        isDamaged: true,
+                        damageDescription: req.damageReason,
+                        damagePhotoUrl: req.damagePhotoUrl
+                      },
+                      damageReason: req.damageReason,
+                      damagePhotoUrl: req.damagePhotoUrl
+                    });
+                  }
+                });
+
+                const filtered = feedbackItems.filter(
+                  (item) =>
+                    !reviewSearch ||
+                    item.bookTitle.includes(reviewSearch) ||
+                    item.evaluatorName.includes(reviewSearch) ||
+                    item.targetName.includes(reviewSearch) ||
+                    (item.feedback.comment && item.feedback.comment.includes(reviewSearch)) ||
+                    (item.damageReason && item.damageReason.includes(reviewSearch))
+                );
+
+                if (filtered.length === 0) {
+                  return (
+                    <div className="p-12 text-center text-slate-400 space-y-2">
+                      <ShieldCheck className="w-10 h-10 mx-auto text-slate-300" />
+                      <p className="text-xs font-bold">هیچ بازخورد یا گزارش آسیبی ثبت نشده است.</p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="space-y-4">
+                    {filtered.map((item, idx) => (
+                      <div
+                        key={`${item.requestId}-${item.targetRole}-${idx}`}
+                        className={`p-5 rounded-3xl border transition-all ${
+                          item.feedback.isDamaged || item.damageReason
+                            ? 'bg-rose-50/40 border-rose-300 shadow-sm'
+                            : item.feedback.isConfidentialToAdmin
+                            ? 'bg-amber-50/40 border-amber-300 shadow-sm'
+                            : 'bg-slate-50 border-slate-200'
+                        } space-y-3`}
+                      >
+                        {/* Top bar: parties & badges */}
+                        <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-slate-200/80">
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={item.bookCover}
+                              alt={item.bookTitle}
+                              className="w-10 h-14 rounded-xl object-cover border border-slate-200 shrink-0"
+                            />
+                            <div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-black text-slate-900">
+                                  {item.evaluatorName} ({item.evaluatorRole === 'borrower' ? 'امانت‌گیرنده' : 'مالک'})
+                                </span>
+                                <span className="text-slate-400 text-xs">➔ درباره</span>
+                                <span className="text-xs font-black text-indigo-900">
+                                  {item.targetName} ({item.targetRole === 'owner' ? 'مالک' : 'امانت‌گیرنده'})
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                کتاب: «{item.bookTitle}» • شناسه درخواست: #{item.requestId}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {item.feedback.isConfidentialToAdmin && (
+                              <span className="bg-amber-100 text-amber-900 border border-amber-300 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-2xs">
+                                <Lock className="w-3 h-3 text-amber-700" />
+                                <span>نظر محرمانه مدیر (پنهان از کاربر)</span>
+                              </span>
+                            )}
+
+                            {(item.feedback.isDamaged || item.damageReason) && (
+                              <span className="bg-rose-100 text-rose-900 border border-rose-300 text-[10px] font-black px-2.5 py-1 rounded-full flex items-center gap-1 shadow-2xs animate-pulse">
+                                <AlertTriangle className="w-3 h-3 text-rose-600" />
+                                <span>گزارش آسیب دیدگی کتاب</span>
+                              </span>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (confirm('آیا از حذف این بازخورد اطمینان دارید؟')) {
+                                  deleteFeedback(item.requestId, item.targetRole);
+                                }
+                              }}
+                              className="p-1.5 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl border border-slate-200 hover:border-rose-200 transition shadow-2xs flex items-center gap-1 text-[11px] font-bold"
+                              title="حذف این ارزیابی توسط مدیر"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>حذف بازخورد</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Scores breakdown */}
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center text-xs">
+                          <div className="p-2 bg-white rounded-xl border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">⏰ تحویل به موقع</span>
+                            <span className="font-extrabold text-indigo-700">
+                              {item.feedback.punctuality || 5} از ۵
+                            </span>
+                          </div>
+                          <div className="p-2 bg-white rounded-xl border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">✨ تمیزی و سلامت</span>
+                            <span className="font-extrabold text-indigo-700">
+                              {item.feedback.condition || 5} از ۵
+                            </span>
+                          </div>
+                          <div className="p-2 bg-white rounded-xl border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">😊 ادب و رفتار</span>
+                            <span className="font-extrabold text-indigo-700">
+                              {item.feedback.behavior || 5} از ۵
+                            </span>
+                          </div>
+                          <div className="p-2 bg-white rounded-xl border border-slate-200">
+                            <span className="text-[10px] text-slate-500 block">🤝 خوش‌قولی و اعتماد</span>
+                            <span className="font-extrabold text-indigo-700">
+                              {item.feedback.reliability || 5} از ۵
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Comment text */}
+                        {item.feedback.comment && (
+                          <div className="p-3 bg-white rounded-2xl border border-slate-200 space-y-1">
+                            <span className="text-[10px] font-bold text-slate-500 block">
+                              {item.feedback.isConfidentialToAdmin
+                                ? '🔒 متن نظر محرمانه (فقط قابل مشاهده توسط شما به عنوان مدیر):'
+                                : '💬 متن نظر و بازخورد:'}
+                            </span>
+                            <p className="text-xs text-slate-800 font-medium leading-relaxed">
+                              {item.feedback.comment}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Damage Report Section with Photo */}
+                        {(item.feedback.isDamaged || item.damageReason) && (
+                          <div className="p-4 bg-rose-100/70 border border-rose-300 rounded-2xl space-y-2.5">
+                            <div className="flex items-center gap-1.5 text-rose-900 font-black text-xs">
+                              <AlertTriangle className="w-4 h-4 text-rose-600" />
+                              <span>جزئیات آسیب گزارش‌شده به کتاب:</span>
+                            </div>
+
+                            <p className="text-xs text-rose-950 font-bold leading-relaxed bg-white p-2.5 rounded-xl border border-rose-200">
+                              {item.damageReason || item.feedback.damageDescription || 'عدم اعلام شرح تکمیلی'}
+                            </p>
+
+                            {(item.damagePhotoUrl || item.feedback.damagePhotoUrl) && (
+                              <div className="space-y-1 pt-1">
+                                <span className="text-[10px] font-bold text-rose-900 block">
+                                  📸 عکس مستند از آسیب کتاب:
+                                </span>
+                                <div className="inline-block relative rounded-xl overflow-hidden border-2 border-rose-400 shadow-md">
+                                  <a
+                                    href={item.damagePhotoUrl || item.feedback.damagePhotoUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="block group"
+                                  >
+                                    <img
+                                      src={item.damagePhotoUrl || item.feedback.damagePhotoUrl}
+                                      alt="عکس آسیب کتاب"
+                                      className="max-h-48 rounded-lg object-contain group-hover:opacity-90 transition cursor-pointer"
+                                    />
+                                    <span className="absolute bottom-1 right-1 bg-black/70 text-white text-[9px] px-2 py-0.5 rounded-md font-bold">
+                                      کلیک جهت مشاهده تصویر در اندازه کامل ↗
+                                    </span>
+                                  </a>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Tab: System Settings & Rules */}
       {activeTab === 'system_settings' && (
         <div className="bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-sm space-y-6">
@@ -1437,6 +2042,243 @@ export const AdminPanel: React.FC = () => {
                   />
                   <p className="text-[11px] text-slate-500 font-medium">
                     مهلت تحویل فیزیکی کتاب در شیفت مدرسه یا آدرس منزل.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 3: Bale Channel Integration */}
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                  <Send className="w-4 h-4 text-sky-600" />
+                  <span>اتصال به کانال پیام‌رسان بله و انتشار خودکار کتب:</span>
+                </h4>
+                <span className="px-3 py-1 bg-sky-50 text-sky-700 text-[11px] font-bold rounded-lg border border-sky-200 flex items-center gap-1.5">
+                  <Radio className="w-3.5 h-3.5 text-sky-500 animate-pulse" />
+                  <span>بازوی رسمی: @Maktabkunebot</span>
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    آیدی یا نام کاربری کانال بله:
+                  </label>
+                  <input
+                    type="text"
+                    value={baleChannelUsername}
+                    onChange={(e) => setBaleChannelUsername(e.target.value)}
+                    placeholder="@maktabkhune_books"
+                    dir="ltr"
+                    className="w-full text-sm p-3 bg-white border border-slate-300 rounded-xl font-bold text-sky-700 text-center placeholder:text-slate-400"
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    نام کاربری عمومی کانال (همراه با @) یا شناسه عددی چت کانال.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    انتشار خودکار کتاب‌های جدید:
+                  </label>
+                  <div className="pt-2 flex items-center gap-3">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="autoPublishBooks"
+                        checked={autoPublishBooks === true}
+                        onChange={() => setAutoPublishBooks(true)}
+                        className="w-4 h-4 text-sky-600"
+                      />
+                      <span className="text-xs font-bold text-slate-800">فعال (انتشار فوری)</span>
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="radio"
+                        name="autoPublishBooks"
+                        checked={autoPublishBooks === false}
+                        onChange={() => setAutoPublishBooks(false)}
+                        className="w-4 h-4 text-sky-600"
+                      />
+                      <span className="text-xs font-bold text-slate-800">غیرفعال (دستی)</span>
+                    </label>
+                  </div>
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    بلافاصله پس از ثبت هر کتاب در سایت، پست معرفی آن در کانال منتشر شود.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    آدرس دامنه سایت (جهت دکمه شیشه‌ای لینک‌دار):
+                  </label>
+                  <input
+                    type="url"
+                    value={websiteBaseUrl}
+                    onChange={(e) => setWebsiteBaseUrl(e.target.value)}
+                    placeholder="https://mysite.ir"
+                    dir="ltr"
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-medium text-slate-700 placeholder:text-slate-400 text-left"
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    آدرس پایه سامانه که کاربر را از دکمه تلگرام/بله مستقیماً به صفحه کتاب می‌برد.
+                  </p>
+                </div>
+              </div>
+
+              {/* Channel Action Controls */}
+              <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                  <span className="text-xs font-black text-sky-950 flex items-center gap-1.5">
+                    <Sparkles className="w-4 h-4 text-sky-600" />
+                    <span>عملیات و ابزارهای مدیریت کانال:</span>
+                  </span>
+
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleTestChannel}
+                      disabled={isTestingChannel || !baleChannelUsername.trim()}
+                      className="px-4 py-2 bg-white hover:bg-sky-100 text-sky-800 font-bold text-xs rounded-xl border border-sky-300 transition flex items-center gap-1.5 shadow-xs disabled:opacity-50 cursor-pointer"
+                    >
+                      <Radio className={`w-4 h-4 ${isTestingChannel ? 'animate-spin' : 'text-sky-600'}`} />
+                      <span>{isTestingChannel ? 'در حال ارسال تست...' : 'ارسال پیام آزمایشی به کانال'}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={handlePublishAllBooks}
+                      disabled={isPublishingAll || books.length === 0}
+                      className="px-4 py-2 bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-700 hover:to-indigo-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                    >
+                      <Share2 className={`w-4 h-4 ${isPublishingAll ? 'animate-spin' : ''}`} />
+                      <span>{isPublishingAll ? 'در حال انتشار همه کتب...' : `انتشار همگانی همه کتاب‌ها (${books.length} جلد)`}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {channelTestStatus && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      channelTestStatus.success
+                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        : 'bg-rose-100 text-rose-900 border border-rose-300'
+                    }`}
+                  >
+                    {channelTestStatus.success ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    )}
+                    <span>{channelTestStatus.message}</span>
+                  </div>
+                )}
+
+                {publishAllStatus && (
+                  <div
+                    className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                      publishAllStatus.success
+                        ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                        : 'bg-amber-100 text-amber-900 border border-amber-300'
+                    }`}
+                  >
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{publishAllStatus.message}</span>
+                  </div>
+                )}
+
+                {/* Step-by-step Setup Guide */}
+                <div className="p-3 bg-white/90 rounded-xl border border-sky-100 text-xs text-slate-700 space-y-1.5 font-medium leading-relaxed">
+                  <div className="font-bold text-sky-900 flex items-center gap-1 text-[13px]">
+                    <HelpCircle className="w-4 h-4 text-sky-600" />
+                    <span>راهنمای فعال‌سازی و ارتقای دسترسی بازو در کانال بله:</span>
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1 text-slate-600 pr-1 text-[11px]">
+                    <li>وارد پیام‌رسان بله و کانال اختصاصی مدرسه/مکتب‌خانه شوید.</li>
+                    <li>به بخش <b>«اطلاعات کانال»</b> رفته و بازوی <code>@Maktabkunebot</code> را به عنوان عضو به کانال دعوت کنید.</li>
+                    <li>در بخش <b>«مدیران کانال»</b>، بازوی مکتب‌خانه را به عنوان <b>مدیر (Admin)</b> با مجوز <b>«ارسال پیام و رسانه»</b> تعیین کنید.</li>
+                    <li>آیدی کانال را در کادر بالا درج کرده و روی دکمه <b>«ارسال پیام آزمایشی»</b> کلیک کنید تا اتصال تایید شود.</li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 4: Support & Contact Information */}
+            <div className="space-y-4 pt-2 border-t border-slate-100">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
+                <Phone className="w-4 h-4 text-emerald-600" />
+                <span>اطلاعات تماس و پشتیبانی سامانه مکتب‌خانه (نمایش به کاربران):</span>
+              </h4>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    نام و سمت مسئول پشتیبانی:
+                  </label>
+                  <input
+                    type="text"
+                    value={supportAdminName}
+                    onChange={(e) => setSupportAdminName(e.target.value)}
+                    placeholder="پارسا فیض (مسئول مکتب‌خانه)"
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-bold text-slate-800"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    نام مدیر یا رابط مدرسه که در قوانین و بخش پشتیبانی نمایش داده می‌شود.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    شماره تلفن تماس مستقیم:
+                  </label>
+                  <input
+                    type="tel"
+                    value={supportPhone}
+                    onChange={(e) => setSupportPhone(e.target.value)}
+                    placeholder="09121112233"
+                    dir="ltr"
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    جهت تماس اضطراری یا رفع مشکلات امانت و کارت به کارت.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    شناسه (آیدی) بله پشتیبان:
+                  </label>
+                  <input
+                    type="text"
+                    value={supportBaleId}
+                    onChange={(e) => setSupportBaleId(e.target.value)}
+                    placeholder="maktabkhune_admin"
+                    dir="ltr"
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-bold text-sky-700 text-center"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    آیدی کاربری مدیر در بله برای گفتگوی مستقیم دانش‌آموزان با پشتیبان.
+                  </p>
+                </div>
+
+                <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                  <label className="block text-xs font-black text-slate-700">
+                    روزها و ساعات پاسخگویی:
+                  </label>
+                  <input
+                    type="text"
+                    value={supportHours}
+                    onChange={(e) => setSupportHours(e.target.value)}
+                    placeholder="شنبه تا چهارشنبه - ۷:۳۰ الی ۱۴:۰۰"
+                    className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-bold text-slate-800"
+                    required
+                  />
+                  <p className="text-[11px] text-slate-500 font-medium">
+                    بازه زمانی حضور در مدرسه یا پاسخگویی به پیام‌ها.
                   </p>
                 </div>
               </div>
@@ -1702,10 +2544,22 @@ export const AdminPanel: React.FC = () => {
       {activeTab === 'all_books' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-              <BookOpen className="w-5 h-5 text-indigo-600" />
-              <span>فهرست کل کتاب‌های ثبت‌شده در مدرسه ({books.length} جلد)</span>
-            </h3>
+            <div className="flex items-center gap-3">
+              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-indigo-600" />
+                <span>فهرست کل کتاب‌های ثبت‌شده در مدرسه ({books.length} جلد)</span>
+              </h3>
+
+              <button
+                onClick={handlePublishAllBooks}
+                disabled={isPublishingAll || books.length === 0}
+                className="px-3 py-1.5 bg-sky-50 text-sky-700 hover:bg-sky-100 border border-sky-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                title="انتشار همگانی کلیه کتب موجود به کانال بله"
+              >
+                <Send className={`w-3.5 h-3.5 ${isPublishingAll ? 'animate-spin' : 'text-sky-600'}`} />
+                <span>{isPublishingAll ? 'در حال ارسال به بله...' : 'انتشار همه در کانال بله'}</span>
+              </button>
+            </div>
 
             <div className="relative w-64">
               <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
@@ -1719,6 +2573,19 @@ export const AdminPanel: React.FC = () => {
             </div>
           </div>
 
+          {publishAllStatus && (
+            <div
+              className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${
+                publishAllStatus.success
+                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                  : 'bg-amber-100 text-amber-900 border border-amber-300'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{publishAllStatus.message}</span>
+            </div>
+          )}
+
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
               <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
@@ -1729,7 +2596,7 @@ export const AdminPanel: React.FC = () => {
                   <th className="p-3">مالک دانش‌آموز</th>
                   <th className="p-3">کلاس</th>
                   <th className="p-3">وضعیت</th>
-                  <th className="p-3 text-center">عملیات</th>
+                  <th className="p-3 text-center">انتشار بله / حذف</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -1767,17 +2634,37 @@ export const AdminPanel: React.FC = () => {
                         </span>
                       </td>
                       <td className="p-3 text-center">
-                        <button
-                          onClick={() => {
-                            if (confirm(`آیا از حذف کتاب «${book.title}» مطمئن هستید؟`)) {
-                              deleteBook(book.id);
-                            }
-                          }}
-                          className="p-1.5 text-rose-600 hover:bg-rose-50 rounded-lg transition"
-                          title="حذف کتاب"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            onClick={() => handlePublishSingleBook(book.id, book.title)}
+                            disabled={publishingBookId === book.id}
+                            className={`p-1.5 rounded-lg border transition cursor-pointer ${
+                              bookPublishFeedback?.bookId === book.id && bookPublishFeedback.success
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                                : 'bg-sky-50 text-sky-700 border-sky-200 hover:bg-sky-100'
+                            }`}
+                            title="انتشار / ارسال به کانال بله"
+                          >
+                            <Send className={`w-3.5 h-3.5 ${publishingBookId === book.id ? 'animate-spin text-sky-600' : ''}`} />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (confirm(`آیا از حذف کتاب «${book.title}» مطمئن هستید؟`)) {
+                                deleteBook(book.id);
+                              }
+                            }}
+                            className="p-1.5 text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 rounded-lg transition cursor-pointer"
+                            title="حذف کتاب"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        {bookPublishFeedback?.bookId === book.id && (
+                          <div className="text-[10px] font-bold text-emerald-700 mt-1 animate-in fade-in">
+                            {bookPublishFeedback.message}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}

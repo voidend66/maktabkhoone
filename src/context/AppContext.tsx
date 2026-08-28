@@ -28,7 +28,14 @@ const INITIAL_SYSTEM_CONFIG: SystemConfig = {
   loanFeeAmount: 10000,
   loanDurationDays: 7,
   paymentWindowHours: 3,
-  handoverWindowHours: 12
+  handoverWindowHours: 12,
+  supportPhone: '09121112233',
+  supportBaleId: 'maktabkhune_admin',
+  supportAdminName: 'پارسا فیض (مسئول مکتب‌خانه)',
+  supportHours: 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
+  baleChannelUsername: '@maktabkhune_books',
+  autoPublishBooksToBale: true,
+  websiteBaseUrl: ''
 };
 
 const LOCAL_STORAGE_KEY_CURRENT_USER = 'school_lib_curr_user_v3';
@@ -81,13 +88,25 @@ interface AppContextType {
   confirmHandover: (requestId: string, confirmedByRole?: string) => void;
   completeReturnAndSubmitFeedback: (
     requestId: string,
-    feedback: { punctuality: number; condition: number; behavior: number; reliability: number; comment: string }
+    feedback: {
+      punctuality: number;
+      condition: number;
+      behavior: number;
+      reliability: number;
+      comment: string;
+      isConfidentialToAdmin?: boolean;
+      isDamaged?: boolean;
+      damageDescription?: string;
+      damagePhotoUrl?: string;
+    }
   ) => void;
-  reportDamageAndSuspendUser: (requestId: string, borrowerId: string, reason: string) => void;
+  reportDamageAndSuspendUser: (requestId: string, borrowerId: string, reason: string, damagePhotoUrl?: string) => void;
   addSchoolClass: (classData: { name: string; grade: string; isExternal?: boolean }) => void;
   updateSchoolClass: (id: string, name: string, grade: string) => void;
   deleteSchoolClass: (id: string) => void;
   addBookReview: (bookId: string, rating: number, comment: string) => void;
+  deleteBookReview: (bookId: string, reviewId: string) => Promise<{ success: boolean; message?: string }>;
+  deleteFeedback: (feedbackId: string) => Promise<{ success: boolean; message?: string }>;
   updateBankCardInfo: (info: BankCardInfo) => void;
   updateSystemConfig: (config: Partial<SystemConfig>) => Promise<{ success: boolean; message?: string; config?: SystemConfig }>;
   resetToDefaults: () => void;
@@ -548,7 +567,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Report damage and suspend user account
-  const reportDamageAndSuspendUser = async (requestId: string, borrowerId: string, reason: string) => {
+  const reportDamageAndSuspendUser = async (
+    requestId: string,
+    borrowerId: string,
+    reason: string,
+    damagePhotoUrl?: string
+  ) => {
     setUsers((prev) =>
       prev.map((u) =>
         u.id === borrowerId
@@ -571,7 +595,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           ? {
               ...r,
               isDamagedReported: true,
-              damageNotes: reason
+              damageNotes: reason,
+              damagePhotoUrl: damagePhotoUrl || undefined
             }
           : r
       )
@@ -589,7 +614,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
-      await api.reportDamage(requestId, borrowerId, reason);
+      await api.reportDamage(requestId, borrowerId, reason, damagePhotoUrl);
     } catch (e) {
       console.error('Error reporting damage on server:', e);
     }
@@ -709,7 +734,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Complete Return & submit mutual feedback survey
   const completeReturnAndSubmitFeedback = async (
     requestId: string,
-    feedback: { punctuality: number; condition: number; behavior: number; reliability: number; comment: string }
+    feedback: {
+      punctuality: number;
+      condition: number;
+      behavior: number;
+      reliability: number;
+      comment: string;
+      isConfidentialToAdmin?: boolean;
+      isDamaged?: boolean;
+      damageDescription?: string;
+      damagePhotoUrl?: string;
+    }
   ) => {
     const req = requests.find((r) => r.id === requestId);
     if (!req) return;
@@ -734,11 +769,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       behaviorScore: feedback.behavior,
       reliabilityScore: feedback.reliability,
       comment: feedback.comment,
+      isConfidentialToAdmin: Boolean(feedback.isConfidentialToAdmin),
+      isDamaged: Boolean(feedback.isDamaged),
+      damageDescription: feedback.damageDescription,
+      damagePhotoUrl: feedback.damagePhotoUrl,
       date: new Date().toLocaleDateString('fa-IR')
     };
 
     setFeedbacks((prev) => [newMutualFeedback, ...prev]);
 
+    // Star rating ALWAYS updates user rating, regardless of confidential comment toggle
     setUsers((prev) =>
       prev.map((u) => {
         let updatedUser = u;
@@ -758,25 +798,53 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             ...updatedUser,
             booksReadCount: (updatedUser.booksReadCount || 0) + 1
           };
+          if (feedback.isDamaged) {
+            updatedUser = {
+              ...updatedUser,
+              status: 'suspended' as const,
+              suspensionReason: `خسارت به کتاب «${req.bookTitle}»: ${feedback.damageDescription || 'آسیب وارده به کتاب'}`
+            };
+          }
         }
         return updatedUser;
       })
     );
 
     setRequests((prev) =>
-      prev.map((r) => (r.id === requestId ? { ...r, status: 'returned' } : r))
+      prev.map((r) =>
+        r.id === requestId
+          ? {
+              ...r,
+              status: 'returned',
+              ...(isBorrower ? { borrowerFeedbackGiven: true } : { ownerFeedbackGiven: true }),
+              isDamagedReported: Boolean(feedback.isDamaged),
+              damageNotes: feedback.damageDescription,
+              damagePhotoUrl: feedback.damagePhotoUrl
+            }
+          : r
+      )
     );
 
     setBooks((prev) =>
       prev.map((b) =>
         b.id === req.bookId
-          ? { ...b, status: 'available', borrowerId: undefined, borrowerName: undefined }
+          ? {
+              ...b,
+              ...(feedback.isDamaged
+                ? { isDamaged: true, damageDescription: feedback.damageDescription }
+                : { status: 'available', borrowerId: undefined, borrowerName: undefined })
+            }
           : b
       )
     );
 
     try {
-      await api.returnAndFeedback(requestId, newMutualFeedback);
+      await api.returnAndFeedback(requestId, {
+        feedback: newMutualFeedback,
+        isDamaged: feedback.isDamaged,
+        damageReason: feedback.damageDescription,
+        damagePhotoUrl: feedback.damagePhotoUrl
+      });
     } catch (e) {
       console.error('Error returning book on server:', e);
     }
@@ -868,6 +936,47 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await api.reviewBook(bookId, newReview);
     } catch (e) {
       console.error('Error submitting review to server:', e);
+    }
+  };
+
+  // Delete book review (Admin or reviewer)
+  const deleteBookReview = async (bookId: string, reviewId: string) => {
+    setBooks((prev) =>
+      prev.map((b) => {
+        if (b.id === bookId) {
+          const updatedReviews = (b.reviews || []).filter((r) => r.id !== reviewId);
+          const newAvg = updatedReviews.length > 0
+            ? parseFloat((updatedReviews.reduce((sum, r) => sum + r.rating, 0) / updatedReviews.length).toFixed(1))
+            : 0;
+          return {
+            ...b,
+            rating: newAvg,
+            reviewsCount: updatedReviews.length,
+            reviews: updatedReviews
+          };
+        }
+        return b;
+      })
+    );
+
+    try {
+      const res = await api.deleteBookReview(bookId, reviewId);
+      return res;
+    } catch (e: any) {
+      console.error('Error deleting review on server:', e);
+      return { success: false, message: e.message || 'خطا در حذف نظر' };
+    }
+  };
+
+  // Delete mutual feedback (Admin)
+  const deleteFeedback = async (feedbackId: string) => {
+    setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackId));
+    try {
+      const res = await api.deleteFeedback(feedbackId);
+      return res;
+    } catch (e: any) {
+      console.error('Error deleting feedback on server:', e);
+      return { success: false, message: e.message || 'خطا در حذف بازخورد' };
     }
   };
 
@@ -966,6 +1075,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateSchoolClass,
         deleteSchoolClass,
         addBookReview,
+        deleteBookReview,
+        deleteFeedback,
         updateBankCardInfo,
         updateSystemConfig,
         resetToDefaults,

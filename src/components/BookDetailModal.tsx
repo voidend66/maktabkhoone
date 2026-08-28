@@ -13,7 +13,9 @@ import {
   CheckCircle2,
   Clock,
   ShieldCheck,
-  AlertCircle
+  AlertCircle,
+  Trash2,
+  Check
 } from 'lucide-react';
 
 interface BookDetailModalProps {
@@ -27,13 +29,15 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onClose,
   onRequestLoan
 }) => {
-  const { currentUser, addBookReview, users } = useApp();
+  const { currentUser, addBookReview, deleteBookReview, users } = useApp();
   
   const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
 
   const [newRating, setNewRating] = useState(existingUserReview ? existingUserReview.rating : 5);
   const [newComment, setNewComment] = useState(existingUserReview ? existingUserReview.comment : '');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+  const [reviewSuccessMessage, setReviewSuccessMessage] = useState('');
+  const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
 
   // Sync state if existing review changes
   React.useEffect(() => {
@@ -51,12 +55,30 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const isAvailable = book.status === 'available';
   const owner = users.find((u) => u.id === book.ownerId);
 
-  const handleReviewSubmit = (e: React.FormEvent) => {
+  const handleReviewSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newComment.trim()) return;
     setIsSubmittingReview(true);
-    addBookReview(book.id, newRating, newComment.trim());
-    setIsSubmittingReview(false);
+    setReviewSuccessMessage('');
+    try {
+      await addBookReview(book.id, newRating, newComment.trim());
+      setReviewSuccessMessage('نظر شما با موفقیت ثبت شد ✓');
+      setTimeout(() => {
+        setReviewSuccessMessage('');
+      }, 4000);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const handleDeleteReview = async (reviewId: string) => {
+    if (!window.confirm('آیا از حذف این نظر اطمینان دارید؟')) return;
+    setDeletingReviewId(reviewId);
+    try {
+      await deleteBookReview(book.id, reviewId);
+    } finally {
+      setDeletingReviewId(null);
+    }
   };
 
   return (
@@ -242,6 +264,15 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 onSubmit={handleReviewSubmit}
                 className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3"
               >
+                {reviewSuccessMessage && (
+                  <div className="p-3 bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-between shadow-md animate-in fade-in">
+                    <div className="flex items-center gap-2">
+                      <Check className="w-4 h-4" />
+                      <span>{reviewSuccessMessage}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <span className="text-xs font-bold text-slate-700">
                     ثبت نظر شما برای این کتاب:
@@ -284,7 +315,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-indigo-100 disabled:opacity-50"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>ثبت نظر</span>
+                    <span>{isSubmittingReview ? 'در حال ثبت...' : 'ثبت نظر'}</span>
                   </button>
                 </div>
               </form>
@@ -323,9 +354,23 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
-                        <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-                        <span>{rev.rating}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 text-amber-500 text-xs font-bold">
+                          <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+                          <span>{rev.rating}</span>
+                        </div>
+
+                        {(currentUser?.role === 'admin' || currentUser?.id === rev.userId) && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReview(rev.id)}
+                            disabled={deletingReviewId === rev.id}
+                            title={currentUser?.role === 'admin' ? 'حذف این نظر توسط مدیر' : 'حذف نظر من'}
+                            className="p-1 hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-lg transition"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
 

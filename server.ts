@@ -114,6 +114,7 @@ export interface OtpSession {
 const otpSessions = new Map<string, OtpSession>();
 const chatToSessionMap = new Map<string | number, string>();
 const adminAwaitingRejectReason = new Map<string | number, string>();
+const ownerAwaitingLocation = new Map<string | number, string>();
 
 /**
  * تبدیل ارقام فارسی و عربی به انگلیسی
@@ -205,6 +206,239 @@ async function sendBaleMessage(
     parse_mode: 'HTML',
     reply_markup: replyMarkup,
   });
+}
+
+/**
+ * ارسال عکس به همراه کپشن و دکمه‌های شیشه‌ای به چت یا کانال بله
+ */
+async function sendBalePhoto(
+  chatId: number | string,
+  photoSource: string,
+  caption?: string,
+  replyMarkup?: Record<string, any>,
+  baseUrl?: string
+) {
+  if (!photoSource) {
+    return { ok: false, error: 'عکس مشخص نشده است.' };
+  }
+
+  // 1. فایل محلی آپلود شده روی دیسک (مانند /uploads/image_123.jpg)
+  if (photoSource.startsWith('/uploads/') || photoSource.startsWith('uploads/')) {
+    const filename = path.basename(photoSource);
+    const localFilePath = path.join(UPLOADS_DIR, filename);
+
+    if (fs.existsSync(localFilePath)) {
+      try {
+        const buffer = fs.readFileSync(localFilePath);
+        const ext = path.extname(filename).toLowerCase();
+        const mimeType = ext === '.png' ? 'image/png' : ext === '.webp' ? 'image/webp' : 'image/jpeg';
+        const blob = new Blob([buffer], { type: mimeType });
+
+        const form = new FormData();
+        form.append('chat_id', String(chatId));
+        form.append('photo', blob, filename);
+        if (caption) form.append('caption', caption);
+        form.append('parse_mode', 'HTML');
+        if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
+
+        const res = await fetch(`${BALE_API_BASE_URL}/sendPhoto`, {
+          method: 'POST',
+          body: form,
+        });
+        const data = await res.json();
+        return data;
+      } catch (err) {
+        console.error('[Bale sendPhoto] خطا در ارسال فایل محلی با FormData:', err);
+      }
+    }
+  }
+
+  // 2. فرمت Base64 (data:image/...)
+  if (photoSource.startsWith('data:image/')) {
+    try {
+      const parts = photoSource.split(',');
+      const mime = parts[0].match(/:(.*?);/)?.[1] || 'image/jpeg';
+      const buffer = Buffer.from(parts[1], 'base64');
+      const blob = new Blob([buffer], { type: mime });
+
+      const form = new FormData();
+      form.append('chat_id', String(chatId));
+      form.append('photo', blob, 'cover.jpg');
+      if (caption) form.append('caption', caption);
+      form.append('parse_mode', 'HTML');
+      if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
+
+      const res = await fetch(`${BALE_API_BASE_URL}/sendPhoto`, {
+        method: 'POST',
+        body: form,
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      console.error('[Bale sendPhoto] خطا در ارسال تصویر Base64:', err);
+    }
+  }
+
+  // 3. آدرس اینترنتی (URL)
+  let fullPhotoUrl = photoSource;
+  if (photoSource.startsWith('/') && baseUrl) {
+    fullPhotoUrl = `${baseUrl.replace(/\/$/, '')}${photoSource}`;
+  }
+
+  if (fullPhotoUrl.startsWith('http://') || fullPhotoUrl.startsWith('https://')) {
+    // تلاش اول: ارسال مستقیم URL به API بله
+    const urlResult = await callBaleApi('sendPhoto', {
+      chat_id: chatId,
+      photo: fullPhotoUrl,
+      caption: caption,
+      parse_mode: 'HTML',
+      reply_markup: replyMarkup,
+    });
+
+    if (urlResult && urlResult.ok) {
+      return urlResult;
+    }
+
+    // تلاش دوم در صورت عدم دانلود مستقیم توسط بله: دانلود به بافر سرور و ارسال با FormData
+    try {
+      const imageFetchRes = await fetch(fullPhotoUrl);
+      if (imageFetchRes.ok) {
+        const arrayBuf = await imageFetchRes.arrayBuffer();
+        const contentType = imageFetchRes.headers.get('content-type') || 'image/jpeg';
+        const blob = new Blob([arrayBuf], { type: contentType });
+
+        const form = new FormData();
+        form.append('chat_id', String(chatId));
+        form.append('photo', blob, 'cover.jpg');
+        if (caption) form.append('caption', caption);
+        form.append('parse_mode', 'HTML');
+        if (replyMarkup) form.append('reply_markup', JSON.stringify(replyMarkup));
+
+        const formRes = await fetch(`${BALE_API_BASE_URL}/sendPhoto`, {
+          method: 'POST',
+          body: form,
+        });
+        return await formRes.json();
+      }
+    } catch (fetchErr) {
+      console.error('[Bale sendPhoto] خطا در دانلود و ارسال تصویر از URL خارجی:', fetchErr);
+    }
+  }
+
+  return { ok: false, error: 'روش معتبری برای ارسال عکس یافت نشد.' };
+}
+
+/**
+ * فرمت‌بندی پست معرفی کتاب برای کانال بله با ساختار شکیل، ایموجی‌ها، هشتگ‌ها و دکمه‌های شیشه‌ای
+ */
+export function formatBookIntroductionPost(book: Book, siteBaseUrl?: string) {
+  const config = dbService.getSystemConfig();
+  const origin = siteBaseUrl || config.websiteBaseUrl || process.env.APP_URL || '';
+  const cleanOrigin = origin.replace(/\/$/, '');
+  const bookUrl = cleanOrigin ? `${cleanOrigin}?book=${encodeURIComponent(book.id)}` : '';
+  const libraryUrl = cleanOrigin ? cleanOrigin : '';
+
+  const conditionMap: Record<string, string> = {
+    new: '✨ کاملاً نو و ورق‌نخورده',
+    good: '👌 بسیار تمیز و در حد نو',
+    fair: '📖 تمیز و خوانا'
+  };
+  const conditionText = conditionMap[book.condition] || '✨ سالم و تمیز';
+
+  let postText = `✨ <b>معرفی کتاب جدید در گنجینه مکتب‌خانه</b> 📚\n`;
+  postText += `━━━━━━━━━━━━━━━━━━\n\n`;
+  postText += `📖 <b>نام کتاب:</b> <b>«${book.title}»</b>\n`;
+  postText += `✍️ <b>پدیدآورنده / نویسنده:</b> ${book.author}\n`;
+  if (book.category) {
+    postText += `🏷 <b>موضوع / دسته‌بندی:</b> ${book.category}\n`;
+  }
+  postText += `👤 <b>اهداکننده / امانت‌دهنده:</b> ${book.ownerName} (کلاس ${book.ownerClass})\n`;
+  postText += `🔍 <b>کیفیت فیزیکی:</b> ${conditionText}\n`;
+  
+  if (book.description && book.description.trim()) {
+    let desc = book.description.trim();
+    if (desc.length > 250) {
+      desc = desc.substring(0, 247) + '...';
+    }
+    postText += `\n💬 <b>درباره این کتاب:</b>\n<i>«${desc}»</i>\n`;
+  }
+
+  postText += `\n📌 <b>شرایط و امتیازات امانت:</b>\n`;
+  postText += `⏱ <b>مدت زمان امانت:</b> ${config.loanDurationDays || 7} روز (با امکان تمدید)\n`;
+  postText += `💰 <b>هزینه امانت:</b> ${(config.loanFeeAmount || 10000).toLocaleString('fa-IR')} تومان (صرف توسعه کتابخانه)\n`;
+  postText += `🏆 <b>امتیاز لیگ کتابخوانی:</b> ۵۰+ امتیاز برای مطالعه و ثبت نظر\n\n`;
+
+  const categoryTag = book.category ? `#${book.category.replace(/[\s\-\/]+/g, '_')}` : '#کتاب';
+  postText += `🔖 ${categoryTag} #مکتب_خانه #کتابخوانی #امانت_کتاب #معرفی_کتاب\n\n`;
+  postText += `👇 <i>جهت رزرو و امانت فوری، روی دکمه زیر کلیک کنید:</i>`;
+
+  const inlineKeyboard: any[][] = [];
+  if (bookUrl) {
+    inlineKeyboard.push([{ text: '📖 مشاهده و درخواست امانت در سایت 🚀', url: bookUrl }]);
+  }
+  if (libraryUrl) {
+    inlineKeyboard.push([{ text: '🎒 ورود به کتابخانه آنلاین مکتب‌خانه 🏛', url: libraryUrl }]);
+  }
+
+  const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
+
+  return { text: postText, replyMarkup };
+}
+
+/**
+ * انتشار مستقیم یک کتاب در کانال بله
+ */
+export async function publishBookToBaleChannel(book: Book, siteBaseUrl?: string) {
+  try {
+    const config = dbService.getSystemConfig();
+    let channelId = config.baleChannelUsername?.trim();
+    if (!channelId) {
+      console.log('⚠️ [Bale Channel] نام کاربری یا آیدی کانال بله در تنظیمات ثبت نشده است.');
+      return { ok: false, error: 'آیدی کانال بله تنظیم نشده است.' };
+    }
+
+    if (!channelId.startsWith('@') && !channelId.startsWith('-') && !/^\d+$/.test(channelId)) {
+      channelId = `@${channelId}`;
+    }
+
+    const effectiveBaseUrl = siteBaseUrl || config.websiteBaseUrl || process.env.APP_URL || '';
+    const { text, replyMarkup } = formatBookIntroductionPost(book, effectiveBaseUrl);
+
+    // 1. اگر کتاب عکس جلد دارد، ارسال به عنوان Photo
+    if (book.coverImage && book.coverImage.trim()) {
+      const photoResult = await sendBalePhoto(channelId, book.coverImage.trim(), text, replyMarkup, effectiveBaseUrl);
+      if (photoResult && photoResult.ok) {
+        dbService.addSystemLog(
+          'info',
+          `انتشار کتاب «${book.title}» در کانال بله`,
+          `با موفقیت به همراه تصویر جلد به کانال ${channelId} ارسال شد. شناسه پیام: ${photoResult.result?.message_id}`
+        );
+        return { ok: true, messageId: photoResult.result?.message_id, withPhoto: true, baleResponse: photoResult };
+      }
+      console.warn(`⚠️ [Bale Channel] ارسال عکس به کانال با خطا مواجه شد (${JSON.stringify(photoResult?.error || photoResult)}). در حال ارسال به عنوان متن ساده...`);
+    }
+
+    // 2. اگر عکس نداشت یا ارسال عکس ناموفق بود، ارسال به عنوان پیام متنی
+    const msgResult = await sendBaleMessage(channelId, text, replyMarkup);
+    if (msgResult && msgResult.ok) {
+      dbService.addSystemLog(
+        'info',
+        `انتشار متنی کتاب «${book.title}» در کانال بله`,
+        `با موفقیت به کانال ${channelId} ارسال شد. شناسه پیام: ${msgResult.result?.message_id}`
+      );
+      return { ok: true, messageId: msgResult.result?.message_id, withPhoto: false, baleResponse: msgResult };
+    } else {
+      dbService.addSystemLog(
+        'error',
+        `خطا در انتشار کتاب «${book.title}» در کانال بله`,
+        `کانال: ${channelId} | خطا: ${JSON.stringify(msgResult?.error || msgResult)}`
+      );
+      return { ok: false, error: msgResult?.error || msgResult?.description || 'خطا در ارسال به کانال بله', baleResponse: msgResult };
+    }
+  } catch (err: any) {
+    console.error('Error publishing book to Bale channel:', err);
+    return { ok: false, error: err.message || 'خطای سرور' };
+  }
 }
 
 export async function setBaleWebhook(webhookUrl: string) {
@@ -652,9 +886,8 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
       return;
     }
 
-    // 2. پذیرش یا رد درخواست امانت کتاب توسط مالک
-    if (data.startsWith('accept_req:') || data.startsWith('reject_req:')) {
-      const isAccept = data.startsWith('accept_req:');
+    // 2. پذیرش یا رد درخواست امانت کتاب توسط مالک با امکان تعیین زمان و مکان تحویل
+    if (data.startsWith('accept_req:')) {
       const reqId = data.split(':')[1];
       const reqItem = dbService.getRequestById(reqId);
 
@@ -667,66 +900,202 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
         return;
       }
 
-      if (isAccept) {
-        const updated = dbService.updateRequest(reqId, {
-          status: 'payment_pending',
-          pickupLocation: 'مدرسه (ساعات تفریح)',
-          pickupTime: 'زنگ تفریح اول',
-          acceptedAt: new Date().toLocaleDateString('fa-IR'),
-          paymentStatus: 'pending'
-        });
+      const text =
+        `📍 <b>تعیین زمان و مکان تحویل کتاب «${reqItem.bookTitle}»</b>\n\n` +
+        `👤 <b>متقاضی:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n\n` +
+        `لطفاً مکان و زمان تحویل کتاب در مدرسه را انتخاب فرمایید:`;
 
+      const replyMarkup = {
+        inline_keyboard: [
+          [
+            { text: '📍 دفتر پرورشی • زنگ دوم (۱۰:۱۵)', callback_data: `loc_set:${reqId}:parvareshi_z2` }
+          ],
+          [
+            { text: '📍 کتابخانه مدرسه • زنگ اول (۰۹:۳۰)', callback_data: `loc_set:${reqId}:lib_z1` }
+          ],
+          [
+            { text: '📍 حیاط/بوفه • ساعت تعطیلی (۱۲:۳۰)', callback_data: `loc_set:${reqId}:yard_exit` }
+          ],
+          [
+            { text: '📍 نمازخانه • بعد از نماز ظهر', callback_data: `loc_set:${reqId}:namaz_noon` }
+          ],
+          [
+            { text: '✏️ نوشتن زمان و مکان دلخواه (تایپ پیام)', callback_data: `loc_custom:${reqId}` }
+          ],
+          [
+            { text: '↩️ لغو و رد درخواست', callback_data: `reject_req:${reqId}` }
+          ]
+        ]
+      };
+
+      await callBaleApi('editMessageText', {
+        chat_id: fromChatId,
+        message_id: messageId,
+        text: text,
+        reply_markup: replyMarkup,
+        parse_mode: 'HTML',
+      });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: 'لطفاً زمان و مکان تحویل کتاب را انتخاب کنید.',
+      });
+      return;
+    }
+
+    // تنظیم زمان و مکان از میانبرهای پیش‌فرض
+    if (data.startsWith('loc_set:')) {
+      const parts = data.split(':');
+      const reqId = parts[1];
+      const code = parts[2];
+      const reqItem = dbService.getRequestById(reqId);
+
+      if (!reqItem) {
         await callBaleApi('answerCallbackQuery', {
           callback_query_id: queryId,
-          text: `✅ درخواست امانت کتاب «${reqItem.bookTitle}» پذیرفته شد.`,
+          text: '❌ درخواست مورد نظر یافت نشد.',
           show_alert: true,
         });
-
-        if (fromChatId && messageId) {
-          await callBaleApi('editMessageText', {
-            chat_id: fromChatId,
-            message_id: messageId,
-            text: `✅ <b>درخواست امانت کتاب «${reqItem.bookTitle}» توسط شما پذیرفته شد.</b>\n\nامانت‌گیرنده: ${reqItem.borrowerName}\nوضعیت: در انتظار پرداخت حق امانت ۱۰,۰۰۰ تومانی`,
-            parse_mode: 'HTML',
-          });
-        }
-
-        if (updated) {
-          notifyUserOnBale(
-            updated.borrowerId,
-            `✅ <b>درخواست امانت شما پذیرفته شد!</b>\n\n` +
-            `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n` +
-            `📍 <b>مکان تحویل پیشنهادی:</b> مدرسه (ساعات تفریح)\n` +
-            `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
-            `لطفاً وارد سامانه شده و نسبت به ثبت فیش پرداخت اقدام فرمایید.`
-          );
-        }
-      } else {
-        dbService.updateBook(reqItem.bookId, { status: 'available' });
-        const updated = dbService.updateRequest(reqId, { status: 'rejected' });
-
-        await callBaleApi('answerCallbackQuery', {
-          callback_query_id: queryId,
-          text: `❌ درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.`,
-          show_alert: true,
-        });
-
-        if (fromChatId && messageId) {
-          await callBaleApi('editMessageText', {
-            chat_id: fromChatId,
-            message_id: messageId,
-            text: `❌ <b>درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.</b>`,
-            parse_mode: 'HTML',
-          });
-        }
-
-        if (updated) {
-          notifyUserOnBale(
-            updated.borrowerId,
-            `❌ <b>درخواست امانت رد شد</b>\n\nمتأسفانه درخواست امانت کتاب <b>«${updated.bookTitle}»</b> توسط مالک پذیرفته نشد.`
-          );
-        }
+        return;
       }
+
+      let location = 'جلوی دفتر پرورشی مدرسه';
+      let time = 'فردا - زنگ تفریح دوم (۱۰:۱۵)';
+      let shift: 'morning' | 'afternoon' | 'evening_home' = 'morning';
+
+      if (code === 'lib_z1') {
+        location = 'کتابخانه مدرسه';
+        time = 'فردا - زنگ تفریح اول (۰۹:۳۰)';
+        shift = 'morning';
+      } else if (code === 'yard_exit') {
+        location = 'حیاط مدرسه (نزدیک بوفه)';
+        time = 'هنگام تعطیلی مدرسه (۱۲:۳۰)';
+        shift = 'afternoon';
+      } else if (code === 'namaz_noon') {
+        location = 'نمازخانه مدرسه';
+        time = 'بعد از اقامه نماز ظهر';
+        shift = 'afternoon';
+      }
+
+      const updated = dbService.updateRequest(reqId, {
+        status: 'payment_pending',
+        pickupLocation: location,
+        pickupTime: time,
+        pickupShift: shift,
+        acceptedAt: new Date().toLocaleDateString('fa-IR'),
+        paymentStatus: 'pending'
+      });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: `✅ زمان و مکان تحویل ثبت و درخواست تایید شد.`,
+        show_alert: true,
+      });
+
+      if (fromChatId && messageId) {
+        await callBaleApi('editMessageText', {
+          chat_id: fromChatId,
+          message_id: messageId,
+          text: `✅ <b>درخواست امانت کتاب «${reqItem.bookTitle}» توسط شما تایید شد.</b>\n\n` +
+            `👤 <b>امانت‌گیرنده:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n` +
+            `📍 <b>مکان تحویل:</b> ${location}\n` +
+            `⏰ <b>زمان تحویل:</b> ${time}\n` +
+            `💳 <b>وضعیت:</b> در انتظار ثبت فیش پرداخت ۱۰,۰۰۰ تومانی توسط متقاضی`,
+          parse_mode: 'HTML',
+        });
+      }
+
+      if (updated) {
+        notifyUserOnBale(
+          updated.borrowerId,
+          `✅ <b>درخواست امانت شما پذیرفته شد!</b>\n\n` +
+          `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n\n` +
+          `📍 <b>مکان تحویل:</b> ${location}\n` +
+          `⏰ <b>زمان تحویل:</b> ${time}\n` +
+          `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
+          `لطفاً وارد سامانه شده و نسبت به ثبت فیش پرداخت اقدام فرمایید.`
+        );
+      }
+      return;
+    }
+
+    // نوشتن زمان و مکان دلخواه توسط مالک
+    if (data.startsWith('loc_custom:')) {
+      const reqId = data.split(':')[1];
+      const reqItem = dbService.getRequestById(reqId);
+
+      if (!reqItem) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ درخواست یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      if (fromChatId) {
+        ownerAwaitingLocation.set(fromChatId, reqId);
+      }
+
+      await callBaleApi('editMessageText', {
+        chat_id: fromChatId,
+        message_id: messageId,
+        text: `✏️ <b>در حال دریافت زمان و مکان دلخواه برای تحویل کتاب «${reqItem.bookTitle}»</b>\n\n` +
+          `لطفاً روز، زنگ تفریح و محل دقیق تحویل در مدرسه را در کادر چت تایپ کرده و ارسال فرمایید.\n\n` +
+          `<i>مثال: فردا چهارشنبه زنگ تفریح سوم جلوی کلاس دهم تجربی</i>`,
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '❌ انصراف و بازگشت', callback_data: `accept_req:${reqId}` }]
+          ]
+        },
+        parse_mode: 'HTML',
+      });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: 'لطفاً پیام حاوی زمان و مکان را تایپ و ارسال کنید.',
+      });
+      return;
+    }
+
+    if (data.startsWith('reject_req:')) {
+      const reqId = data.split(':')[1];
+      const reqItem = dbService.getRequestById(reqId);
+
+      if (!reqItem) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '❌ درخواست مورد نظر یافت نشد.',
+          show_alert: true,
+        });
+        return;
+      }
+
+      dbService.updateBook(reqItem.bookId, { status: 'available' });
+      const updated = dbService.updateRequest(reqId, { status: 'rejected' });
+
+      await callBaleApi('answerCallbackQuery', {
+        callback_query_id: queryId,
+        text: `❌ درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.`,
+        show_alert: true,
+      });
+
+      if (fromChatId && messageId) {
+        await callBaleApi('editMessageText', {
+          chat_id: fromChatId,
+          message_id: messageId,
+          text: `❌ <b>درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.</b>`,
+          parse_mode: 'HTML',
+        });
+      }
+
+      if (updated) {
+        notifyUserOnBale(
+          updated.borrowerId,
+          `❌ <b>درخواست امانت رد شد</b>\n\nمتأسفانه درخواست امانت کتاب <b>«${updated.bookTitle}»</b> توسط مالک پذیرفته نشد.`
+        );
+      }
+      return;
     }
   } catch (err) {
     console.error('Error processing Bale Callback Query:', err);
@@ -781,6 +1150,47 @@ export async function handleIncomingBaleMessage(message: any) {
         `« ${customReason} »\n\n` +
         `جهت اصلاح اطلاعات می‌توانید مجدداً در سایت مکتب‌خانه اقدام فرمایید.`;
       await sendBaleMessage(targetUser.baleChatId, userNotification);
+    }
+    return;
+  }
+
+  // Check if owner is typing custom location & time for a lending request
+  if (ownerAwaitingLocation.has(chatId)) {
+    const reqId = ownerAwaitingLocation.get(chatId)!;
+    ownerAwaitingLocation.delete(chatId);
+
+    const reqItem = dbService.getRequestById(reqId);
+    if (!reqItem) {
+      await sendBaleMessage(chatId, '❌ درخواست مورد نظر در سیستم یافت نشد.');
+      return;
+    }
+
+    const customPickup = text || 'مدرسه (ساعات تفریح)';
+    const updated = dbService.updateRequest(reqId, {
+      status: 'payment_pending',
+      pickupLocation: customPickup,
+      pickupTime: customPickup,
+      acceptedAt: new Date().toLocaleDateString('fa-IR'),
+      paymentStatus: 'pending'
+    });
+
+    await sendBaleMessage(
+      chatId,
+      `✅ <b>زمان و مکان تحویل کتاب «${reqItem.bookTitle}» ثبت گردید.</b>\n\n` +
+      `👤 <b>متقاضی:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n` +
+      `📍 <b>مکان و زمان مشخص‌شده:</b> ${customPickup}\n` +
+      `💳 <b>وضعیت:</b> در انتظار پرداخت حق امانت ۱۰,۰۰۰ تومانی توسط متقاضی`
+    );
+
+    if (updated) {
+      notifyUserOnBale(
+        updated.borrowerId,
+        `✅ <b>درخواست امانت شما پذیرفته شد!</b>\n\n` +
+        `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n\n` +
+        `📍 <b>مکان و زمان تحویل:</b> ${customPickup}\n` +
+        `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
+        `لطفاً وارد سامانه شده و نسبت به ثبت فیش پرداخت اقدام فرمایید.`
+      );
     }
     return;
   }
@@ -1836,6 +2246,16 @@ async function startServer() {
         `👤 <b>اهداکننده / مالک:</b> ${created.ownerName} (کلاس ${created.ownerClass})`
       );
 
+      // Auto-publish new book to Bale Channel if enabled in settings
+      const sysConfig = dbService.getSystemConfig();
+      if (sysConfig.autoPublishBooksToBale !== false && sysConfig.baleChannelUsername?.trim()) {
+        const originHeader = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+        const siteUrl = sysConfig.websiteBaseUrl?.trim() || originHeader || process.env.APP_URL || '';
+        publishBookToBaleChannel(created, siteUrl).catch((channelErr) => {
+          console.error('Error auto-publishing new book to Bale channel:', channelErr);
+        });
+      }
+
       res.json({ success: true, book: created });
     } catch (err: any) {
       console.error('Create Book Error:', err);
@@ -1870,6 +2290,12 @@ async function startServer() {
       );
     }
 
+    res.json({ success: true, book: updated });
+  });
+
+  app.delete('/api/books/:id/reviews/:reviewId', (req: Request, res: Response): any => {
+    const updated = dbService.deleteBookReview(req.params.id, req.params.reviewId);
+    if (!updated) return res.status(404).json({ success: false, message: 'کتاب یا نظر یافت نشد.' });
     res.json({ success: true, book: updated });
   });
 
@@ -2135,47 +2561,87 @@ async function startServer() {
   });
 
   app.post('/api/requests/:id/return-and-feedback', (req: Request, res: Response): any => {
-    const { feedback } = req.body;
+    const { feedback, isDamaged, damageReason, damagePhotoUrl } = req.body;
     const reqItem = dbService.getRequestById(req.params.id);
     if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
 
-    // Mark book as available again
-    dbService.updateBook(reqItem.bookId, {
-      status: 'available',
-      borrowerId: undefined,
-      borrowerName: undefined,
-      estimatedReturnDate: undefined
-    });
+    // If damage was reported in this feedback
+    if (isDamaged) {
+      dbService.updateBook(reqItem.bookId, {
+        isDamaged: true,
+        damageDescription: damageReason || 'آسیب‌دیدگی هنگام عودت'
+      });
+
+      const borrowerId = reqItem.borrowerId;
+      if (borrowerId) {
+        dbService.updateUser(borrowerId, {
+          status: 'suspended',
+          suspensionReason: `خسارت به کتاب «${reqItem.bookTitle}»: ${damageReason || 'آسیب وارده به کتاب'}`
+        });
+      }
+
+      dbService.updateRequest(req.params.id, {
+        isDamagedReported: true,
+        damageNotes: damageReason,
+        damagePhotoUrl: damagePhotoUrl || undefined
+      });
+
+      notifyAdminsGeneralOnBale(
+        `🚨 <b>گزارش خسارت به کتاب!</b>\n\n` +
+        `📖 <b>کتاب:</b> «${reqItem.bookTitle}»\n` +
+        `👤 <b>امانت‌گیرنده:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n` +
+        `📝 <b>شرح خسارت:</b> ${damageReason || 'نامشخص'}\n` +
+        (damagePhotoUrl ? `📷 <b>عکس پیوست:</b> ${damagePhotoUrl}\n\n` : '\n') +
+        `⚠️ حساب کاربری امانت‌گیرنده تعلیق گردید.`
+      );
+    } else {
+      // Mark book as available again
+      dbService.updateBook(reqItem.bookId, {
+        status: 'available',
+        borrowerId: undefined,
+        borrowerName: undefined,
+        estimatedReturnDate: undefined
+      });
+    }
 
     // Record feedback if provided
     if (feedback) {
       dbService.createFeedback(feedback);
     }
 
-    const updated = dbService.updateRequest(req.params.id, {
+    const role = feedback?.role || 'borrower_to_owner';
+    const updates: Partial<LendingRequest> = {
       status: 'returned',
-      borrowerFeedbackGiven: true
-    });
+      ...(role === 'borrower_to_owner' ? { borrowerFeedbackGiven: true } : { ownerFeedbackGiven: true })
+    };
 
-    // Notify owner
-    notifyUserOnBale(
-      reqItem.ownerId,
-      `✅ <b>بازگرداندن کتاب</b>\n\n` +
-      `کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} بازگردانده شد و مجدداً آماده امانت است.`
-    );
+    const updated = dbService.updateRequest(req.params.id, updates);
 
-    // Notify borrower
-    notifyUserOnBale(
-      reqItem.borrowerId,
-      `✨ <b>تشکر از شما!</b>\n\n` +
-      `بازگرداندن کتاب <b>«${reqItem.bookTitle}»</b> با موفقیت ثبت شد. امیدواریم از مطالعه آن لذت برده باشید.`
-    );
+    // Notify parties on Bale
+    if (role === 'borrower_to_owner') {
+      notifyUserOnBale(
+        reqItem.ownerId,
+        `✅ <b>بازگرداندن کتاب</b>\n\n` +
+        `کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} بازگردانده شد و مجدداً آماده امانت است.`
+      );
+      notifyUserOnBale(
+        reqItem.borrowerId,
+        `✨ <b>تشکر از شما!</b>\n\n` +
+        `بازگرداندن کتاب <b>«${reqItem.bookTitle}»</b> با موفقیت ثبت شد. امیدواریم از مطالعه آن لذت برده باشید.`
+      );
+    } else {
+      notifyUserOnBale(
+        reqItem.borrowerId,
+        `⭐ <b>ثبت ارزیابی مالک کتاب</b>\n\n` +
+        `مالک کتاب <b>«${reqItem.bookTitle}»</b> نظر و امتیاز امانت‌داری شما را ثبت کرد.`
+      );
+    }
 
     res.json({ success: true, request: updated });
   });
 
   app.post('/api/requests/:id/report-damage', (req: Request, res: Response): any => {
-    const { borrowerId, damageReason } = req.body;
+    const { borrowerId, damageReason, damagePhotoUrl } = req.body;
     const reqItem = dbService.getRequestById(req.params.id);
     if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
 
@@ -2191,17 +2657,22 @@ async function startServer() {
 
     const updated = dbService.updateRequest(req.params.id, {
       isDamagedReported: true,
-      damageNotes: damageReason
+      damageNotes: damageReason,
+      damagePhotoUrl: damagePhotoUrl || undefined
     });
 
-    // Notify admins on Bale
-    notifyAdminsGeneralOnBale(
-      `🚨 <b>گزارش خسارت به کتاب!</b>\n\n` +
+    // Notify admins on Bale with photo if available
+    let adminMsg = `🚨 <b>گزارش خسارت به کتاب!</b>\n\n` +
       `📖 <b>کتاب:</b> «${reqItem.bookTitle}»\n` +
       `👤 <b>امانت‌گیرنده:</b> ${reqItem.borrowerName} (${reqItem.borrowerClass})\n` +
       `📝 <b>توضیحات خسارت:</b> ${damageReason}\n\n` +
-      `⚠️ حساب امانت‌گیرنده به طور خودکار تعلیق گردید.`
-    );
+      `⚠️ حساب امانت‌گیرنده طبق قوانین مکتب‌خانه تعلیق گردید.`;
+
+    if (damagePhotoUrl) {
+      adminMsg += `\n\n📷 <b>تصویر آسیب:</b> ${damagePhotoUrl}`;
+    }
+
+    notifyAdminsGeneralOnBale(adminMsg);
 
     // Notify borrower
     notifyUserOnBale(
@@ -2257,6 +2728,11 @@ async function startServer() {
     }
     const created = dbService.createFeedback(fb);
     res.json({ success: true, feedback: created });
+  });
+
+  app.delete('/api/feedbacks/:id', (req: Request, res: Response): any => {
+    const success = dbService.deleteFeedback(req.params.id);
+    res.json({ success });
   });
 
   /**
@@ -2415,6 +2891,176 @@ async function startServer() {
         success: false,
         message: err.message,
       });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: تست ارسال پیام آزمایشی به کانال بله جهت بررسی دسترسی ادمین بات
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/admin/bale/test-channel', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const config = dbService.getSystemConfig();
+      let targetChannel = req.body?.channelUsername || config.baleChannelUsername;
+      if (!targetChannel || !targetChannel.trim()) {
+        res.status(400).json({
+          success: false,
+          message: 'نام کاربری یا آیدی کانال مشخص نشده است.'
+        });
+        return;
+      }
+
+      targetChannel = targetChannel.trim();
+      if (!targetChannel.startsWith('@') && !targetChannel.startsWith('-') && !/^\d+$/.test(targetChannel)) {
+        targetChannel = `@${targetChannel}`;
+      }
+
+      const originHeader = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+      const siteUrl = config.websiteBaseUrl?.trim() || originHeader || process.env.APP_URL || '';
+
+      const testMessage =
+        `🔔 <b>تست اتصال و دسترسی بات به کانال مکتب‌خانه</b> ✨\n` +
+        `━━━━━━━━━━━━━━━━━━\n\n` +
+        `✅ بات هوشمند مکتب‌خانه (<code>@${BOT_USERNAME}</code>) با موفقیت به این کانال متصل گردید.\n\n` +
+        `📚 از این پس، هر کتاب جدیدی که در سامانه ثبت شود، به‌صورت خودکار همراه با تصویر و مشخصات کامل در این کانال معرفی خواهد شد.\n\n` +
+        `⏰ <b>زمان تست:</b> ${new Date().toLocaleTimeString('fa-IR')} - ${new Date().toLocaleDateString('fa-IR')}`;
+
+      const replyMarkup = siteUrl ? {
+        inline_keyboard: [
+          [{ text: '🎒 ورود به سایت مکتب‌خانه 🏛', url: siteUrl.replace(/\/$/, '') }]
+        ]
+      } : undefined;
+
+      const baleRes = await sendBaleMessage(targetChannel, testMessage, replyMarkup);
+
+      if (baleRes && baleRes.ok) {
+        dbService.addSystemLog(
+          'info',
+          `تست موفق کانال بله (${targetChannel})`,
+          `پیام آزمایشی با موفقیت در کانال ارسال شد.`
+        );
+        res.json({
+          success: true,
+          message: `پیام آزمایشی با موفقیت در کانال ${targetChannel} منتشر شد!`,
+          baleResponse: baleRes
+        });
+      } else {
+        const errorDesc = baleRes?.description || baleRes?.error || 'خطای دسترسی در بله';
+        dbService.addSystemLog(
+          'error',
+          `خطا در تست کانال بله (${targetChannel})`,
+          `پاسخ خطا: ${JSON.stringify(baleRes)}`
+        );
+        res.status(400).json({
+          success: false,
+          message: `خطا در ارسال پیام به کانال: مطمئن شوید بازوی @${BOT_USERNAME} به عنوان مدیر (Admin) در کانال عضو شده و دسترسی «ارسال پیام» دارد. جزئیات خطا: ${errorDesc}`,
+          baleResponse: baleRes
+        });
+      }
+    } catch (err: any) {
+      console.error('Error testing Bale channel:', err);
+      res.status(500).json({ success: false, message: err.message || 'خطای سرور' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: انتشار دستی یک کتاب مشخص در کانال بله
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/admin/bale/publish-book/:id', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const book = dbService.getBookById(req.params.id);
+      if (!book) {
+        res.status(404).json({ success: false, message: 'کتاب مورد نظر یافت نشد.' });
+        return;
+      }
+
+      const config = dbService.getSystemConfig();
+      const originHeader = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+      const siteUrl = req.body?.siteBaseUrl || config.websiteBaseUrl?.trim() || originHeader || process.env.APP_URL || '';
+
+      const publishRes = await publishBookToBaleChannel(book, siteUrl);
+
+      if (publishRes.ok) {
+        res.json({
+          success: true,
+          message: `کتاب «${book.title}» با موفقیت در کانال بله منتشر شد!`,
+          withPhoto: publishRes.withPhoto,
+          messageId: publishRes.messageId
+        });
+      } else {
+        res.status(400).json({
+          success: false,
+          message: `خطا در انتشار کتاب در کانال بله: ${publishRes.error || 'دسترسی بات را در کانال بررسی کنید.'}`,
+          details: publishRes
+        });
+      }
+    } catch (err: any) {
+      console.error('Error publishing book to channel:', err);
+      res.status(500).json({ success: false, message: err.message || 'خطای سرور' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: انتشار دسته‌جمعی همه کتاب‌های موجود دیتابیس در کانال بله (Backfill)
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/admin/bale/publish-all-books', async (req: Request, res: Response): Promise<void> => {
+    try {
+      const allBooks = dbService.getAllBooks();
+      if (!allBooks || allBooks.length === 0) {
+        res.json({
+          success: true,
+          message: 'هیچ کتابی در کتابخانه جهت انتشار وجود ندارد.',
+          total: 0,
+          successful: 0,
+          failed: 0
+        });
+        return;
+      }
+
+      const config = dbService.getSystemConfig();
+      const originHeader = req.get('origin') || `${req.protocol}://${req.get('host')}`;
+      const siteUrl = req.body?.siteBaseUrl || config.websiteBaseUrl?.trim() || originHeader || process.env.APP_URL || '';
+
+      let successCount = 0;
+      let failCount = 0;
+
+      // انتشار ترتیبی با فاصله زمانی کوتاه جهت جلوگیری از محدودیت نرخ (Rate Limit) بله
+      for (const book of allBooks) {
+        try {
+          const pubRes = await publishBookToBaleChannel(book, siteUrl);
+          if (pubRes.ok) {
+            successCount++;
+          } else {
+            failCount++;
+          }
+          // تاخیر ۶۰۰ میلی‌ثانیه‌ای بین هر ارسال
+          await new Promise((resolve) => setTimeout(resolve, 600));
+        } catch (e) {
+          failCount++;
+        }
+      }
+
+      dbService.addSystemLog(
+        'info',
+        'انتشار گروهی کتاب‌ها در کانال بله',
+        `تعداد کل: ${allBooks.length} | موفق: ${successCount} | ناموفق: ${failCount}`
+      );
+
+      res.json({
+        success: true,
+        message: `عملیات انتشار پایان یافت: ${successCount} کتاب با موفقیت در کانال بله منتشر شد.${failCount > 0 ? ` (${failCount} مورد با خطا مواجه شد)` : ''}`,
+        total: allBooks.length,
+        successful: successCount,
+        failed: failCount
+      });
+    } catch (err: any) {
+      console.error('Error publishing all books to channel:', err);
+      res.status(500).json({ success: false, message: err.message || 'خطای سرور' });
     }
   });
 
