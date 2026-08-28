@@ -55,6 +55,7 @@ import {
   Smile,
   Image as ImageIcon,
   Loader2,
+  Megaphone,
   HardDrive,
   Folder
 } from 'lucide-react';
@@ -89,6 +90,7 @@ export const AdminPanel: React.FC = () => {
     deleteCustomAvatar,
     suspendUser,
     unsuspendUser,
+    sendBaleMessageToStudent,
     refreshData
   } = useApp();
 
@@ -100,6 +102,11 @@ export const AdminPanel: React.FC = () => {
   const [userStatusFilter, setUserStatusFilter] = useState<'approved' | 'suspended' | 'rejected'>('approved');
   const [reviewSearch, setReviewSearch] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+
+  // Bale direct message state
+  const [selectedStudentForBaleMsg, setSelectedStudentForBaleMsg] = useState<any | null>(null);
+  const [baleCustomMessageText, setBaleCustomMessageText] = useState('');
+  const [isSendingBaleMsg, setIsSendingBaleMsg] = useState(false);
 
   // Storage info state
   const [storageInfo, setStorageInfo] = useState<{
@@ -339,6 +346,13 @@ export const AdminPanel: React.FC = () => {
   const [autoPublishBooks, setAutoPublishBooks] = useState(systemConfig?.autoPublishBooksToBale ?? true);
   const [websiteBaseUrl, setWebsiteBaseUrl] = useState(systemConfig?.websiteBaseUrl || (typeof window !== 'undefined' ? window.location.origin : ''));
 
+  // System Announcement State
+  const [announcementText, setAnnouncementText] = useState(systemConfig?.announcement?.text || '');
+  const [announcementImageUrl, setAnnouncementImageUrl] = useState(systemConfig?.announcement?.imageUrl || '');
+  const [announcementActive, setAnnouncementActive] = useState(systemConfig?.announcement?.isActive || false);
+  const [announcementDuration, setAnnouncementDuration] = useState(systemConfig?.announcement?.durationDays || 7);
+  const [announcementPublishBale, setAnnouncementPublishBale] = useState(false);
+
   // Testing & Channel Action States
   const [isTestingChannel, setIsTestingChannel] = useState(false);
   const [channelTestStatus, setChannelTestStatus] = useState<{ success: boolean; message: string } | null>(null);
@@ -370,6 +384,10 @@ export const AdminPanel: React.FC = () => {
       } else if (typeof window !== 'undefined') {
         setWebsiteBaseUrl(window.location.origin);
       }
+      setAnnouncementText(systemConfig.announcement?.text || '');
+      setAnnouncementImageUrl(systemConfig.announcement?.imageUrl || '');
+      setAnnouncementActive(systemConfig.announcement?.isActive || false);
+      setAnnouncementDuration(systemConfig.announcement?.durationDays || 7);
     }
   }, [systemConfig]);
 
@@ -391,10 +409,18 @@ export const AdminPanel: React.FC = () => {
         supportHours: supportHours.trim(),
         baleChannelUsername: baleChannelUsername.trim(),
         autoPublishBooksToBale: autoPublishBooks,
-        websiteBaseUrl: websiteBaseUrl.trim()
+        websiteBaseUrl: websiteBaseUrl.trim(),
+        announcement: {
+          text: announcementText.trim(),
+          imageUrl: announcementImageUrl.trim() || undefined,
+          isActive: announcementActive,
+          durationDays: Number(announcementDuration) || 0,
+          publishToBale: announcementPublishBale
+        }
       });
       if (res.success) {
-        setConfigSaveMsg('قوانین، اطلاعات پشتیبانی و تنظیمات کانال بله با موفقیت ذخیره شد ✓');
+        setConfigSaveMsg('تنظیمات سامانه و اطلاعیه با موفقیت ذخیره شدند ✓');
+        setAnnouncementPublishBale(false);
       } else {
         setConfigSaveMsg(res.message || 'خطا در ذخیره تنظیمات');
       }
@@ -525,6 +551,29 @@ export const AdminPanel: React.FC = () => {
       setTimeout(() => setAddAdminErrorMsg(''), 5000);
     } finally {
       setIsSubmittingAdmin(false);
+    }
+  };
+
+  const handleSendBaleMessage = async () => {
+    if (!selectedStudentForBaleMsg) return;
+    if (!baleCustomMessageText.trim()) {
+      alert('متن پیام نمی‌تواند خالی باشد.');
+      return;
+    }
+    setIsSendingBaleMsg(true);
+    try {
+      const res = await sendBaleMessageToStudent(selectedStudentForBaleMsg.id, baleCustomMessageText.trim());
+      if (res.success) {
+        alert('پیام شما با موفقیت از طریق پیام‌رسان بله به این دانش‌آموز ارسال شد. ✔️');
+        setSelectedStudentForBaleMsg(null);
+        setBaleCustomMessageText('');
+      } else {
+        alert(res.message || 'خطا در ارسال پیام بله.');
+      }
+    } catch (err: any) {
+      alert(err.message || 'خطا در ارسال پیام بله.');
+    } finally {
+      setIsSendingBaleMsg(false);
     }
   };
 
@@ -2375,6 +2424,136 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
+            {/* Section 5: Main Page & Bale Channel Announcements */}
+            <div className="space-y-4 pt-6 border-t border-slate-100">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2 text-right">
+                <Megaphone className="w-4 h-4 text-rose-600 animate-bounce" />
+                <span>مدیریت اطلاعیه عمومی (صفحه اصلی و کانال بله):</span>
+              </h4>
+
+              <div className="p-5 bg-rose-50/50 rounded-2xl border border-rose-100 space-y-4">
+                <div className="flex flex-col md:flex-row gap-4">
+                  {/* Text of announcement */}
+                  <div className="flex-1 space-y-2 text-right">
+                    <label className="block text-xs font-black text-slate-700">
+                      متن اطلاعیه عمومی:
+                    </label>
+                    <textarea
+                      rows={5}
+                      value={announcementText}
+                      onChange={(e) => setAnnouncementText(e.target.value)}
+                      placeholder="مثلاً: به علت آلودگی شدید هوا و تعطیلی مدارس این هفته امانات تمدید می‌شوند و جریمه‌ای در نظر گرفته نخواهد شد."
+                      className="w-full text-xs p-3.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-800 leading-relaxed shadow-sm focus:border-rose-500 focus:ring-1 focus:ring-rose-500"
+                    />
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      این متن در قالب یک کارت برجسته آبی رنگ (بخش اول صفحه اصلی) به تمام کاربران و دانش‌آموزان نشان داده خواهد شد.
+                    </p>
+                  </div>
+
+                  {/* Image input and Preview */}
+                  <div className="w-full md:w-1/3 space-y-2 flex flex-col justify-between text-right">
+                    <div className="space-y-2">
+                      <label className="block text-xs font-black text-slate-700">
+                        آدرس تصویر اطلاعیه (اختیاری):
+                      </label>
+                      <input
+                        type="text"
+                        value={announcementImageUrl}
+                        onChange={(e) => setAnnouncementImageUrl(e.target.value)}
+                        placeholder="https://example.com/image.jpg یا آدرس فایل محلی"
+                        dir="ltr"
+                        className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-medium text-slate-800"
+                      />
+                    </div>
+
+                    {/* Image Preview Container */}
+                    {announcementImageUrl && announcementImageUrl.trim() ? (
+                      <div className="mt-2 rounded-xl border border-rose-200 overflow-hidden bg-white shadow-sm h-28 relative flex items-center justify-center">
+                        <img
+                          src={announcementImageUrl.trim()}
+                          alt="پیش‌نمایش تصویر"
+                          className="max-h-full max-w-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div className="mt-2 rounded-xl border border-dashed border-slate-300 bg-slate-50 h-28 flex flex-col items-center justify-center text-slate-400">
+                        <ImageIcon className="w-6 h-6 stroke-1 mb-1 text-slate-400" />
+                        <span className="text-[10px] font-bold">بدون تصویر اطلاعیه</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Duration & Visibility Settings */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 text-right">
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 space-y-2">
+                    <label className="block text-[11px] font-black text-slate-700">
+                      مدت زمان نمایش خودکار روی سایت:
+                    </label>
+                    <select
+                      value={announcementDuration}
+                      onChange={(e) => setAnnouncementDuration(Number(e.target.value))}
+                      className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-lg font-bold text-slate-800"
+                    >
+                      <option value={1}>۱ روز (۲۴ ساعت)</option>
+                      <option value={3}>۳ روز</option>
+                      <option value={7}>۱ هفته (۷ روز)</option>
+                      <option value={14}>۲ هفته (۱۴ روز)</option>
+                      <option value={0}>بدون محدودیت زمانی (دستی)</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      پس از طی شدن این مدت، اطلاعیه به صورت خودکار از روی سایت برداشته می‌شود.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-white rounded-xl border border-slate-200 flex flex-col justify-center space-y-2">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="announcementActiveCheckbox"
+                        checked={announcementActive}
+                        onChange={(e) => setAnnouncementActive(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded border-slate-300 text-rose-600 focus:ring-rose-500 cursor-pointer"
+                      />
+                      <label
+                        htmlFor="announcementActiveCheckbox"
+                        className="text-xs font-black text-slate-800 cursor-pointer"
+                      >
+                        نمایش عمومی در سایت فعال باشد
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-slate-500 font-medium">
+                      با غیرفعال کردن این گزینه، اطلاعیه در هر صورت از روی صفحه اول سایت پنهان خواهد شد.
+                    </p>
+                  </div>
+
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 flex flex-col justify-center space-y-2">
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="announcementPublishBaleCheckbox"
+                        checked={announcementPublishBale}
+                        onChange={(e) => setAnnouncementPublishBale(e.target.checked)}
+                        className="w-4.5 h-4.5 rounded border-amber-300 text-amber-600 focus:ring-amber-500 cursor-pointer"
+                      />
+                      <label
+                        htmlFor="announcementPublishBaleCheckbox"
+                        className="text-xs font-black text-amber-900 cursor-pointer"
+                      >
+                        📢 انتشار مستقیم در کانال بله
+                      </label>
+                    </div>
+                    <p className="text-[10px] text-amber-800 font-bold">
+                      با انتخاب این گزینه، پس از ذخیره، متن و تصویر اطلاعیه در کانال بله مدرسه نیز منتشر خواهد شد.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Save Button */}
             <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <button
@@ -3088,7 +3267,7 @@ export const AdminPanel: React.FC = () => {
                             <Crown className="w-4 h-4" />
                           </button>
 
-                          <button
+                           <button
                             onClick={async () => {
                               const reason = prompt(
                                 `لطفاً علت تعلیق حساب کاربر «${st.name}» را وارد کنید:`,
@@ -3107,6 +3286,20 @@ export const AdminPanel: React.FC = () => {
                             className="p-2 text-rose-600 hover:text-rose-800 hover:bg-rose-100/80 rounded-xl transition"
                           >
                             <AlertTriangle className="w-4 h-4" />
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (!st.baleChatId) {
+                                alert(`⚠️ کاربر «${st.name}» هنوز حساب پیام‌رسان بله خود را متصل نکرده است. (از طریق دریافت کد ورود بله در پروفایل خود)`);
+                                return;
+                              }
+                              setSelectedStudentForBaleMsg(st);
+                            }}
+                            title="ارسال پیام مستقیم از طریق بات بله"
+                            className={`p-2 rounded-xl transition ${st.baleChatId ? 'text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-bold' : 'text-slate-300 cursor-not-allowed'}`}
+                          >
+                            <MessageSquare className="w-4 h-4" />
                           </button>
 
                           <button
@@ -3194,6 +3387,20 @@ export const AdminPanel: React.FC = () => {
                           </button>
 
                           <button
+                            onClick={() => {
+                              if (!st.baleChatId) {
+                                alert(`⚠️ کاربر «${st.name}» هنوز حساب پیام‌رسان بله خود را متصل نکرده است. (از طریق دریافت کد ورود بله در پروفایل خود)`);
+                                return;
+                              }
+                              setSelectedStudentForBaleMsg(st);
+                            }}
+                            title="ارسال پیام مستقیم از طریق بات بله"
+                            className={`p-2.5 rounded-xl border transition flex items-center justify-center ${st.baleChatId ? 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200' : 'bg-slate-50 text-slate-300 border-slate-200 cursor-not-allowed'}`}
+                          >
+                            <MessageSquare className="w-4 h-4" />
+                          </button>
+
+                          <button
                             onClick={async () => {
                               if (confirm(`آیا از حذف کامل حساب کاربر تعلیق‌شده «${st.name}» مطمئن هستید؟`)) {
                                 const res = await deleteUser(st.id);
@@ -3262,6 +3469,20 @@ export const AdminPanel: React.FC = () => {
                           >
                             <UserCheck className="w-4 h-4" />
                             <span>تایید و فعال‌سازی</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (!st.baleChatId) {
+                                alert(`⚠️ کاربر «${st.name}» هنوز حساب پیام‌رسان بله خود را متصل نکرده است. (از طریق دریافت کد ورود بله در پروفایل خود)`);
+                                return;
+                              }
+                              setSelectedStudentForBaleMsg(st);
+                            }}
+                            title="ارسال پیام مستقیم از طریق بات بله"
+                            className={`p-2 rounded-xl transition ${st.baleChatId ? 'text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 font-bold' : 'text-slate-300 cursor-not-allowed'}`}
+                          >
+                            <MessageSquare className="w-4 h-4" />
                           </button>
 
                           <button
@@ -3663,6 +3884,101 @@ export const AdminPanel: React.FC = () => {
       {/* Edit Admin Profile & Avatar Modal */}
       {showEditProfileModal && (
         <EditProfileModal onClose={() => setShowEditProfileModal(false)} />
+      )}
+
+      {/* Direct Bale message Modal */}
+      {selectedStudentForBaleMsg && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-55 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-lg overflow-hidden border border-slate-200 shadow-xl flex flex-col my-8">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-r from-indigo-600 to-indigo-800 text-white px-6 py-5 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center text-white shrink-0">
+                  <MessageSquare className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm sm:text-base">ارسال پیام مستقیم به دانش‌آموز در بله</h3>
+                  <p className="text-[11px] text-indigo-100 mt-0.5">ارسال مستقیم از طریق بازوی بله مکتب‌خانه</p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedStudentForBaleMsg(null);
+                  setBaleCustomMessageText('');
+                }}
+                className="text-white/80 hover:text-white transition p-1 bg-white/10 hover:bg-white/20 rounded-xl cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-4">
+              {/* Target Student Quick Info Card */}
+              <div className="flex items-center gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200/60">
+                <img
+                  src={selectedStudentForBaleMsg.avatar}
+                  alt={selectedStudentForBaleMsg.name}
+                  className="w-12 h-12 rounded-full object-cover ring-2 ring-indigo-500"
+                />
+                <div>
+                  <h4 className="font-bold text-slate-900 text-sm">{selectedStudentForBaleMsg.name}</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    کلاس {selectedStudentForBaleMsg.className || selectedStudentForBaleMsg.schoolClass || 'نامشخص'} • شماره همراه: {selectedStudentForBaleMsg.phone}
+                  </p>
+                </div>
+              </div>
+
+              {/* Message Input Box */}
+              <div className="space-y-2">
+                <label className="text-xs font-black text-slate-700 block">متن پیام ارسالی شما *</label>
+                <textarea
+                  required
+                  rows={5}
+                  placeholder="متن پیام خود را به زبان ساده و فارسی بنویسید..."
+                  value={baleCustomMessageText}
+                  onChange={(e) => setBaleCustomMessageText(e.target.value)}
+                  className="w-full text-xs sm:text-sm p-4 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600 font-bold text-slate-800 shadow-2xs resize-none"
+                />
+                <span className="text-[10px] text-slate-400 block leading-relaxed">
+                  💡 پیام شما با سربرگ رسمی کتابخانه مدرسه برای دانش‌آموز ارسال خواهد شد.
+                </span>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="bg-slate-50 px-6 py-4 flex items-center justify-end gap-2.5 border-t border-slate-200/60">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedStudentForBaleMsg(null);
+                  setBaleCustomMessageText('');
+                }}
+                className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                disabled={isSendingBaleMsg || !baleCustomMessageText.trim()}
+                onClick={handleSendBaleMessage}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+              >
+                {isSendingBaleMsg ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>در حال ارسال پیام...</span>
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    <span>ارسال پیام به دانش‌آموز</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -196,6 +196,39 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
+// Background job to scan and notify borrowers about 24h remaining deadline via Bale
+setInterval(async () => {
+  try {
+    const allRequests = dbService.getAllRequests();
+    if (!allRequests || allRequests.length === 0) return;
+
+    const now = Date.now();
+    for (const req of allRequests) {
+      if (req.status === 'handover_confirmed' && req.dueDateTimestamp) {
+        const timeLeftMs = req.dueDateTimestamp - now;
+        // If less than 24 hours left (and is not already overdue/negative), and we haven't sent the warning yet
+        if (timeLeftMs > 0 && timeLeftMs <= 24 * 60 * 60 * 1000 && !req.is24hWarningSent) {
+          // Update database first to prevent double-sending
+          dbService.updateRequest(req.id, { is24hWarningSent: true });
+          
+          // Send Bale notification
+          const hoursLeft = Math.ceil(timeLeftMs / (1000 * 60 * 60));
+          const message = `⏰ <b>یادآوری مهم تحویل کتاب مکتب‌خانه</b>\n\n` +
+            `کاربر گرامی، تنها <b>${hoursLeft} ساعت</b> تا پایان مهلت امانت کتاب <b>«${req.bookTitle}»</b> باقی مانده است.\n\n` +
+            `👤 <b>مالک کتاب:</b> ${req.ownerName}\n` +
+            `📅 <b>مهلت تحویل:</b> ${req.dueDate}\n\n` +
+            `لطفاً جهت هماهنگی و عودت کتاب اقدام نموده و پس از عودت، دکمه «تایید تحویل فیزیکی» را در سامانه کلیک کنید تا حساب کاربری شما مسدود نگردد. 🙏📚`;
+          
+          await notifyUserOnBale(req.borrowerId, message);
+          console.log(`[Scheduler] 24h warning sent to user ${req.borrowerId} for book ${req.bookTitle}`);
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Error in 24h warning scheduler:', err);
+  }
+}, 30 * 1000); // Run check every 30 seconds for immediate responsiveness in demo
+
 /**
  * کلاینت ارتباط با API پیام‌رسان بله
  */
@@ -459,6 +492,66 @@ export async function publishBookToBaleChannel(book: Book, siteBaseUrl?: string)
   } catch (err: any) {
     console.error('Error publishing book to Bale channel:', err);
     return { ok: false, error: err.message || 'خطای سرور' };
+  }
+}
+
+/**
+ * انتشار مستقیم اطلاعیه مدرسه در کانال بله
+ */
+export async function publishAnnouncementToBaleChannel(announcementText: string, imageUrl?: string, siteBaseUrl?: string) {
+  try {
+    const config = dbService.getSystemConfig();
+    let channelId = config.baleChannelUsername?.trim();
+    if (!channelId) {
+      console.log('⚠️ [Bale Channel] نام کاربری یا آیدی کانال بله در تنظیمات ثبت نشده است.');
+      return { ok: false, error: 'آیدی کانال بله تنظیم نشده است.' };
+    }
+
+    if (!channelId.startsWith('@') && !channelId.startsWith('-') && !/^\d+$/.test(channelId)) {
+      channelId = `@${channelId}`;
+    }
+
+    const effectiveBaseUrl = siteBaseUrl || config.websiteBaseUrl || process.env.APP_URL || '';
+
+    // Add school branding header & link to main site
+    const postText = `📢 <b>اطلاعیه رسمی کتابخانه مکتب‌خانه</b>\n\n` +
+      `${announcementText.trim()}\n\n` +
+      `🌐 <b>سامانه مکتب‌خانه:</b> ${effectiveBaseUrl || 'سامانه فعال مدرسه'}`;
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: '📚 ورود به سامانه مکتب‌خانه', url: effectiveBaseUrl || 'https://bale.ai' }
+        ]
+      ]
+    };
+
+    if (imageUrl && imageUrl.trim()) {
+      const photoResult = await sendBalePhoto(channelId, imageUrl.trim(), postText, replyMarkup, effectiveBaseUrl);
+      if (photoResult && photoResult.ok) {
+        dbService.addSystemLog(
+          'info',
+          `انتشار اطلاعیه در کانال بله (همراه با تصویر)`,
+          `اطلاعیه با موفقیت به همراه تصویر به کانال ${channelId} ارسال شد. شناسه پیام: ${photoResult.result?.message_id}`
+        );
+        return { ok: true, messageId: photoResult.result?.message_id, withPhoto: true };
+      }
+      console.warn(`⚠️ [Bale Channel] ارسال عکس اطلاعیه با خطا مواجه شد. در حال ارسال پیام متنی...`);
+    }
+
+    const msgResult = await sendBaleMessage(channelId, postText, replyMarkup);
+    if (msgResult && msgResult.ok) {
+      dbService.addSystemLog(
+        'info',
+        `انتشار متنی اطلاعیه در کانال بله`,
+        `اطلاعیه به صورت متنی با موفقیت به کانال ${channelId} ارسال شد. شناسه پیام: ${msgResult.result?.message_id}`
+      );
+      return { ok: true, messageId: msgResult.result?.message_id, withPhoto: false };
+    }
+    return { ok: false, error: msgResult.error || 'خطا در ارسال پیام به کانال' };
+  } catch (err: any) {
+    console.error('Failed to publish announcement to Bale Channel:', err);
+    return { ok: false, error: err.message || 'خطای غیرمنتظره' };
   }
 }
 
@@ -2132,6 +2225,36 @@ async function startServer() {
     }
   });
 
+  app.post('/api/users/:id/send-bale-message', async (req: Request, res: Response): Promise<any> => {
+    const { message } = req.body || {};
+    if (!message || !message.trim()) {
+      return res.status(400).json({ success: false, message: 'متن پیام نمی‌تواند خالی باشد.' });
+    }
+    const user = dbService.getUserById(req.params.id);
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+    
+    if (!user.baleChatId) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `کاربر ${user.name} هنوز چت بله خود را متصل نکرده است و امکان ارسال پیام مستقیم وجود ندارد.` 
+      });
+    }
+
+    try {
+      await notifyUserOnBale(user.id, `📨 <b>پیام از طرف مسئول کتابخانه مدرسه:</b>\n\n${message.trim()}`);
+      
+      dbService.addSystemLog(
+        'info',
+        `پیام مستقیم بله به دانش‌آموز (${user.name})`,
+        `متن پیام: ${message.trim().substring(0, 100)}...`
+      );
+
+      res.json({ success: true, message: 'پیام با موفقیت از طریق بات بله به دانش‌آموز ارسال شد.' });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message || 'خطا در ارسال پیام بله.' });
+    }
+  });
+
   app.post('/api/users/:id/approve', (req: Request, res: Response): any => {
     const user = dbService.updateUser(req.params.id, { status: 'approved', rejectionReason: '', suspensionReason: '' });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
@@ -2782,7 +2905,8 @@ async function startServer() {
       handoverConfirmedAt: now.toLocaleDateString('fa-IR') + ' ساعت ' + now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }),
       handoverConfirmedByRole: role || 'borrower',
       is12hGraceConfirmed: true,
-      dueDate: returnDueDate
+      dueDate: returnDueDate,
+      dueDateTimestamp: now.getTime() + 7 * 24 * 60 * 60 * 1000
     });
 
     // Notify borrower
@@ -3164,13 +3288,42 @@ async function startServer() {
     res.json({ success: true, config: dbService.getSystemConfig() });
   });
 
-  app.post('/api/settings/config', (req: Request, res: Response): any => {
+  app.post('/api/settings/config', async (req: Request, res: Response): Promise<any> => {
     const config = req.body;
     if (!config || typeof config !== 'object') {
       return res.status(400).json({ success: false, message: 'اطلاعات تنظیمات نامعتبر است.' });
     }
+
+    let shouldPublishToBale = false;
+    if (config.announcement) {
+      if (config.announcement.publishToBale) {
+        shouldPublishToBale = true;
+        delete config.announcement.publishToBale;
+      }
+
+      // Calculate and set creation dates if active
+      if (config.announcement.isActive) {
+        if (!config.announcement.createdAt) {
+          config.announcement.createdAt = new Date().toLocaleDateString('fa-IR');
+        }
+        if (!config.announcement.createdAtTimestamp) {
+          config.announcement.createdAtTimestamp = Date.now();
+        }
+      }
+    }
+
     const updated = dbService.setSystemConfig(config);
     dbService.addSystemLog('info', 'به‌روزرسانی قوانین و تنظیمات سامانه توسط مدیر', JSON.stringify(updated));
+
+    if (shouldPublishToBale && updated.announcement?.isActive && updated.announcement.text) {
+      try {
+        const siteUrl = updated.websiteBaseUrl || req.headers.referer || '';
+        await publishAnnouncementToBaleChannel(updated.announcement.text, updated.announcement.imageUrl, siteUrl);
+      } catch (channelErr) {
+        console.error('Failed to auto-publish announcement to Bale Channel on config save:', channelErr);
+      }
+    }
+
     res.json({ success: true, message: 'تنظیمات با موفقیت ذخیره شد.', config: updated });
   });
 

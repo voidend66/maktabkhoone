@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Navbar } from './components/Navbar';
 import { MainLibrary } from './components/MainLibrary';
@@ -12,16 +12,51 @@ import { AdminPanel } from './components/AdminPanel';
 import { BaleOtpModal } from './components/BaleOtpModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
 import { SystemGuideModal } from './components/SystemGuideModal';
+import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { Book } from './types';
-import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
 import { api } from './services/api';
 
 function MainAppContent() {
-  const { requestBookLoan, currentUser, resetToDefaults, books } = useApp();
+  const {
+    requestBookLoan,
+    currentUser,
+    resetToDefaults,
+    books,
+    notifications,
+    markNotificationRead,
+    clearNotifications,
+    requests
+  } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+
+  const borrowedBooksCountdowns = useMemo(() => {
+    if (!currentUser) return [];
+    return requests
+      .filter((r) => r.borrowerId === currentUser.id && r.status === 'handover_confirmed')
+      .map((r) => {
+        const now = Date.now();
+        let ts = r.dueDateTimestamp;
+        if (!ts) {
+          // Fallback if timestamp isn't explicitly set
+          ts = Date.now() + 4 * 24 * 60 * 60 * 1000; // 4 days fallback
+        }
+        const diffMs = ts - now;
+        const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+        const hoursLeft = Math.ceil(diffMs / (1000 * 60 * 60));
+        
+        return {
+          request: r,
+          daysLeft: diffDays,
+          hoursLeft: hoursLeft,
+          isOverdue: diffMs < 0,
+        };
+      });
+  }, [requests, currentUser]);
 
   // Deep Link Handling (e.g. from Bale Channel post ?book=id)
   useEffect(() => {
@@ -145,6 +180,7 @@ function MainAppContent() {
         onOpenRegister={() => setShowAuthModal(true)}
         onOpenPrintModal={() => setActiveTab('league')}
         onOpenGuide={() => setShowGuideModal(true)}
+        onOpenNotifications={() => setShowNotifications(true)}
       />
 
       {/* Account Suspended Notice Banner */}
@@ -158,6 +194,78 @@ function MainAppContent() {
           </div>
           <div className="text-[11px] bg-rose-800 text-white px-3 py-1.5 rounded-xl border border-rose-500">
             📞 جهت فعال‌سازی مجدد، به مسئول کتابخانه مدرسه مراجعه کنید یا با آیدی پشتیبانی تماس بگیرید.
+          </div>
+        </div>
+      )}
+
+      {/* Borrowed Books Countdown Reminder Banners */}
+      {currentUser && borrowedBooksCountdowns.length > 0 && (
+        <div className="bg-slate-50 border-b border-slate-200 py-3 px-4">
+          <div className="max-w-7xl mx-auto flex flex-col gap-2">
+            {borrowedBooksCountdowns.map(({ request, daysLeft, hoursLeft, isOverdue }) => {
+              if (isOverdue) {
+                return (
+                  <div key={request.id} className="bg-rose-50 border border-rose-200 text-rose-900 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-pulse">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-rose-600 flex items-center justify-center text-white shrink-0">
+                        <AlertCircle className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-xs sm:text-sm">⚠️ مهلت تحویل کتاب «{request.bookTitle}» به پایان رسیده است!</h4>
+                        <p className="text-[11px] text-rose-700 mt-0.5">لطفاً هرچه سریع‌تر کتاب را به همکلاسی خود <strong>«{request.ownerName}»</strong> تحویل داده و دکمه عودت را ثبت کنید تا حساب شما معلق نشود.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setActiveTab('requests'); }}
+                      className="text-xs font-bold bg-rose-600 hover:bg-rose-700 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0"
+                    >
+                      ورود به صفحه امانت‌ها و عودت ➜
+                    </button>
+                  </div>
+                );
+              } else if (hoursLeft <= 24) {
+                return (
+                  <div key={request.id} className="bg-amber-50 border border-amber-200 text-amber-950 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs animate-bounce">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-xs sm:text-sm">⏰ هشدار: کمتر از ۲۴ ساعت تا تحویل کتاب «{request.bookTitle}» باقی مانده است!</h4>
+                        <p className="text-[11px] text-amber-800 mt-0.5">تنها <strong>{hoursLeft} ساعت</strong> فرصت دارید تا کتاب را به مالک آن ({request.ownerName}) پس دهید.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setActiveTab('requests'); }}
+                      className="text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0"
+                    >
+                      مشاهده جزئیات امانت ➜
+                    </button>
+                  </div>
+                );
+              } else if (daysLeft <= 3) {
+                return (
+                  <div key={request.id} className="bg-cyan-50 border border-cyan-200 text-cyan-950 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-full bg-cyan-600 flex items-center justify-center text-white shrink-0">
+                        <Clock className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h4 className="font-black text-xs sm:text-sm">📅 روزشمار تحویل: {daysLeft} روز دیگر تا تحویل کتاب «{request.bookTitle}»</h4>
+                        <p className="text-[11px] text-cyan-800 mt-0.5">مهلت عودت کتاب شما تا تاریخ <strong>{request.dueDate}</strong> است.</p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setActiveTab('requests'); }}
+                      className="text-xs font-bold bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0"
+                    >
+                      ورود به صفحه امانت‌ها ➜
+                    </button>
+                  </div>
+                );
+              }
+              return null;
+            })}
           </div>
         </div>
       )}
@@ -234,6 +342,21 @@ function MainAppContent() {
           onClose={() => setShowAuthModal(false)}
           onSuccessLogin={(phone) => {
             showToast(`خوش آمدید! ورود با شماره ${phone} با موفقیت انجام شد.`, 'success');
+          }}
+        />
+      )}
+
+      {/* Notification Center Modal */}
+      {currentUser && (
+        <NotificationCenterModal
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          notifications={notifications}
+          onMarkRead={markNotificationRead}
+          onClearAll={clearNotifications}
+          onNavigateTab={(tab) => {
+            setActiveTab(tab);
+            setShowNotifications(false);
           }}
         />
       )}

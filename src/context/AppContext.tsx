@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, ReactNode } from 'react';
 import {
   User,
   Book,
@@ -64,6 +64,7 @@ interface AppContextType {
   rejectUser: (userId: string, reason?: string) => void;
   suspendUser: (userId: string, reason: string) => Promise<{ success: boolean; message?: string }>;
   unsuspendUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
+  sendBaleMessageToStudent: (userId: string, message: string) => Promise<{ success: boolean; message: string }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   makeAdmin: (id: string) => Promise<{ success: boolean; message?: string }>;
   addAdminByPhone: (data: { phone: string; name?: string; password?: string }) => Promise<{ success: boolean; message?: string }>;
@@ -529,6 +530,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     } catch (e: any) {
       console.error('Error unsuspending user on server:', e);
       return { success: false, message: e.message || 'خطا در رفع تعلیق حساب کاربر' };
+    }
+  };
+
+  const sendBaleMessageToStudent = async (userId: string, message: string): Promise<{ success: boolean; message: string }> => {
+    try {
+      const res = await api.sendBaleMessageToStudent(userId, message);
+      await refreshData();
+      return res;
+    } catch (e: any) {
+      console.error('Error sending direct Bale message:', e);
+      return { success: false, message: e.message || 'خطا در ارسال پیام به بله' };
     }
   };
 
@@ -1197,15 +1209,78 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
   };
 
+  const mappedBooks = useMemo(() => {
+    return books.map((book) => {
+      let updatedBook = { ...book };
+      const owner = users.find((u) => u.id === book.ownerId);
+      if (owner) {
+        updatedBook.ownerName = owner.name;
+        updatedBook.ownerAvatar = owner.avatar;
+        updatedBook.ownerClass = owner.schoolClass || book.ownerClass;
+      }
+      if (book.borrowerId) {
+        const borrower = users.find((u) => u.id === book.borrowerId);
+        if (borrower) {
+          updatedBook.borrowerName = borrower.name;
+        }
+      }
+      const updatedReviews = (book.reviews || []).map((review) => {
+        let updatedReview = { ...review };
+        const reviewer = users.find((u) => u.id === review.userId);
+        if (reviewer) {
+          updatedReview.userName = reviewer.name;
+          updatedReview.userAvatar = reviewer.avatar;
+          updatedReview.userClass = reviewer.schoolClass || review.userClass;
+        }
+        return updatedReview;
+      });
+      updatedBook.reviews = updatedReviews;
+      return updatedBook;
+    });
+  }, [books, users]);
+
+  const mappedRequests = useMemo(() => {
+    return requests.map((req) => {
+      let updatedReq = { ...req };
+      const owner = users.find((u) => u.id === req.ownerId);
+      if (owner) {
+        updatedReq.ownerName = owner.name;
+        updatedReq.ownerClass = owner.schoolClass || req.ownerClass;
+      }
+      const borrower = users.find((u) => u.id === req.borrowerId);
+      if (borrower) {
+        updatedReq.borrowerName = borrower.name;
+        updatedReq.borrowerClass = borrower.schoolClass || req.borrowerClass;
+        updatedReq.borrowerPhone = borrower.phone || req.borrowerPhone;
+      }
+      return updatedReq;
+    });
+  }, [requests, users]);
+
+  const mappedFeedbacks = useMemo(() => {
+    return feedbacks.map((fb) => {
+      let updatedFb = { ...fb };
+      const fromUser = users.find((u) => u.id === fb.fromUserId);
+      if (fromUser) {
+        updatedFb.fromUserName = fromUser.name;
+      }
+      const toUser = users.find((u) => u.id === fb.toUserId);
+      if (toUser) {
+        updatedFb.toUserName = toUser.name;
+      }
+      return updatedFb;
+    });
+  }, [feedbacks, users]);
+
   return (
     <AppContext.Provider
       value={{
         currentUser,
         users,
-        books,
-        requests,
+        books: mappedBooks,
+        requests: mappedRequests,
         schoolClasses,
-        feedbacks,
+        feedbacks: mappedFeedbacks,
         bankCardInfo,
         systemConfig,
         isLoading,
@@ -1221,6 +1296,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         rejectUser,
         suspendUser,
         unsuspendUser,
+        sendBaleMessageToStudent,
         deleteUser,
         makeAdmin,
         addAdminByPhone,

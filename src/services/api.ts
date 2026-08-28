@@ -140,6 +140,19 @@ export const api = {
     return await res.json();
   },
 
+  async sendBaleMessageToStudent(id: string, message: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${id}/send-bale-message`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ارسال پیام به بله' };
+    }
+  },
+
   async deleteUser(id: string): Promise<{ success: boolean; message?: string }> {
     try {
       const res = await fetch(`${API_BASE}/users/${id}`, {

@@ -783,7 +783,8 @@ export const dbService = {
           supportHours: parsed.supportHours ?? 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
           baleChannelUsername: parsed.baleChannelUsername ?? '@maktabkhune_books',
           autoPublishBooksToBale: parsed.autoPublishBooksToBale ?? true,
-          websiteBaseUrl: parsed.websiteBaseUrl ?? ''
+          websiteBaseUrl: parsed.websiteBaseUrl ?? '',
+          announcement: parsed.announcement ?? undefined
         };
       } catch (e) {
         // fallback

@@ -37,11 +37,24 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
   onNavigateAddBooks,
   onNavigateBenefits
 }) => {
-  const { books, users, currentUser } = useApp();
+  const { books, users, currentUser, systemConfig } = useApp();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('همه تصنیف‌ها');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'reviews'>('newest');
+
+  const announcement = systemConfig?.announcement;
+  const isAnnouncementValid = useMemo(() => {
+    if (!announcement || !announcement.isActive || !announcement.text) return false;
+    if (announcement.durationDays && announcement.durationDays > 0) {
+      const createdTimestamp = announcement.createdAtTimestamp || Date.now();
+      const durationMs = announcement.durationDays * 24 * 60 * 60 * 1000;
+      if (Date.now() - createdTimestamp > durationMs) {
+        return false;
+      }
+    }
+    return true;
+  }, [announcement]);
 
   // Filtered & Sorted Books
   const filteredBooks = useMemo(() => {
@@ -124,6 +137,41 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Active Announcement Card */}
+      {isAnnouncementValid && announcement && (
+        <div className="relative rounded-3xl bg-gradient-to-r from-cyan-950 via-sky-950 to-indigo-950 text-white p-6 sm:p-8 shadow-xl overflow-hidden border-2 border-cyan-500/30 flex flex-col md:flex-row items-center gap-6">
+          {/* Background Decorative Graphic */}
+          <div className="absolute -left-10 -bottom-10 w-48 h-48 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+          {announcement.imageUrl && (
+            <div className="w-full md:w-1/3 shrink-0 rounded-2xl overflow-hidden border border-cyan-500/20 shadow-lg">
+              <img
+                src={announcement.imageUrl}
+                alt="تصویر اطلاعیه"
+                className="w-full h-44 md:h-52 object-cover hover:scale-105 transition duration-500"
+                referrerPolicy="no-referrer"
+              />
+            </div>
+          )}
+          <div className="flex-1 space-y-3 relative z-10 text-right">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 px-3 py-1 rounded-full text-[10px] font-black tracking-wide uppercase flex items-center gap-1">
+                <Sparkles className="w-3 h-3 animate-pulse text-amber-400" />
+                <span>اطلاعیه جدید کتابخانه</span>
+              </span>
+              <span className="text-cyan-300 text-[10px] font-bold">
+                📅 منتشر شده در: {announcement.createdAt}
+              </span>
+            </div>
+            <h2 className="text-xl sm:text-2xl font-['Lalezar',cursive] leading-tight text-amber-300">
+              اعلان مهم کتابخانه مدرسه 📢
+            </h2>
+            <div className="text-cyan-100 text-xs sm:text-sm leading-relaxed font-bold whitespace-pre-line bg-sky-950/40 p-4 rounded-2xl border border-sky-500/10">
+              {announcement.text}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Boyish School Motifs Banner (Backpack, Desk Lamp, Paper Airplane, Books) */}
       <BoyishMotifsBanner />

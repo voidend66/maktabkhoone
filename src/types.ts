@@ -124,6 +124,8 @@ export interface LendingRequest {
   paidAt?: string;
   paymentProof?: PaymentProof;
   dueDate?: string; // Estimated return date (7 days standard)
+  dueDateTimestamp?: number; // Due date timestamp in ms
+  is24hWarningSent?: boolean; // Flag to avoid double sending 24h reminders
   extensionStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   extensionCount?: number; // 0 or 1
   extensionRequestedAt?: string;
@@ -200,6 +202,15 @@ export interface RegistrationInput {
   initialBooks: NewBookInput[];
 }
 
+export interface SystemAnnouncement {
+  text: string;
+  imageUrl?: string;
+  isActive: boolean;
+  durationDays: number; // e.g. 7 for 1 week, 0 for unlimited/custom
+  createdAt?: string;
+  createdAtTimestamp?: number;
+}
+
 export interface SystemConfig {
   minBooksForRegistration: number;
   maxBooksForRegistration: number;
@@ -215,6 +226,7 @@ export interface SystemConfig {
   baleChannelUsername?: string;
   autoPublishBooksToBale?: boolean;
   websiteBaseUrl?: string;
+  announcement?: SystemAnnouncement;
 }
 
 export interface CustomAvatar {

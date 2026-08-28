@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
-import { NotificationCenterModal } from './NotificationCenterModal';
 import {
   BookOpen,
   Trophy,
@@ -30,6 +29,7 @@ interface NavbarProps {
   onOpenPrintModal?: () => void;
   onOpenBaleOtp?: () => void;
   onOpenGuide?: () => void;
+  onOpenNotifications?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -40,7 +40,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenRegister,
   onOpenPrintModal,
   onOpenBaleOtp,
-  onOpenGuide
+  onOpenGuide,
+  onOpenNotifications
 }) => {
   const {
     currentUser,
@@ -53,8 +54,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     markNotificationRead,
     clearNotifications
   } = useApp();
-
-  const [showNotifications, setShowNotifications] = useState(false);
 
   // Count pending requests for current user
   const pendingRequestsForMe = currentUser
@@ -194,7 +193,7 @@ export const Navbar: React.FC<NavbarProps> = ({
               <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* Notification Bell Button */}
                 <button
-                  onClick={() => setShowNotifications(true)}
+                  onClick={() => onOpenNotifications?.()}
                   className="relative p-2 text-slate-600 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0"
                   title="اعلان‌ها"
                 >
@@ -416,21 +415,6 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
-
-      {/* Notification Center Modal */}
-      {currentUser && (
-        <NotificationCenterModal
-          isOpen={showNotifications}
-          onClose={() => setShowNotifications(false)}
-          notifications={notifications}
-          onMarkRead={markNotificationRead}
-          onClearAll={clearNotifications}
-          onNavigateTab={(tab) => {
-            setActiveTab(tab);
-            setShowNotifications(false);
-          }}
-        />
-      )}
     </header>
   );
 };
