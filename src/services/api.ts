@@ -459,5 +459,28 @@ export const api = {
     } catch (err) {
       console.warn('Could not report error to system logs:', err);
     }
+  },
+
+  // Get Server Storage & Path Info
+  async getStorageInfo(): Promise<{
+    success: boolean;
+    upload_dir?: string;
+    raw_upload_dir?: string;
+    db_path?: string;
+    port?: number | string;
+    upload_dir_exists?: boolean;
+    db_exists?: boolean;
+    db_size_bytes?: number;
+    total_uploaded_files?: number;
+    is_external_drive?: boolean;
+  } | null> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/storage-info`);
+      if (!res.ok) throw new Error('Failed to fetch storage info');
+      return await res.json();
+    } catch (err) {
+      console.warn('API getStorageInfo error:', err);
+      return null;
+    }
   }
 };

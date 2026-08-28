@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import path from 'path';
 import fs from 'fs';
 import {
@@ -13,14 +14,34 @@ import {
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
-// Ensure data directory exists
-const DATA_DIR = path.join(process.cwd(), 'data');
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Function to determine valid DB path and ensure directory exists
+function initDbPath(): string {
+  const preferredPath = process.env.DB_PATH || '/media/mahdi/mm/maktab_data/maktab.db';
+  const dataDir = path.dirname(preferredPath);
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    console.log(`💾 [دیتابیس] پوشه ذخیره‌سازی دیتابیس در ${dataDir} تایید و آماده است.`);
+    return preferredPath;
+  } catch (err: any) {
+    console.warn(`⚠️ [دیتابیس] عدم امکان دسترسی به ${dataDir} (${err.message}). استفاده از مسیر جایگزین ./data/maktab.db`);
+    const fallbackPath = path.join(process.cwd(), 'data', 'maktab.db');
+    const fallbackDir = path.dirname(fallbackPath);
+    if (!fs.existsSync(fallbackDir)) {
+      fs.mkdirSync(fallbackDir, { recursive: true });
+    }
+    return fallbackPath;
+  }
 }
 
-const DB_FILE = path.join(DATA_DIR, 'maktabkhune.json');
-const DB_BACKUP = path.join(DATA_DIR, 'maktabkhune.json.bak');
+export const DB_PATH = initDbPath();
+const DATA_DIR = path.dirname(DB_PATH);
+
+// Support legacy JSON database file if DB_PATH does not exist yet
+const LEGACY_DB_FILE = path.join(process.cwd(), 'data', 'maktabkhune.json');
+const DB_BACKUP = `${DB_PATH}.bak`;
 
 export interface SystemLog {
   id: string;
@@ -56,23 +77,23 @@ let memoryDb: DatabaseSchema = {
 };
 
 /**
- * Persist database to disk atomically
+ * Persist database to disk atomically at DB_PATH
  */
 function saveToDisk() {
   try {
     const jsonStr = JSON.stringify(memoryDb, null, 2);
-    const tempFile = `${DB_FILE}.tmp`;
+    const tempFile = `${DB_PATH}.tmp`;
     fs.writeFileSync(tempFile, jsonStr, 'utf-8');
-    fs.renameSync(tempFile, DB_FILE);
+    fs.renameSync(tempFile, DB_PATH);
 
     // Keep a backup occasionally
     try {
-      fs.copyFileSync(DB_FILE, DB_BACKUP);
+      fs.copyFileSync(DB_PATH, DB_BACKUP);
     } catch {
       // ignore backup errors
     }
   } catch (error) {
-    console.error('Error persisting database to disk:', error);
+    console.error(`Error persisting database to ${DB_PATH}:`, error);
   }
 }
 
@@ -81,8 +102,13 @@ function saveToDisk() {
  */
 function loadFromDisk(): boolean {
   try {
-    if (fs.existsSync(DB_FILE)) {
-      const content = fs.readFileSync(DB_FILE, 'utf-8');
+    let fileToRead = DB_PATH;
+    if (!fs.existsSync(fileToRead) && fs.existsSync(LEGACY_DB_FILE)) {
+      fileToRead = LEGACY_DB_FILE;
+    }
+
+    if (fs.existsSync(fileToRead)) {
+      const content = fs.readFileSync(fileToRead, 'utf-8');
       if (content.trim()) {
         const parsed = JSON.parse(content);
         memoryDb = {

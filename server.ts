@@ -1,11 +1,11 @@
+import 'dotenv/config';
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
-import dotenv from 'dotenv';
 import crypto from 'crypto';
 import multer from 'multer';
-import { dbService, addSystemLogListener } from './server/db';
+import { dbService, addSystemLogListener, DB_PATH } from './server/db';
 import { isAdminPhone } from './src/data/mockData';
 import {
   User,
@@ -17,9 +17,6 @@ import {
   RegistrationInput,
   NewBookInput
 } from './src/types';
-
-// Load environment variables
-dotenv.config();
 
 /**
  * ============================================================================
@@ -39,14 +36,38 @@ const DEFAULT_WEBHOOK_URL =
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
 const SERVER_VERSION = '3.0.0';
-const BUILD_DATE = '2026-08-26';
-const PORT = Number(process.env.PORT) || 3000;
+const BUILD_DATE = '2026-08-28';
 
-// Ensure upload directory exists
-const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
-if (!fs.existsSync(UPLOADS_DIR)) {
-  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+// Configurable Port (Environment variable PORT with default 8098)
+const PORT = Number(process.env.PORT) || 8098;
+
+// Configurable Upload Directory (Environment variable UPLOAD_DIR with default external drive path)
+const RAW_UPLOAD_DIR = process.env.UPLOAD_DIR || '/media/mahdi/mm/maktab_uploads';
+
+/**
+ * Auto-create directory with recursive: true and handle permissions safely
+ */
+export function initializeUploadDirectory(targetDir: string): string {
+  try {
+    if (!fs.existsSync(targetDir)) {
+      fs.mkdirSync(targetDir, { recursive: true });
+    }
+    const testFile = path.join(targetDir, `.write_test_${Date.now()}`);
+    fs.writeFileSync(testFile, 'ok');
+    fs.unlinkSync(testFile);
+    console.log(`📁 [آپلود سرور] پوشه آپلود در مسیر ${targetDir} آماده و قابل نوشتن است.`);
+    return targetDir;
+  } catch (err: any) {
+    console.warn(`⚠️ [آپلود سرور] ایجاد/دسترسی به ${targetDir} مقدور نیست (${err.message}). استفاده از پوشه محلی ./uploads`);
+    const fallbackDir = path.join(process.cwd(), 'uploads');
+    if (!fs.existsSync(fallbackDir)) {
+      fs.mkdirSync(fallbackDir, { recursive: true });
+    }
+    return fallbackDir;
+  }
 }
+
+const UPLOADS_DIR = initializeUploadDirectory(RAW_UPLOAD_DIR);
 
 // Multer Storage Configuration (Strict image validation & Unique file naming)
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -1507,16 +1528,19 @@ async function startServer() {
       if (err) {
         if (err instanceof multer.MulterError) {
           if (err.code === 'LIMIT_FILE_SIZE') {
+            dbService.addSystemLog('warn', 'خطای حجم آپلود', 'فایل تصویر بیش از ۱۰ مگابایت بود.');
             return res.status(400).json({
               success: false,
               message: 'حجم فایل عکس بیش از حد مجاز (حداکثر ۱۰ مگابایت) است.'
             });
           }
+          dbService.addSystemLog('warn', 'خطای بارگذاری Multer', err.message);
           return res.status(400).json({
             success: false,
             message: `خطای بارگذاری فایل: ${err.message}`
           });
         }
+        dbService.addSystemLog('error', 'خطای اعتبارسنجی تصویر آپلودی', err.message);
         return res.status(400).json({
           success: false,
           message: err.message || 'فقط فرمت‌های تصویری معتبر (JPG, JPEG, PNG, WEBP) مجاز هستند.'
@@ -1528,12 +1552,21 @@ async function startServer() {
       }
 
       const fileUrl = `/uploads/${req.file.filename}`;
+
+      // Log successful file upload in system logs
+      dbService.addSystemLog(
+        'info',
+        'آپلود تصویر جدید در دیسک سرور',
+        `فایل «${req.file.originalname}» با موفقیت در دایرکتوری ${UPLOADS_DIR} ذخیره شد. (نام: ${req.file.filename} - حجم: ${Math.round(req.file.size / 1024)}KB)`
+      );
+
       return res.json({
         success: true,
         message: 'تصویر با موفقیت روی سرور ذخیره شد.',
         fileUrl,
         filename: req.file.filename,
-        size: req.file.size
+        size: req.file.size,
+        uploadDir: UPLOADS_DIR
       });
     });
   });
@@ -3213,19 +3246,45 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
-   * API: دریافت نسخه و وضعیت سرور
+   * API: دریافت اطلاعات سیستم، دایرکتوری آپلود و وضعیت ذخیره‌سازی
    * --------------------------------------------------------------------------
    */
-  app.get(['/api/version', '/version'], (_req: Request, res: Response) => {
+  app.get(['/api/admin/storage-info', '/api/version', '/version'], (_req: Request, res: Response) => {
+    let uploadedFilesCount = 0;
+    let uploadDirExists = false;
+    try {
+      if (fs.existsSync(UPLOADS_DIR)) {
+        uploadDirExists = true;
+        uploadedFilesCount = fs.readdirSync(UPLOADS_DIR).length;
+      }
+    } catch (e) {}
+
+    let dbExists = false;
+    let dbSize = 0;
+    try {
+      if (fs.existsSync(DB_PATH)) {
+        dbExists = true;
+        dbSize = fs.statSync(DB_PATH).size;
+      }
+    } catch (e) {}
+
     res.json({
       success: true,
       app: 'MaktabKhaneh',
       version: SERVER_VERSION,
       build_date: BUILD_DATE,
       port: PORT,
+      upload_dir: UPLOADS_DIR,
+      raw_upload_dir: RAW_UPLOAD_DIR,
+      db_path: DB_PATH,
+      upload_dir_exists: uploadDirExists,
+      db_exists: dbExists,
+      db_size_bytes: dbSize,
+      total_uploaded_files: uploadedFilesCount,
+      is_external_drive: UPLOADS_DIR.startsWith('/media') || UPLOADS_DIR.startsWith('/mnt') || UPLOADS_DIR.includes('external'),
       bot_username: BOT_USERNAME,
       webhook_url: DEFAULT_WEBHOOK_URL,
-      database: 'SQLite (Native DatabaseSync)',
+      database: 'SQLite / JSON Persistent Store',
       uptime_seconds: Math.floor(process.uptime()),
       timestamp: new Date().toISOString(),
     });
@@ -3258,11 +3317,11 @@ async function startServer() {
     });
   }
 
-  // Bind to port 3000 and 0.0.0.0
+  // Bind to port and 0.0.0.0
   app.listen(PORT, '0.0.0.0', async () => {
-    console.log(`🚀 سرور مکتب‌خونه با پایگاه داده SQLite و آپلود فایل روی پورت ${PORT} اجرا شد.`);
-    console.log(`📁 مسیر ذخیره دائمی دیتابیس: ${path.join(process.cwd(), 'data', 'maktabkhune.db')}`);
-    console.log(`🖼️ مسیر ذخیره فایل‌های آپلودی: ${UPLOADS_DIR}`);
+    console.log(`🚀 سرور مکتب‌خونه با پایگاه داده SQLite و سیستم ذخیره‌سازی تصاویر روی پورت ${PORT} اجرا شد.`);
+    console.log(`💾 مسیر دیتابیس (DB_PATH): ${DB_PATH}`);
+    console.log(`🖼️ مسیر آپلود تصاویر (UPLOAD_DIR): ${UPLOADS_DIR}`);
     console.log(`🤖 متصل به بات بله: @${BOT_USERNAME}`);
     console.log(`🌐 وب‌هوک: ${DEFAULT_WEBHOOK_URL}`);
 
