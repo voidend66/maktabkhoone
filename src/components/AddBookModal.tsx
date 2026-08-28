@@ -123,22 +123,33 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
     setImageToCrop(null);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim() || !author.trim()) return;
 
-    const finalCover = uploadedCover || customCoverUrl.trim() || coverImage;
+    setIsSubmitting(true);
+    setError('');
 
-    addBook({
-      title: title.trim(),
-      author: author.trim(),
-      category,
-      condition,
-      coverImage: finalCover,
-      description: description.trim()
-    });
+    try {
+      const finalCover = uploadedCover || customCoverUrl.trim() || coverImage;
 
-    onClose();
+      await addBook({
+        title: title.trim(),
+        author: author.trim(),
+        category,
+        condition,
+        coverImage: finalCover,
+        description: description.trim()
+      });
+
+      onClose();
+    } catch (err: any) {
+      setError(err.message || 'خطا در ثبت کتاب');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (

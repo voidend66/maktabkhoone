@@ -104,6 +104,7 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    const finalIsDamaged = isOwner && isDamaged;
     onSubmitFeedback(request.id, {
       punctuality: punctualityScore,
       condition: conditionScore,
@@ -111,9 +112,9 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
       reliability: reliabilityScore,
       comment: comment.trim(),
       isConfidentialToAdmin,
-      isDamaged,
-      damageDescription: isDamaged ? damageDescription.trim() : undefined,
-      damagePhotoUrl: isDamaged ? damagePhotoUrl.trim() : undefined
+      isDamaged: finalIsDamaged,
+      damageDescription: finalIsDamaged ? damageDescription.trim() : undefined,
+      damagePhotoUrl: finalIsDamaged ? damagePhotoUrl.trim() : undefined
     });
     onClose();
   };
@@ -315,119 +316,121 @@ export const MutualFeedbackModal: React.FC<MutualFeedbackModalProps> = ({
             </div>
           </div>
 
-          {/* Damage Reporting Option (Especially for Owner or Borrower) */}
-          <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200 space-y-3">
-            <label className="flex items-center gap-2.5 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={isDamaged}
-                onChange={(e) => setIsDamaged(e.target.checked)}
-                className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
-              />
-              <span className="text-xs font-black text-rose-900 flex items-center gap-1.5">
-                <AlertTriangle className="w-4 h-4 text-rose-600" />
-                گزارش آسیب دیدن کتاب (پارگی، خط‌خوردگی، آب‌خوردگی)
-              </span>
-            </label>
+          {/* Damage Reporting Option (Only for Lender/Owner) */}
+          {isOwner && (
+            <div className="bg-rose-50/70 p-4 rounded-2xl border border-rose-200 space-y-3">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={isDamaged}
+                  onChange={(e) => setIsDamaged(e.target.checked)}
+                  className="rounded border-rose-300 text-rose-600 focus:ring-rose-500 w-4 h-4 cursor-pointer"
+                />
+                <span className="text-xs font-black text-rose-900 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  گزارش آسیب دیدن کتاب توسط امانت‌گیرنده (پارگی، خط‌خوردگی، آب‌خوردگی)
+                </span>
+              </label>
 
-            {isDamaged && (
-              <div className="space-y-3 pt-2 border-t border-rose-200 animate-in fade-in">
-                <p className="text-[11px] text-rose-800 leading-relaxed font-medium">
-                  طبق قوانین مکتب‌خانه، گزارش آسیب به همراه تصویر مستند برای مدیر سایت ارسال شده و حساب کاربری فرد خاطی تا زمان جبران خسارت و جلب رضایت به حالت تعلیق درمی‌آید.
-                </p>
+              {isDamaged && (
+                <div className="space-y-3 pt-2 border-t border-rose-200 animate-in fade-in">
+                  <p className="text-[11px] text-rose-800 leading-relaxed font-medium">
+                    طبق قوانین مکتب‌خانه، گزارش آسیب به همراه تصویر مستند برای مدیر سایت ارسال شده و حساب کاربری امانت‌گیرنده تا زمان جبران خسارت به حالت تعلیق درمی‌آید.
+                  </p>
 
-                <div>
-                  <label className="block text-[11px] font-bold text-rose-950 mb-1">
-                    علت و شرح آسیب وارده به کتاب <span className="text-rose-600">*</span>:
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={damageDescription}
-                    onChange={(e) => setDamageDescription(e.target.value)}
-                    placeholder="مثلا: چند صفحه از فصل سوم کنده شده و جلد پشت لک شده است..."
-                    className="w-full text-xs p-2.5 bg-white border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 font-medium"
-                    required={isDamaged}
-                  />
-                </div>
-
-                {/* Photo Upload for Damage */}
-                <div className="space-y-2">
-                  <label className="block text-[11px] font-bold text-rose-950">
-                    عکس از آسیب کتاب (برای ارسال به مدیر):
-                  </label>
-
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <label
-                      className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black shadow-2xs flex items-center gap-2 transition ${
-                        isUploadingPhoto
-                          ? 'bg-slate-200 text-slate-500 cursor-wait'
-                          : 'bg-white hover:bg-rose-100 text-rose-800 border border-rose-300'
-                      }`}
-                    >
-                      {isUploadingPhoto ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
-                      ) : (
-                        <Upload className="w-4 h-4 text-rose-600" />
-                      )}
-                      <span>
-                        {isUploadingPhoto ? 'در حال ارسال عکس...' : 'بارگذاری عکس آسیب دیدگی'}
-                      </span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/jpg"
-                        onChange={handlePhotoUpload}
-                        disabled={isUploadingPhoto}
-                        className="hidden"
-                      />
+                  <div>
+                    <label className="block text-[11px] font-bold text-rose-950 mb-1">
+                      علت و شرح آسیب وارده به کتاب <span className="text-rose-600">*</span>:
                     </label>
-                    <span className="text-[10px] text-slate-500">
-                      (فرمت‌های مجاز: JPG, PNG - حداکثر ۱۰ مگابایت)
-                    </span>
+                    <textarea
+                      rows={2}
+                      value={damageDescription}
+                      onChange={(e) => setDamageDescription(e.target.value)}
+                      placeholder="مثلا: چند صفحه از فصل سوم کنده شده و جلد پشت لک شده است..."
+                      className="w-full text-xs p-2.5 bg-white border border-rose-300 rounded-xl focus:ring-2 focus:ring-rose-500 font-medium"
+                      required={isDamaged}
+                    />
                   </div>
 
-                  {(damagePhotoPreview || damagePhotoUrl) && (
-                    <div className="flex items-center justify-between p-2.5 bg-white border border-rose-300 rounded-xl">
-                      <div className="flex items-center gap-2.5">
-                        <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-rose-200 bg-slate-100 shrink-0">
-                          <img
-                            src={damagePhotoPreview || damagePhotoUrl}
-                            alt="پیش‌نمایش آسیب"
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                        <div>
-                          <span className="text-xs font-bold text-rose-900 block">
-                            عکس آسیب با موفقیت پیوست شد ✓
-                          </span>
-                          <span className="text-[10px] text-slate-500 font-mono dir-ltr">
-                            {damagePhotoUrl || 'در حال آماده‌سازی...'}
-                          </span>
-                        </div>
-                      </div>
+                  {/* Photo Upload for Damage */}
+                  <div className="space-y-2">
+                    <label className="block text-[11px] font-bold text-rose-950">
+                      عکس از آسیب کتاب (برای ارسال به مدیر):
+                    </label>
 
-                      {!isUploadingPhoto && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setDamagePhotoUrl('');
-                            setDamagePhotoPreview('');
-                          }}
-                          className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg transition flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          حذف
-                        </button>
-                      )}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <label
+                        className={`cursor-pointer px-4 py-2 rounded-xl text-xs font-black shadow-2xs flex items-center gap-2 transition ${
+                          isUploadingPhoto
+                            ? 'bg-slate-200 text-slate-500 cursor-wait'
+                            : 'bg-white hover:bg-rose-100 text-rose-800 border border-rose-300'
+                        }`}
+                      >
+                        {isUploadingPhoto ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-rose-600" />
+                        ) : (
+                          <Upload className="w-4 h-4 text-rose-600" />
+                        )}
+                        <span>
+                          {isUploadingPhoto ? 'در حال ارسال عکس...' : 'بارگذاری عکس آسیب دیدگی'}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/jpg"
+                          onChange={handlePhotoUpload}
+                          disabled={isUploadingPhoto}
+                          className="hidden"
+                        />
+                      </label>
+                      <span className="text-[10px] text-slate-500">
+                        (فرمت‌های مجاز: JPG, PNG - حداکثر ۱۰ مگابایت)
+                      </span>
                     </div>
-                  )}
 
-                  {uploadError && (
-                    <p className="text-[11px] text-rose-600 font-bold">{uploadError}</p>
-                  )}
+                    {(damagePhotoPreview || damagePhotoUrl) && (
+                      <div className="flex items-center justify-between p-2.5 bg-white border border-rose-300 rounded-xl">
+                        <div className="flex items-center gap-2.5">
+                          <div className="relative w-12 h-12 rounded-lg overflow-hidden border border-rose-200 bg-slate-100 shrink-0">
+                            <img
+                              src={damagePhotoPreview || damagePhotoUrl}
+                              alt="پیش‌نمایش آسیب"
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          <div>
+                            <span className="text-xs font-bold text-rose-900 block">
+                              عکس آسیب با موفقیت پیوست شد ✓
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono dir-ltr">
+                              {damagePhotoUrl || 'در حال آماده‌سازی...'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {!isUploadingPhoto && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDamagePhotoUrl('');
+                              setDamagePhotoPreview('');
+                            }}
+                            className="text-xs text-rose-600 hover:text-rose-800 font-bold px-2 py-1 hover:bg-rose-50 rounded-lg transition flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            حذف
+                          </button>
+                        )}
+                      </div>
+                    )}
+
+                    {uploadError && (
+                      <p className="text-[11px] text-rose-600 font-bold">{uploadError}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
+          )}
 
           {/* Submit Action */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2">

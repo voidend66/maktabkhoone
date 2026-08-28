@@ -879,27 +879,68 @@ export const dbService = {
     };
   },
 
-  getRawDatabase(): DatabaseSchema {
-    return memoryDb;
+  getRawDatabase(): any {
+    const users = this.getAllUsers();
+    const books = this.getAllBooks();
+    const requests = this.getAllRequests();
+    const schoolClasses = this.getAllClasses();
+    const feedbacks = this.getAllFeedbacks();
+    const bankCardInfo = this.getBankCardInfo();
+    const systemConfig = this.getSystemConfig();
+    const customAvatars = this.getCustomAvatars();
+    const systemLogs = this.getSystemLogs();
+
+    return {
+      version: '2.4.0',
+      exportedAt: new Date().toISOString(),
+      exportedAtFa: new Date().toLocaleDateString('fa-IR'),
+      metadata: {
+        totalUsers: users.length,
+        totalBooks: books.length,
+        totalRequests: requests.length,
+        totalClasses: schoolClasses.length,
+        totalFeedbacks: feedbacks.length,
+        totalCustomAvatars: customAvatars.length,
+        totalSystemLogs: systemLogs.length
+      },
+      users,
+      books,
+      requests,
+      schoolClasses,
+      feedbacks,
+      bankCardInfo,
+      systemConfig,
+      customAvatars,
+      systemLogs,
+      settings: memoryDb.settings || {}
+    };
   },
 
   restoreDatabase(rawJson: any): boolean {
     if (!rawJson || typeof rawJson !== 'object') {
       throw new Error('فایل پشتیبان نامعتبر است.');
     }
-    
-    // Core validation: should have at least users or books, or be an empty schema structure
+
+    const settingsObj = typeof rawJson.settings === 'object' && rawJson.settings !== null ? { ...rawJson.settings } : {};
+
+    if (rawJson.bankCardInfo && typeof rawJson.bankCardInfo === 'object') {
+      settingsObj['bank_card_info'] = JSON.stringify(rawJson.bankCardInfo);
+    }
+    if (rawJson.systemConfig && typeof rawJson.systemConfig === 'object') {
+      settingsObj['system_config'] = JSON.stringify(rawJson.systemConfig);
+    }
+
     memoryDb = {
       users: Array.isArray(rawJson.users) ? rawJson.users : [],
       books: Array.isArray(rawJson.books) ? rawJson.books : [],
       requests: Array.isArray(rawJson.requests) ? rawJson.requests : [],
       schoolClasses: Array.isArray(rawJson.schoolClasses) ? rawJson.schoolClasses : [],
       feedbacks: Array.isArray(rawJson.feedbacks) ? rawJson.feedbacks : [],
-      settings: typeof rawJson.settings === 'object' && rawJson.settings !== null ? rawJson.settings : {},
+      settings: settingsObj,
       customAvatars: Array.isArray(rawJson.customAvatars) ? rawJson.customAvatars : [],
       systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : []
     };
-    
+
     saveToDisk();
     return true;
   }

@@ -2100,11 +2100,41 @@ async function startServer() {
   });
 
   app.post('/api/users/:id/approve', (req: Request, res: Response): any => {
-    const user = dbService.updateUser(req.params.id, { status: 'approved', rejectionReason: '' });
+    const user = dbService.updateUser(req.params.id, { status: 'approved', rejectionReason: '', suspensionReason: '' });
     if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
     
+    dbService.addSystemLog(
+      'info',
+      `تایید و فعال‌سازی حساب کاربر (${user.name})`,
+      `توسط مدیر از پنل وب`
+    );
+
     // Notify user on Bale
-    notifyUserOnBale(user.id, `🎉 <b>تبریک ${user.name} عزیز!</b>\n\nحساب کاربری شما در مکتب‌خانه توسط مدیر مدرسه تایید شد. اکنون می‌توانید از گنجینه کتابخانه استفاده فرمایید. 🎒📚`);
+    notifyUserOnBale(user.id, `🎉 <b>تبریک ${user.name} عزیز!</b>\n\nحساب کاربری شما در مکتب‌خانه توسط مدیر مدرسه تایید و فعال شد. اکنون می‌توانید از گنجینه کتابخانه استفاده فرمایید. 🎒📚`);
+
+    res.json({ success: true, user });
+  });
+
+  app.post('/api/users/:id/unsuspend', (req: Request, res: Response): any => {
+    const user = dbService.updateUser(req.params.id, {
+      status: 'approved',
+      suspensionReason: '',
+      rejectionReason: ''
+    });
+    if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+
+    dbService.addSystemLog(
+      'info',
+      `رفع تعلیق حساب کاربر (${user.name})`,
+      `توسط مدیر از پنل وب`
+    );
+
+    // Notify user on Bale
+    notifyUserOnBale(
+      user.id,
+      `✅ <b>اطلاعیه رفع تعلیق حساب مکتب‌خانه</b>\n\n` +
+      `حساب کاربری شما مجدداً فعال گردید و می‌توانید از امکانات سامانه امانت کتاب استفاده فرمایید.`
+    );
 
     res.json({ success: true, user });
   });

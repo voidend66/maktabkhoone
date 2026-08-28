@@ -135,6 +135,11 @@ export const api = {
     return await res.json();
   },
 
+  async unsuspendUser(id: string) {
+    const res = await fetch(`${API_BASE}/users/${id}/unsuspend`, { method: 'POST' });
+    return await res.json();
+  },
+
   async deleteUser(id: string): Promise<{ success: boolean; message?: string }> {
     try {
       const res = await fetch(`${API_BASE}/users/${id}`, {

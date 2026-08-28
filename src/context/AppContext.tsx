@@ -61,6 +61,8 @@ interface AppContextType {
   resetPasswordWithSMS: (phone: string, name: string, newPass: string) => { success: boolean; message: string };
   approveUser: (userId: string) => void;
   rejectUser: (userId: string, reason?: string) => void;
+  suspendUser: (userId: string, reason: string) => Promise<{ success: boolean; message?: string }>;
+  unsuspendUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   deleteUser: (userId: string) => Promise<{ success: boolean; message?: string }>;
   makeAdmin: (id: string) => Promise<{ success: boolean; message?: string }>;
   addAdminByPhone: (data: { phone: string; name?: string; password?: string }) => Promise<{ success: boolean; message?: string }>;
@@ -202,23 +204,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     refreshData();
   }, []);
 
-  // Sync currentUser with users list from SQLite
+  // Sync currentUser with users list from SQLite & auto-logout stale accounts
   useEffect(() => {
-    if (currentUser && users.length > 0) {
-      const fresh = users.find((u) => u.id === currentUser.id);
-      if (fresh) {
-        if (
-          fresh.status !== currentUser.status ||
-          fresh.role !== currentUser.role ||
-          fresh.rating !== currentUser.rating ||
-          fresh.booksReadCount !== currentUser.booksReadCount ||
-          fresh.booksContributedCount !== currentUser.booksContributedCount
-        ) {
-          setCurrentUser(fresh);
+    if (currentUser && !isLoading) {
+      if (users.length > 0) {
+        const fresh = users.find((u) => u.id === currentUser.id);
+        if (fresh) {
+          if (
+            fresh.status !== currentUser.status ||
+            fresh.role !== currentUser.role ||
+            fresh.rating !== currentUser.rating ||
+            fresh.booksReadCount !== currentUser.booksReadCount ||
+            fresh.booksContributedCount !== currentUser.booksContributedCount ||
+            fresh.name !== currentUser.name ||
+            fresh.avatar !== currentUser.avatar ||
+            fresh.className !== currentUser.className ||
+            fresh.suspensionReason !== currentUser.suspensionReason ||
+            fresh.rejectionReason !== currentUser.rejectionReason
+          ) {
+            setCurrentUser(fresh);
+          }
+        } else {
+          // Current user from localStorage is not in active database users list (e.g. version change, wiped database)!
+          console.warn(`[Auth Check] User ${currentUser.id} (${currentUser.name}) is missing from database users list. Logging out stale session.`);
+          logoutUser();
         }
+      } else {
+        // Database has 0 users
+        console.warn(`[Auth Check] Database has 0 users. Logging out stale session.`);
+        logoutUser();
       }
     }
-  }, [users, currentUser]);
+  }, [users, isLoading]);
 
   // Persist currentUser to localStorage
   useEffect(() => {
@@ -287,6 +304,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.submitPaymentProof(requestId, proof.trackingCode, proof.paymentDate, proof.receiptImage);
+      await refreshData();
     } catch (e) {
       console.error('Error submitting payment proof to server:', e);
     }
@@ -334,6 +352,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       } else {
         await api.rejectPayment(requestId, rejectionReason);
       }
+      await refreshData();
     } catch (e) {
       console.error('Error verifying/rejecting payment on server:', e);
     }
@@ -397,6 +416,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     try {
       await api.approveUser(userId);
+      await refreshData();
     } catch (e) {
       console.error('Error approving user on server:', e);
     }
@@ -413,8 +433,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     try {
       await api.rejectUser(userId, reasonText);
+      await refreshData();
     } catch (e) {
       console.error('Error rejecting user on server:', e);
+    }
+  };
+
+  // Suspend User
+  const suspendUser = async (userId: string, reason: string): Promise<{ success: boolean; message?: string }> => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: 'suspended' as const, suspensionReason: reason } : u))
+    );
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser((prev) => prev ? { ...prev, status: 'suspended' as const, suspensionReason: reason } : null);
+    }
+    try {
+      const res = await api.suspendUser(userId, reason);
+      await refreshData();
+      return res;
+    } catch (e: any) {
+      console.error('Error suspending user on server:', e);
+      return { success: false, message: e.message || 'خطا در تعلیق حساب کاربر' };
+    }
+  };
+
+  // Unsuspend User
+  const unsuspendUser = async (userId: string): Promise<{ success: boolean; message?: string }> => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === userId ? { ...u, status: 'approved' as const, suspensionReason: '', rejectionReason: '' } : u))
+    );
+    if (currentUser && currentUser.id === userId) {
+      setCurrentUser((prev) => prev ? { ...prev, status: 'approved' as const, suspensionReason: '', rejectionReason: '' } : null);
+    }
+    try {
+      const res = await api.unsuspendUser(userId);
+      await refreshData();
+      return res;
+    } catch (e: any) {
+      console.error('Error unsuspending user on server:', e);
+      return { success: false, message: e.message || 'خطا در رفع تعلیق حساب کاربر' };
     }
   };
 
@@ -489,6 +546,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.createBook(newBook);
+      await refreshData();
     } catch (e) {
       console.error('Error adding book to SQLite:', e);
     }
@@ -540,6 +598,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setBooks((prev) =>
           prev.map((b) => (b.id === bookId ? { ...b, status: 'requested' } : b))
         );
+        await refreshData();
         return { success: true, message: `درخواست امانت کتاب "${book.title}" برای ${book.ownerName} ارسال شد.` };
       }
       api.reportError('خطا در ثبت درخواست امانت از سرور', res.message || 'ناموفق', 'error', currentUser);
@@ -576,6 +635,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.acceptRequest(requestId, pickupLocation, pickupTime, pickupShift);
+      await refreshData();
     } catch (e) {
       console.error('Error accepting request on server:', e);
     }
@@ -595,6 +655,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.rejectRequest(requestId);
+      await refreshData();
     } catch (e) {
       console.error('Error rejecting request on server:', e);
     }
@@ -649,6 +710,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.reportDamage(requestId, borrowerId, reason, damagePhotoUrl);
+      await refreshData();
     } catch (e) {
       console.error('Error reporting damage on server:', e);
     }
@@ -696,6 +758,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.confirmHandover(requestId, confirmedByRole);
+      await refreshData();
     } catch (e) {
       console.error('Error confirming handover on server:', e);
     }
@@ -879,6 +942,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         damageReason: feedback.damageDescription,
         damagePhotoUrl: feedback.damagePhotoUrl
       });
+      await refreshData();
     } catch (e) {
       console.error('Error returning book on server:', e);
     }
@@ -895,6 +959,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSchoolClasses((prev) => [...prev, newClass]);
     try {
       await api.createClass(classData.name, classData.grade, classData.isExternal);
+      await refreshData();
     } catch (e) {
       console.error('Error creating class on server:', e);
     }
@@ -910,6 +975,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setSchoolClasses((prev) => prev.filter((c) => c.id !== id));
     try {
       await api.deleteClass(id);
+      await refreshData();
     } catch (e) {
       console.error('Error deleting class on server:', e);
     }
@@ -968,6 +1034,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       await api.reviewBook(bookId, newReview);
+      await refreshData();
     } catch (e) {
       console.error('Error submitting review to server:', e);
     }
@@ -995,6 +1062,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     try {
       const res = await api.deleteBookReview(bookId, reviewId);
+      await refreshData();
       return res;
     } catch (e: any) {
       console.error('Error deleting review on server:', e);
@@ -1007,6 +1075,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setFeedbacks((prev) => prev.filter((f) => f.id !== feedbackId));
     try {
       const res = await api.deleteFeedback(feedbackId);
+      await refreshData();
       return res;
     } catch (e: any) {
       console.error('Error deleting feedback on server:', e);
@@ -1020,6 +1089,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     setRequests((prev) => prev.filter((r) => r.bookId !== bookId));
     try {
       await api.deleteBook(bookId);
+      await refreshData();
     } catch (e) {
       console.error('Error deleting book from server:', e);
     }
@@ -1092,6 +1162,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         resetPasswordWithSMS,
         approveUser,
         rejectUser,
+        suspendUser,
+        unsuspendUser,
         deleteUser,
         makeAdmin,
         addAdminByPhone,
