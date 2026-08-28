@@ -33,10 +33,6 @@ export const MaktabKhanehLogo: React.FC<LogoProps> = ({
             className="w-full h-full object-cover rounded-xl bg-white transition-transform duration-300 group-hover:scale-110"
           />
         </div>
-        {/* Floating Paper Airplane decoration */}
-        <div className="absolute -top-1 -right-1 sm:-top-1.5 sm:-right-1.5 bg-gradient-to-r from-orange-500 to-amber-500 text-white p-0.5 sm:p-1 rounded-full text-[10px] sm:text-xs shadow-xs animate-bounce">
-          ✈️
-        </div>
       </div>
 
       {/* Brand Title with Beautiful Persian Calligraphy & Subtitle */}
