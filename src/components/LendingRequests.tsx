@@ -315,9 +315,19 @@ export const LendingRequests: React.FC = () => {
                         <Clock className="w-3.5 h-3.5" /> نیازمند تایید شما
                       </span>
                     )}
-                    {req.status === 'accepted' && (
-                      <span className="inline-flex items-center gap-1 bg-emerald-100 text-emerald-900 text-xs px-3 py-1 rounded-full font-black">
-                        <CheckCircle2 className="w-3.5 h-3.5" /> تایید شده (انتظار پرداخت ۱۰k تومان)
+                    {req.status === 'accepted' && req.paymentStatus === 'rejected' && (
+                      <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-950 text-xs px-3 py-1 rounded-full font-black border border-rose-200">
+                        <XCircle className="w-3.5 h-3.5 text-rose-600" /> فیش رد شد (در انتظار ارسال مجدد)
+                      </span>
+                    )}
+                    {req.status === 'accepted' && req.paymentStatus !== 'rejected' && (
+                      <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 text-xs px-3 py-1 rounded-full font-black">
+                        <Clock className="w-3.5 h-3.5 text-amber-600" /> تایید شده (در انتظار پرداخت فیش)
+                      </span>
+                    )}
+                    {req.status === 'payment_completed' && (
+                      <span className="inline-flex items-center gap-1 bg-teal-100 text-teal-900 text-xs px-3 py-1 rounded-full font-black">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" /> پرداخت تایید شد (آماده تحویل کتاب)
                       </span>
                     )}
                     {(req.status === 'handover_confirmed' || req.status === 'returned') && (
@@ -394,7 +404,7 @@ export const LendingRequests: React.FC = () => {
                       </>
                     )}
 
-                    {req.status === 'accepted' && (
+                    {(req.status === 'payment_completed' || (req.status === 'accepted' && (!req.paymentStatus || req.paymentStatus === 'paid'))) && (
                       <button
                         onClick={() => confirmHandover(req.id, 'owner')}
                         className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-black rounded-xl shadow-md shadow-emerald-600/20 transition flex items-center gap-1.5"
@@ -402,6 +412,11 @@ export const LendingRequests: React.FC = () => {
                         <CheckCircle2 className="w-4 h-4" />
                         <span>تایید تحویل فیزیکی (ثبت ۱۲ ساعته از منزل)</span>
                       </button>
+                    )}
+                    {req.status === 'accepted' && req.paymentStatus && req.paymentStatus !== 'paid' && (
+                      <span className="text-amber-700 text-xs font-bold bg-amber-50 px-3 py-1.5 rounded-xl border border-amber-200">
+                        ⏳ منتظر واریز و تایید فیش توسط مدیر
+                      </span>
                     )}
 
                     {req.status === 'handover_confirmed' && (
@@ -517,13 +532,17 @@ export const LendingRequests: React.FC = () => {
                     )}
 
                     {/* Payment badge */}
-                    {(req.paymentStatus === 'verified' || req.status === 'payment_completed') ? (
+                    {(req.paymentStatus === 'paid' || req.status === 'payment_completed') ? (
                       <span className="inline-flex items-center gap-1 bg-teal-100 text-teal-800 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
                         <CreditCard className="w-3 h-3 text-teal-600" /> واریز کارت به کارت تایید شد ✔️
                       </span>
                     ) : req.status === 'payment_proof_submitted' ? (
                       <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-800 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
                         <FileCheck className="w-3 h-3 text-sky-600" /> فیش و کد پیگیری ثبت شد
+                      </span>
+                    ) : req.paymentStatus === 'rejected' ? (
+                      <span className="inline-flex items-center gap-1 bg-rose-100 text-rose-800 text-[11px] px-2.5 py-0.5 rounded-full font-bold">
+                        <XCircle className="w-3 h-3 text-rose-600" /> فیش توسط مدیر رد شد (لطفاً مجدد ارسال کنید)
                       </span>
                     ) : (
                       (req.status === 'accepted' || req.status === 'payment_pending') && (
@@ -536,7 +555,7 @@ export const LendingRequests: React.FC = () => {
                 </div>
 
                 {/* Card to Card Payment Box & Proof Submission Form */}
-                {(req.status === 'payment_pending' || (req.status === 'accepted' && req.paymentStatus !== 'verified')) && (
+                {(req.status === 'payment_pending' || (req.status === 'accepted' && req.paymentStatus !== 'paid')) && (
                   <div className="bg-amber-50/90 p-5 rounded-2xl border-2 border-amber-300 space-y-4">
                     <div className="flex items-center justify-between flex-wrap gap-2 border-b border-amber-200 pb-3">
                       <div className="flex items-center gap-2 text-amber-950 font-black text-sm">
@@ -734,7 +753,7 @@ export const LendingRequests: React.FC = () => {
                 )}
 
                 {/* Handover Details Box */}
-                {(req.status === 'accepted' || req.status === 'payment_completed' || req.status === 'handover_confirmed') && req.pickupLocation && (
+                {((req.status === 'accepted' && (!req.paymentStatus || req.paymentStatus === 'paid')) || req.status === 'payment_completed' || req.status === 'handover_confirmed') && req.pickupLocation && (
                   <div className="bg-cyan-50/70 p-4 rounded-2xl border border-cyan-200 text-xs space-y-3">
                     <div className="font-black text-cyan-950 text-sm flex items-center justify-between flex-wrap gap-2">
                       <span className="flex items-center gap-1.5">

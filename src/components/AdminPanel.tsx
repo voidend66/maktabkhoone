@@ -72,6 +72,7 @@ export const AdminPanel: React.FC = () => {
     deleteBook,
     deleteBookReview,
     deleteFeedback,
+    feedbacks,
     schoolClasses,
     addSchoolClass,
     updateSchoolClass,
@@ -1741,80 +1742,36 @@ export const AdminPanel: React.FC = () => {
               </div>
 
               {(() => {
-                const feedbackItems: Array<{
-                  requestId: string;
-                  bookTitle: string;
-                  bookCover: string;
-                  evaluatorRole: 'borrower' | 'owner';
-                  evaluatorName: string;
-                  evaluatorClass: string;
-                  targetRole: 'owner' | 'borrower';
-                  targetName: string;
-                  targetClass: string;
-                  feedback: any;
-                  damageReason?: string;
-                  damagePhotoUrl?: string;
-                }> = [];
+                const feedbackItems = feedbacks.map((fb) => {
+                  const req = requests.find((r) => r.id === fb.requestId);
+                  const evaluatorUser = users.find((u) => u.id === fb.fromUserId);
+                  const targetUser = users.find((u) => u.id === fb.toUserId);
 
-                requests.forEach((req) => {
-                  if (req.feedbackForOwner) {
-                    feedbackItems.push({
-                      requestId: req.id,
-                      bookTitle: req.bookTitle,
-                      bookCover: req.bookCover,
-                      evaluatorRole: 'borrower',
-                      evaluatorName: req.borrowerName,
-                      evaluatorClass: req.borrowerClass,
-                      targetRole: 'owner',
-                      targetName: req.ownerName,
-                      targetClass: req.ownerClass,
-                      feedback: req.feedbackForOwner,
-                      damageReason: req.feedbackForOwner.damageDescription,
-                      damagePhotoUrl: req.feedbackForOwner.damagePhotoUrl
-                    });
-                  }
-
-                  if (req.feedbackForBorrower) {
-                    feedbackItems.push({
-                      requestId: req.id,
-                      bookTitle: req.bookTitle,
-                      bookCover: req.bookCover,
-                      evaluatorRole: 'owner',
-                      evaluatorName: req.ownerName,
-                      evaluatorClass: req.ownerClass,
-                      targetRole: 'borrower',
-                      targetName: req.borrowerName,
-                      targetClass: req.borrowerClass,
-                      feedback: req.feedbackForBorrower,
-                      damageReason: req.feedbackForBorrower.damageDescription || req.damageReason,
-                      damagePhotoUrl: req.feedbackForBorrower.damagePhotoUrl || req.damagePhotoUrl
-                    });
-                  } else if (req.damageReason) {
-                    // Solo damage report without full feedback
-                    feedbackItems.push({
-                      requestId: req.id,
-                      bookTitle: req.bookTitle,
-                      bookCover: req.bookCover,
-                      evaluatorRole: 'owner',
-                      evaluatorName: req.ownerName,
-                      evaluatorClass: req.ownerClass,
-                      targetRole: 'borrower',
-                      targetName: req.borrowerName,
-                      targetClass: req.borrowerClass,
-                      feedback: {
-                        punctuality: 1,
-                        condition: 1,
-                        behavior: 3,
-                        reliability: 1,
-                        comment: 'گزارش خسارت فیزیکی وارده به کتاب',
-                        isDamaged: true,
-                        damageDescription: req.damageReason,
-                        damagePhotoUrl: req.damagePhotoUrl
-                      },
-                      damageReason: req.damageReason,
-                      damagePhotoUrl: req.damagePhotoUrl
-                    });
-                  }
+                  return {
+                    id: fb.id,
+                    requestId: fb.requestId,
+                    bookTitle: req?.bookTitle || 'نامشخص',
+                    bookCover: req?.bookCover || 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?w=120',
+                    evaluatorRole: fb.role === 'borrower_to_owner' ? 'borrower' : 'owner',
+                    evaluatorName: fb.fromUserName,
+                    evaluatorClass: evaluatorUser?.schoolClass || 'خارج از مدرسه',
+                    targetRole: fb.role === 'borrower_to_owner' ? 'owner' : 'borrower',
+                    targetName: fb.toUserName,
+                    targetClass: targetUser?.schoolClass || 'خارج از مدرسه',
+                    feedback: {
+                      punctuality: fb.punctualityScore,
+                      condition: fb.conditionScore,
+                      behavior: fb.behaviorScore,
+                      reliability: fb.reliabilityScore,
+                      comment: fb.comment,
+                      isConfidentialToAdmin: fb.isConfidentialToAdmin,
+                      isDamaged: fb.isDamaged,
+                      damageDescription: fb.damageDescription,
+                      damagePhotoUrl: fb.damagePhotoUrl
+                    },
+                    damageReason: fb.damageDescription,
+                    damagePhotoUrl: fb.damagePhotoUrl
+                  };
                 });
 
                 const filtered = feedbackItems.filter(
@@ -1892,7 +1849,7 @@ export const AdminPanel: React.FC = () => {
                               type="button"
                               onClick={() => {
                                 if (confirm('آیا از حذف این بازخورد اطمینان دارید؟')) {
-                                  deleteFeedback(item.requestId, item.targetRole);
+                                  deleteFeedback(item.id);
                                 }
                               }}
                               className="p-1.5 bg-white hover:bg-rose-50 text-slate-400 hover:text-rose-600 rounded-xl border border-slate-200 hover:border-rose-200 transition shadow-2xs flex items-center gap-1 text-[11px] font-bold"

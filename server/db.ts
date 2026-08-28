@@ -10,7 +10,8 @@ import {
   BankCardInfo,
   BookReview,
   SystemConfig,
-  CustomAvatar
+  CustomAvatar,
+  AppNotification
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
@@ -62,6 +63,7 @@ interface DatabaseSchema {
   settings: Record<string, string>;
   customAvatars?: CustomAvatar[];
   systemLogs?: SystemLog[];
+  notifications?: AppNotification[];
 }
 
 // In-memory data store with disk persistence
@@ -73,7 +75,8 @@ let memoryDb: DatabaseSchema = {
   feedbacks: [],
   settings: {},
   customAvatars: [],
-  systemLogs: []
+  systemLogs: [],
+  notifications: []
 };
 
 /**
@@ -119,7 +122,8 @@ function loadFromDisk(): boolean {
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
           settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
           customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
-          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
+          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
+          notifications: Array.isArray(parsed.notifications) ? parsed.notifications : []
         };
         return true;
       }
@@ -969,5 +973,55 @@ export const dbService = {
 
     saveToDisk();
     return true;
+  },
+
+  // ---- NOTIFICATIONS ----
+  getUserNotifications(userId: string): AppNotification[] {
+    if (!memoryDb.notifications) memoryDb.notifications = [];
+    return memoryDb.notifications.filter((n) => n.userId === userId || n.userId === 'all');
+  },
+
+  createNotification(notif: Omit<AppNotification, 'id' | 'createdAt' | 'isRead'>): AppNotification {
+    if (!memoryDb.notifications) memoryDb.notifications = [];
+    const newNotif: AppNotification = {
+      ...notif,
+      id: `notif_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      isRead: false,
+      createdAt: new Date().toLocaleDateString('fa-IR', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      })
+    };
+    memoryDb.notifications.unshift(newNotif);
+    saveToDisk();
+    return newNotif;
+  },
+
+  markNotificationRead(id: string, userId: string): boolean {
+    if (!memoryDb.notifications) memoryDb.notifications = [];
+    let updated = false;
+    memoryDb.notifications = memoryDb.notifications.map((n) => {
+      if (n.id === id && (n.userId === userId || n.userId === 'all')) {
+        updated = true;
+        return { ...n, isRead: true };
+      }
+      return n;
+    });
+    if (updated) saveToDisk();
+    return updated;
+  },
+
+  clearNotifications(userId: string): boolean {
+    if (!memoryDb.notifications) memoryDb.notifications = [];
+    const prevCount = memoryDb.notifications.length;
+    memoryDb.notifications = memoryDb.notifications.filter((n) => n.userId !== userId);
+    if (memoryDb.notifications.length !== prevCount) {
+      saveToDisk();
+      return true;
+    }
+    return false;
   }
 };

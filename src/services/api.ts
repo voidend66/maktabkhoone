@@ -329,6 +329,42 @@ export const api = {
     return await res.json();
   },
 
+  // Notification APIs
+  async getNotifications(userId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/notifications?userId=${encodeURIComponent(userId)}`);
+      return await res.json();
+    } catch {
+      return { success: false, notifications: [] };
+    }
+  },
+
+  async markNotificationRead(id: string, userId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/read`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, userId })
+      });
+      return await res.json();
+    } catch {
+      return { success: false };
+    }
+  },
+
+  async clearNotifications(userId: string) {
+    try {
+      const res = await fetch(`${API_BASE}/notifications/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      return await res.json();
+    } catch {
+      return { success: false };
+    }
+  },
+
   // Bank Card APIs
   async updateBankCard(info: BankCardInfo) {
     const res = await fetch(`${API_BASE}/bank-card`, {

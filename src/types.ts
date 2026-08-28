@@ -159,6 +159,28 @@ export interface MutualFeedback {
   date: string;
 }
 
+export type NotificationType =
+  | 'receipt_rejected'
+  | 'receipt_approved'
+  | 'book_review'
+  | 'feedback_received'
+  | 'account_suspended'
+  | 'loan_accepted'
+  | 'loan_requested'
+  | 'system';
+
+export interface AppNotification {
+  id: string;
+  userId: string;
+  title: string;
+  message: string;
+  type: NotificationType;
+  linkTab?: 'requests' | 'my_books' | 'library' | 'league' | 'admin';
+  relatedId?: string;
+  isRead: boolean;
+  createdAt: string;
+}
+
 export interface NewBookInput {
   title: string;
   author: string;

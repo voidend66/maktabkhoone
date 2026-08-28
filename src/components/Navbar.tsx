@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
+import { NotificationCenterModal } from './NotificationCenterModal';
 import {
   BookOpen,
   Trophy,
@@ -41,7 +42,19 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenBaleOtp,
   onOpenGuide
 }) => {
-  const { currentUser, setCurrentUser, logoutUser, users, switchUserRoleDemo, requests } = useApp();
+  const {
+    currentUser,
+    setCurrentUser,
+    logoutUser,
+    users,
+    switchUserRoleDemo,
+    requests,
+    notifications,
+    markNotificationRead,
+    clearNotifications
+  } = useApp();
+
+  const [showNotifications, setShowNotifications] = useState(false);
 
   // Count pending requests for current user
   const pendingRequestsForMe = currentUser
@@ -53,6 +66,9 @@ export const Navbar: React.FC<NavbarProps> = ({
     : 0;
 
   const pendingApprovalsForAdmin = users.filter((u) => u.status === 'pending').length;
+  const unreadNotificationsCount = currentUser
+    ? notifications.filter((n) => !n.isRead).length
+    : 0;
 
   return (
     <header className="relative lg:sticky lg:top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-xs">
@@ -176,6 +192,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 border-r border-slate-200 pr-2 sm:pr-3">
             {currentUser ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Notification Bell Button */}
+                <button
+                  onClick={() => setShowNotifications(true)}
+                  className="relative p-2 text-slate-600 hover:text-cyan-600 hover:bg-slate-100 rounded-xl transition cursor-pointer shrink-0"
+                  title="اعلان‌ها"
+                >
+                  <Bell className="w-5 h-5" />
+                  {unreadNotificationsCount > 0 && (
+                    <span className="absolute top-1 right-1 w-4 h-4 bg-rose-600 text-white text-[9px] font-black rounded-full flex items-center justify-center animate-bounce">
+                      {unreadNotificationsCount}
+                    </span>
+                  )}
+                </button>
+
                 <div
                   onClick={() => setActiveTab('profile')}
                   title="نمایش پروفایل کاربری"
@@ -386,6 +416,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Notification Center Modal */}
+      {currentUser && (
+        <NotificationCenterModal
+          isOpen={showNotifications}
+          onClose={() => setShowNotifications(false)}
+          notifications={notifications}
+          onMarkRead={markNotificationRead}
+          onClearAll={clearNotifications}
+          onNavigateTab={(tab) => {
+            setActiveTab(tab);
+            setShowNotifications(false);
+          }}
+        />
+      )}
     </header>
   );
 };

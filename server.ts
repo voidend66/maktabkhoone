@@ -2218,6 +2218,14 @@ async function startServer() {
       `جهت برطرف شدن مشکل با مسئول کتابخانه مدرسه تماس بگیرید.`
     );
 
+    dbService.createNotification({
+      userId: user.id,
+      title: 'تعلیق موقت حساب کاربری',
+      message: `حساب کاربری شما موقتاً تعلیق شد. علت: ${user.suspensionReason}`,
+      type: 'account_suspended',
+      linkTab: 'requests'
+    });
+
     res.json({ success: true, user });
   });
 
@@ -2468,6 +2476,15 @@ async function startServer() {
         `دانش‌آموز <b>${review.userName}</b> روی کتاب <b>«${updated.title}»</b> نظر و امتیاز ⭐ ${review.rating} ثبت کرد:\n` +
         `<i>"${review.comment}"</i>`
       );
+
+      dbService.createNotification({
+        userId: updated.ownerId,
+        title: 'نظر جدید روی کتاب شما',
+        message: `همکلاسی شما ${review.userName} روی کتاب «${updated.title}» نظر و امتیاز ${review.rating} ستاره ثبت کرد: «${review.comment}»`,
+        type: 'book_review',
+        linkTab: 'my_books',
+        relatedId: updated.id
+      });
     }
 
     res.json({ success: true, book: updated });
@@ -2523,6 +2540,16 @@ async function startServer() {
 
       const created = dbService.createRequest(newReq);
 
+      // Create local user notification
+      dbService.createNotification({
+        userId: book.ownerId,
+        title: 'درخواست جدید امانت کتاب',
+        message: `همکلاسی شما ${borrower.name} درخواست امانت کتاب «${book.title}» را دارد.`,
+        type: 'loan_requested',
+        linkTab: 'requests',
+        relatedId: reqId
+      });
+
       // Notify book owner on Bale with interactive accept/reject inline keyboard buttons!
       notifyUserOnBale(
         book.ownerId,
@@ -2575,6 +2602,16 @@ async function startServer() {
     });
 
     if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    // Create user notification
+    dbService.createNotification({
+      userId: updated.borrowerId,
+      title: 'پذیرش درخواست امانت کتاب',
+      message: `درخواست شما برای کتاب «${updated.bookTitle}» پذیرفته شد. لطفاً فیش پرداخت را واریز و ثبت کنید.`,
+      type: 'loan_accepted',
+      linkTab: 'requests',
+      relatedId: updated.id
+    });
 
     // Notify borrower on Bale
     notifyUserOnBale(
@@ -2652,12 +2689,30 @@ async function startServer() {
       `اکنون می‌توانید جهت تحویل کتاب اقدام فرمایید.`
     );
 
+    dbService.createNotification({
+      userId: reqItem.borrowerId,
+      title: 'تایید فیش پرداخت حق امانت',
+      message: `فیش واریزی شما برای کتاب «${reqItem.bookTitle}» تایید شد. می‌توانید نسبت به تحویل فیزیکی اقدام کنید.`,
+      type: 'receipt_approved',
+      linkTab: 'requests',
+      relatedId: reqItem.id
+    });
+
     // Notify owner
     notifyUserOnBale(
       reqItem.ownerId,
       `💳 <b>پرداخت حق امانت تایید شد</b>\n\n` +
       `پرداخت حق امانت کتاب <b>«${reqItem.bookTitle}»</b> توسط ${reqItem.borrowerName} تایید گردید. تحویل کتاب مجاز است.`
     );
+
+    dbService.createNotification({
+      userId: reqItem.ownerId,
+      title: 'تایید پرداخت حق امانت همکلاسی',
+      message: `پرداخت حق امانت کتاب «${reqItem.bookTitle}» توسط همکلاسی شما (${reqItem.borrowerName}) تایید شد. تحویل فیزیکی بلامانع است.`,
+      type: 'receipt_approved',
+      linkTab: 'requests',
+      relatedId: reqItem.id
+    });
 
     res.json({ success: true, request: updated });
   });
@@ -2694,6 +2749,15 @@ async function startServer() {
       `« ${reasonText} »\n\n` +
       `لطفاً وارد سامانه شده و نسبت به ثبت مجدد فیش پرداخت معتبر اقدام فرمایید.`
     );
+
+    dbService.createNotification({
+      userId: reqItem.borrowerId,
+      title: 'رد فیش پرداخت حق امانت',
+      message: `فیش واریزی شما برای کتاب «${reqItem.bookTitle}» رد شد. علت: ${reasonText}`,
+      type: 'receipt_rejected',
+      linkTab: 'requests',
+      relatedId: reqItem.id
+    });
 
     res.json({ success: true, request: updated });
   });
@@ -2758,6 +2822,15 @@ async function startServer() {
           status: 'suspended',
           suspensionReason: `خسارت به کتاب «${reqItem.bookTitle}»: ${damageReason || 'آسیب وارده به کتاب'}`
         });
+
+        dbService.createNotification({
+          userId: borrowerId,
+          title: 'تعلیق حساب به دلیل گزارش خسارت کتاب',
+          message: `حساب کاربری شما به دلیل وارد کردن خسارت به کتاب «${reqItem.bookTitle}» موقتاً تعلیق شد. شرح خسارت: ${damageReason || 'آسیب وارده'}`,
+          type: 'account_suspended',
+          linkTab: 'requests',
+          relatedId: reqItem.id
+        });
       }
 
       dbService.updateRequest(req.params.id, {
@@ -2809,12 +2882,50 @@ async function startServer() {
         `✨ <b>تشکر از شما!</b>\n\n` +
         `بازگرداندن کتاب <b>«${reqItem.bookTitle}»</b> با موفقیت ثبت شد. امیدواریم از مطالعه آن لذت برده باشید.`
       );
+
+      dbService.createNotification({
+        userId: reqItem.ownerId,
+        title: 'کتاب شما بازگردانده شد',
+        message: `کتاب «${reqItem.bookTitle}» توسط ${reqItem.borrowerName} بازگردانده شد.`,
+        type: 'loan_accepted',
+        linkTab: 'my_books',
+        relatedId: reqItem.id
+      });
+      dbService.createNotification({
+        userId: reqItem.borrowerId,
+        title: 'تشکر بابت بازگرداندن کتاب',
+        message: `بازگرداندن کتاب «${reqItem.bookTitle}» با موفقیت ثبت شد. مایه افتخار است که کتاب را به موقع برگرداندید!`,
+        type: 'system',
+        linkTab: 'requests',
+        relatedId: reqItem.id
+      });
+      if (feedback && !feedback.isConfidentialToAdmin) {
+        dbService.createNotification({
+          userId: reqItem.ownerId,
+          title: 'ثبت بازخورد جدید برای شما',
+          message: `${reqItem.borrowerName} برای امانت گرفتن کتاب «${reqItem.bookTitle}» به شما امتیاز و نظر داد: «${feedback.comment || 'بدون توضیح'}»`,
+          type: 'feedback_received',
+          linkTab: 'requests',
+          relatedId: reqItem.id
+        });
+      }
     } else {
       notifyUserOnBale(
         reqItem.borrowerId,
         `⭐ <b>ثبت ارزیابی مالک کتاب</b>\n\n` +
         `مالک کتاب <b>«${reqItem.bookTitle}»</b> نظر و امتیاز امانت‌داری شما را ثبت کرد.`
       );
+
+      if (feedback && !feedback.isConfidentialToAdmin) {
+        dbService.createNotification({
+          userId: reqItem.borrowerId,
+          title: 'ثبت بازخورد جدید برای شما',
+          message: `مالک کتاب «${reqItem.bookTitle}» برای امانت‌داری شما امتیاز و نظر داد: «${feedback.comment || 'بدون توضیح'}»`,
+          type: 'feedback_received',
+          linkTab: 'requests',
+          relatedId: reqItem.id
+        });
+      }
     }
 
     res.json({ success: true, request: updated });
@@ -2833,6 +2944,15 @@ async function startServer() {
     dbService.updateUser(borrowerId, {
       status: 'suspended',
       suspensionReason: `خسارت به کتاب «${reqItem.bookTitle}»: ${damageReason}`
+    });
+
+    dbService.createNotification({
+      userId: borrowerId,
+      title: 'تعلیق حساب به دلیل گزارش خسارت کتاب',
+      message: `حساب کاربری شما به دلیل وارد کردن خسارت به کتاب «${reqItem.bookTitle}» موقتاً تعلیق شد. شرح خسارت: ${damageReason}`,
+      type: 'account_suspended',
+      linkTab: 'requests',
+      relatedId: reqItem.id
     });
 
     const updated = dbService.updateRequest(req.params.id, {
@@ -2912,6 +3032,38 @@ async function startServer() {
 
   app.delete('/api/feedbacks/:id', (req: Request, res: Response): any => {
     const success = dbService.deleteFeedback(req.params.id);
+    res.json({ success });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: اعلان‌های کاربران (Notifications)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/notifications', (req: Request, res: Response): any => {
+    const userId = req.query.userId as string;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'شناسه کاربر الزامی است' });
+    }
+    const notifications = dbService.getUserNotifications(userId);
+    res.json({ success: true, notifications });
+  });
+
+  app.post('/api/notifications/read', (req: Request, res: Response): any => {
+    const { id, userId } = req.body;
+    if (!id || !userId) {
+      return res.status(400).json({ success: false, message: 'اطلاعات ناقص است' });
+    }
+    const success = dbService.markNotificationRead(id, userId);
+    res.json({ success });
+  });
+
+  app.post('/api/notifications/clear', (req: Request, res: Response): any => {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'شناسه کاربر الزامی است' });
+    }
+    const success = dbService.clearNotifications(userId);
     res.json({ success });
   });
 

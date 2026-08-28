@@ -147,6 +147,21 @@ function MainAppContent() {
         onOpenGuide={() => setShowGuideModal(true)}
       />
 
+      {/* Account Suspended Notice Banner */}
+      {currentUser && currentUser.status === 'suspended' && (
+        <div className="bg-rose-600 text-white font-bold text-xs sm:text-sm py-3 px-4 shadow-md flex items-center justify-between flex-wrap gap-2 animate-pulse border-b border-rose-700">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-5 h-5 shrink-0 text-white" />
+            <span>
+              ⛔️ <strong>حساب کاربری شما تعلیق شده است!</strong> به علت: {currentUser.suspensionReason || 'عدم بازگرداندن به موقع کتاب یا گزارش خسارت'}
+            </span>
+          </div>
+          <div className="text-[11px] bg-rose-800 text-white px-3 py-1.5 rounded-xl border border-rose-500">
+            📞 جهت فعال‌سازی مجدد، به مسئول کتابخانه مدرسه مراجعه کنید یا با آیدی پشتیبانی تماس بگیرید.
+          </div>
+        </div>
+      )}
+
       {/* Mandatory First-Time Complete Profile Modal */}
       {isProfileIncomplete && (
         <CompleteProfileModal

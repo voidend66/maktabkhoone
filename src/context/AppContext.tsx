@@ -10,7 +10,8 @@ import {
   RegistrationInput,
   BankCardInfo,
   SystemConfig,
-  CustomAvatar
+  CustomAvatar,
+  AppNotification
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -117,6 +118,9 @@ interface AppContextType {
   deleteCustomAvatar: (id: string) => Promise<{ success: boolean; message: string }>;
   resetToDefaults: () => void;
   refreshData: () => Promise<void>;
+  notifications: AppNotification[];
+  markNotificationRead: (id: string) => Promise<void>;
+  clearNotifications: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -131,6 +135,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [bankCardInfo, setBankCardInfo] = useState<BankCardInfo>(INITIAL_BANK_CARD);
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
   const [customAvatars, setCustomAvatars] = useState<CustomAvatar[]>([]);
+  const [notifications, setNotifications] = useState<AppNotification[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -203,6 +208,58 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     refreshData();
   }, []);
+
+  const fetchNotifications = async () => {
+    if (!currentUser?.id) {
+      setNotifications([]);
+      return;
+    }
+    try {
+      const res = await api.getNotifications(currentUser.id);
+      if (res && res.success) {
+        setNotifications(res.notifications || []);
+      }
+    } catch (err) {
+      console.error('Failed to load notifications:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchNotifications();
+
+    // Poll notifications every 15 seconds
+    const interval = setInterval(() => {
+      fetchNotifications();
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [currentUser?.id]);
+
+  const markNotificationRead = async (id: string) => {
+    if (!currentUser?.id) return;
+    try {
+      const res = await api.markNotificationRead(id, currentUser.id);
+      if (res && res.success) {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to mark notification as read:', err);
+    }
+  };
+
+  const clearNotifications = async () => {
+    if (!currentUser?.id) return;
+    try {
+      const res = await api.clearNotifications(currentUser.id);
+      if (res && res.success) {
+        setNotifications([]);
+      }
+    } catch (err) {
+      console.error('Failed to clear notifications:', err);
+    }
+  };
 
   // Sync currentUser with users list from SQLite & auto-logout stale accounts
   useEffect(() => {
@@ -1189,7 +1246,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         addCustomAvatar,
         deleteCustomAvatar,
         resetToDefaults,
-        refreshData
+        refreshData,
+        notifications,
+        markNotificationRead,
+        clearNotifications
       }}
     >
       {children}
