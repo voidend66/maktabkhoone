@@ -260,65 +260,72 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
 
             {/* Add Review Form */}
             {currentUser ? (
-              <form
-                onSubmit={handleReviewSubmit}
-                className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3"
-              >
-                {reviewSuccessMessage && (
-                  <div className="p-3 bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-between shadow-md animate-in fade-in">
-                    <div className="flex items-center gap-2">
-                      <Check className="w-4 h-4" />
-                      <span>{reviewSuccessMessage}</span>
+              currentUser.id === book.ownerId ? (
+                <div className="p-4 bg-amber-50/80 border border-amber-200 text-amber-900 rounded-2xl text-xs font-bold flex items-center gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-amber-600 shrink-0" />
+                  <span>شما مالک و صاحب این کتاب هستید. طبق قوانین سامانه امکان ثبت نظر و امتیاز روی کتاب‌های شخصی خودتان وجود ندارد.</span>
+                </div>
+              ) : (
+                <form
+                  onSubmit={handleReviewSubmit}
+                  className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3"
+                >
+                  {reviewSuccessMessage && (
+                    <div className="p-3 bg-emerald-500 text-white rounded-xl text-xs font-black flex items-center justify-between shadow-md animate-in fade-in">
+                      <div className="flex items-center gap-2">
+                        <Check className="w-4 h-4" />
+                        <span>{reviewSuccessMessage}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <span className="text-xs font-bold text-slate-700">
+                      ثبت نظر شما برای این کتاب:
+                    </span>
+
+                    {/* Rating Selector */}
+                    <div className="flex items-center gap-1">
+                      <span className="text-xs text-slate-500 ml-2">امتیاز شما:</span>
+                      {[1, 2, 3, 4, 5].map((star) => (
+                        <button
+                          type="button"
+                          key={star}
+                          onClick={() => setNewRating(star)}
+                          className="p-1 hover:scale-110 transition"
+                        >
+                          <Star
+                            className={`w-5 h-5 ${
+                              star <= newRating
+                                ? 'fill-amber-400 text-amber-400'
+                                : 'text-slate-300'
+                            }`}
+                          />
+                        </button>
+                      ))}
                     </div>
                   </div>
-                )}
 
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <span className="text-xs font-bold text-slate-700">
-                    ثبت نظر شما برای این کتاب:
-                  </span>
+                  <textarea
+                    rows={2}
+                    value={newComment}
+                    onChange={(e) => setNewComment(e.target.value)}
+                    placeholder="نظر خود را درباره متن کتاب یا تجربه امانت گرفتن آن بنویسید..."
+                    className="w-full bg-white rounded-xl p-3 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
 
-                  {/* Rating Selector */}
-                  <div className="flex items-center gap-1">
-                    <span className="text-xs text-slate-500 ml-2">امتیاز شما:</span>
-                    {[1, 2, 3, 4, 5].map((star) => (
-                      <button
-                        type="button"
-                        key={star}
-                        onClick={() => setNewRating(star)}
-                        className="p-1 hover:scale-110 transition"
-                      >
-                        <Star
-                          className={`w-5 h-5 ${
-                            star <= newRating
-                              ? 'fill-amber-400 text-amber-400'
-                              : 'text-slate-300'
-                          }`}
-                        />
-                      </button>
-                    ))}
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={!newComment.trim() || isSubmittingReview}
+                      className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-indigo-100 disabled:opacity-50"
+                    >
+                      <Send className="w-3.5 h-3.5" />
+                      <span>{isSubmittingReview ? 'در حال ثبت...' : 'ثبت نظر'}</span>
+                    </button>
                   </div>
-                </div>
-
-                <textarea
-                  rows={2}
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="نظر خود را درباره متن کتاب یا تجربه امانت گرفتن آن بنویسید..."
-                  className="w-full bg-white rounded-xl p-3 text-sm border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-
-                <div className="flex justify-end">
-                  <button
-                    type="submit"
-                    disabled={!newComment.trim() || isSubmittingReview}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-md shadow-indigo-100 disabled:opacity-50"
-                  >
-                    <Send className="w-3.5 h-3.5" />
-                    <span>{isSubmittingReview ? 'در حال ثبت...' : 'ثبت نظر'}</span>
-                  </button>
-                </div>
-              </form>
+                </form>
+              )
             ) : (
               <div className="p-3 bg-slate-100 rounded-xl text-center text-xs text-slate-600">
                 جهت ثبت نظر برای این کتاب باید وارد حساب کاربری خود شوید.

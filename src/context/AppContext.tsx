@@ -116,6 +116,7 @@ interface AppContextType {
   updateSystemConfig: (config: Partial<SystemConfig>) => Promise<{ success: boolean; message?: string; config?: SystemConfig }>;
   customAvatars: CustomAvatar[];
   addCustomAvatar: (name: string, url: string, bg?: string) => Promise<{ success: boolean; message: string; avatar?: CustomAvatar }>;
+  updateCustomAvatar: (id: string, name: string, url: string, bg?: string) => Promise<{ success: boolean; message: string; avatar?: CustomAvatar }>;
   deleteCustomAvatar: (id: string) => Promise<{ success: boolean; message: string }>;
   resetToDefaults: () => void;
   refreshData: () => Promise<void>;
@@ -190,6 +191,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: 'خطا در افزودن آواتار' };
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در افزودن آواتار' };
+    }
+  };
+
+  const updateCustomAvatar = async (id: string, name: string, url: string, bg?: string) => {
+    try {
+      const avatar = await api.updateCustomAvatar(id, name, url, bg);
+      if (avatar) {
+        setCustomAvatars((prev) => {
+          const idx = prev.findIndex((a) => a.id === id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = avatar;
+            return next;
+          }
+          return [...prev, avatar];
+        });
+        // Also update currentUser avatar in state if matched
+        if (currentUser && (currentUser.avatar === url || currentUser.avatar.includes(id))) {
+          setCurrentUser((prev) => prev ? { ...prev, avatar: url } : null);
+        }
+        return { success: true, message: 'آواتار با موفقیت ویرایش شد.', avatar };
+      }
+      return { success: false, message: 'خطا در ویرایش آواتار' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ویرایش آواتار' };
     }
   };
 
@@ -1320,6 +1346,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateSystemConfig,
         customAvatars,
         addCustomAvatar,
+        updateCustomAvatar,
         deleteCustomAvatar,
         resetToDefaults,
         refreshData,

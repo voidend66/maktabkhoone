@@ -5,7 +5,9 @@ import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import crypto from 'crypto';
 import multer from 'multer';
-import { dbService, addSystemLogListener, DB_PATH } from './server/db';
+import * as archiverModule from 'archiver';
+const archiver = (archiverModule as any).default || archiverModule;
+import { dbService, addSystemLogListener, DB_PATH, isExternalPath } from './server/db';
 import { isAdminPhone } from './src/data/mockData';
 import {
   User,
@@ -67,7 +69,19 @@ export function initializeUploadDirectory(targetDir: string): string {
   }
 }
 
-const UPLOADS_DIR = initializeUploadDirectory(RAW_UPLOAD_DIR);
+let UPLOADS_DIR = initializeUploadDirectory(RAW_UPLOAD_DIR);
+
+export function getUploadsDir(): string {
+  try {
+    if (typeof dbService.getUploadDir === 'function') {
+      const customDir = dbService.getUploadDir();
+      if (customDir && fs.existsSync(customDir)) {
+        return customDir;
+      }
+    }
+  } catch (e) {}
+  return UPLOADS_DIR;
+}
 
 // Multer Storage Configuration (Strict image validation & Unique file naming)
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.webp'];
@@ -75,7 +89,13 @@ const ALLOWED_IMAGE_MIMES = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
-    cb(null, UPLOADS_DIR);
+    const dir = getUploadsDir();
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+    } catch (e) {}
+    cb(null, dir);
   },
   filename: (_req, file, cb) => {
     let ext = path.extname(file.originalname).toLowerCase();
@@ -1708,6 +1728,22 @@ async function startServer() {
     }
   });
 
+  app.put('/api/avatars/:id', (req: Request, res: Response): any => {
+    try {
+      const { id } = req.params;
+      const { name, url, bg } = req.body || {};
+      const updated = dbService.updateCustomAvatar(id, { name, url, bg });
+      if (!updated) {
+        return res.status(404).json({ success: false, message: 'آواتار یافت نشد.' });
+      }
+      dbService.addSystemLog('info', `آواتار «${updated.name}» توسط مدیریت ویرایش شد.`);
+      return res.json({ success: true, avatar: updated, message: 'آواتار با موفقیت ویرایش شد.' });
+    } catch (err: any) {
+      console.error('Error updating avatar:', err);
+      return res.status(500).json({ success: false, message: err.message || 'خطا در ویرایش آواتار' });
+    }
+  });
+
   app.delete('/api/avatars/:id', (req: Request, res: Response): any => {
     try {
       const { id } = req.params;
@@ -2588,8 +2624,15 @@ async function startServer() {
   app.post('/api/books/:id/review', (req: Request, res: Response): any => {
     const { review } = req.body;
     if (!review) return res.status(400).json({ success: false, message: 'نظر الزامی است.' });
+    
+    const book = dbService.getBookById(req.params.id);
+    if (!book) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+    if (review.userId && book.ownerId && review.userId === book.ownerId) {
+      return res.status(400).json({ success: false, message: 'ثبت نظر روی کتاب‌های شخصی خودتان مجاز نمی‌باشد.' });
+    }
+
     const updated = dbService.addBookReview(req.params.id, review);
-    if (!updated) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+    if (!updated) return res.status(400).json({ success: false, message: 'امکان ثبت نظر روی این کتاب وجود ندارد.' });
 
     // Notify book owner about the new review
     if (updated.ownerId) {
@@ -3244,11 +3287,91 @@ async function startServer() {
   app.get('/api/admin/backup', (_req: Request, res: Response): any => {
     try {
       const rawData = dbService.getRawDatabase();
+      const currentDbPath = typeof dbService.getDbPath === 'function' ? dbService.getDbPath() : DB_PATH;
       res.setHeader('Content-disposition', `attachment; filename=maktabkhune-backup-${Date.now()}.json`);
       res.setHeader('Content-type', 'application/json');
+      
+      dbService.addSystemLog(
+        'info',
+        'دانلود فایل پشتیبان جامع دیتابیس',
+        `فایل بکاپ کامل دیتابیس شامل ${rawData.metadata?.totalBooks || 0} کتاب و ${rawData.metadata?.totalUsers || 0} کاربر دانلود شد. (مسیر فعال دیتابیس: ${currentDbPath})`
+      );
+
       return res.send(JSON.stringify(rawData, null, 2));
     } catch (err: any) {
       return res.status(500).json({ success: false, message: 'خطا در خروجی گرفتن از اطلاعات: ' + err.message });
+    }
+  });
+
+  /**
+   * API: دانلود فایل فشرده (ZIP) کلیه تصاویر آپلود شده کتاب‌ها و آواتارها
+   */
+  app.get('/api/admin/backup/photos', async (_req: Request, res: Response): Promise<any> => {
+    try {
+      const activeUploadDir = getUploadsDir();
+      const fallbackDir = path.join(process.cwd(), 'uploads');
+      
+      let targetDir = activeUploadDir;
+      if (!fs.existsSync(targetDir) && fs.existsSync(fallbackDir)) {
+        targetDir = fallbackDir;
+      }
+
+      const archive = archiver('zip', {
+        zlib: { level: 9 }
+      });
+
+      const zipFilename = `maktabkhune-photos-backup-${Date.now()}.zip`;
+      res.setHeader('Content-Type', 'application/zip');
+      res.setHeader('Content-Disposition', `attachment; filename="${zipFilename}"`);
+
+      archive.on('warning', (err) => {
+        if (err.code === 'ENOENT') {
+          console.warn('Archiver warning:', err);
+        } else {
+          throw err;
+        }
+      });
+
+      archive.on('error', (err) => {
+        console.error('Archiver error:', err);
+        if (!res.headersSent) {
+          res.status(500).json({ success: false, message: 'خطا در فشرده‌سازی تصاویر: ' + err.message });
+        }
+      });
+
+      archive.pipe(res);
+
+      let fileCount = 0;
+      if (fs.existsSync(targetDir)) {
+        const files = fs.readdirSync(targetDir);
+        for (const file of files) {
+          const fullPath = path.join(targetDir, file);
+          try {
+            const stat = fs.statSync(fullPath);
+            if (stat.isFile()) {
+              archive.file(fullPath, { name: file });
+              fileCount++;
+            }
+          } catch (e) {}
+        }
+      }
+
+      if (fileCount === 0) {
+        archive.append('پوشه تصاویر در این لحظه خالی است.', { name: 'README.txt' });
+      }
+
+      dbService.addSystemLog(
+        'info',
+        'دانلود فایل فشرده تصاویر (ZIP)',
+        `پشتیبان‌گیری از تعداد ${fileCount} تصویر از مسیر ${targetDir} در قالب فایل فشرده انجام شد.`
+      );
+
+      await archive.finalize();
+    } catch (err: any) {
+      console.error('Error in /api/admin/backup/photos:', err);
+      if (!res.headersSent) {
+        res.status(500).json({ success: false, message: 'خطا در ایجاد فایل فشرده تصاویر: ' + err.message });
+      }
     }
   });
 
@@ -3271,10 +3394,22 @@ async function startServer() {
         return res.status(400).json({ success: false, message: 'هیچ فایل پشتیبان یا داده معتبری جهت بازیابی پیدا نشد.' });
       }
 
+      const activePath = typeof dbService.getDbPath === 'function' ? dbService.getDbPath() : DB_PATH;
       dbService.restoreDatabase(rawJson);
-      dbService.addSystemLog('info', 'بازیابی موفقیت‌آمیز کل اطلاعات سامانه از طریق فایل پشتیبان توسط مدیر');
-      return res.json({ success: true, message: 'اطلاعات با موفقیت بازیابی شد و آماده استفاده است.' });
+
+      dbService.addSystemLog(
+        'db',
+        'بازیابی موفقیت‌آمیز کل اطلاعات دیتابیس',
+        `داده‌های فایل پشتیبان با موفقیت بر روی فایل اصلی هارد (${activePath}) بازنویسی و ذخیره گردید. (کاربران: ${rawJson.users?.length || 0}، کتب: ${rawJson.books?.length || 0})`
+      );
+
+      return res.json({
+        success: true,
+        message: `اطلاعات با موفقیت بازیابی شد و در مسیر اصلی هارد (${activePath}) ذخیره گردید.`,
+        db_path: activePath
+      });
     } catch (err: any) {
+      dbService.addSystemLog('error', 'خطا در بازیابی دیتابیس', err.message);
       return res.status(500).json({ success: false, message: 'خطا در بازیابی فایل دیتابیس: ' + err.message });
     }
   });
@@ -3551,27 +3686,85 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
+   * API: تست و بررسی اتصال و دسترسی نوشتن به هارد اکسترنال و مسیرهای ذخیره‌سازی
+   * --------------------------------------------------------------------------
+   */
+  app.post('/api/admin/storage/test', (req: Request, res: Response): any => {
+    try {
+      const { db_path, upload_dir } = req.body || {};
+      const testResult = dbService.testStoragePaths(db_path, upload_dir);
+      return res.json({ success: true, ...testResult });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: 'خطا در اجرای تست حافظه: ' + err.message });
+    }
+  });
+
+  /**
+   * API: تغییر و تنظیم دائم مسیرهای ذخیره‌سازی هارد و دیتابیس
+   */
+  app.post('/api/admin/storage/paths', (req: Request, res: Response): any => {
+    try {
+      const { db_path, upload_dir } = req.body || {};
+
+      let dbResult = { success: true, message: 'مسیر دیتابیس تغییری نکرد.', path: dbService.getDbPath() };
+      let uploadResult = { success: true, message: 'مسیر آپلود تغییری نکرد.', dir: dbService.getUploadDir() };
+
+      if (db_path && typeof db_path === 'string' && db_path.trim() !== dbService.getDbPath()) {
+        dbResult = dbService.setDbPath(db_path);
+        if (!dbResult.success) {
+          return res.status(400).json({ success: false, message: dbResult.message });
+        }
+      }
+
+      if (upload_dir && typeof upload_dir === 'string' && upload_dir.trim() !== dbService.getUploadDir()) {
+        uploadResult = dbService.setUploadDir(upload_dir);
+        if (!uploadResult.success) {
+          return res.status(400).json({ success: false, message: uploadResult.message });
+        }
+        // Also refresh UPLOADS_DIR pointer
+        UPLOADS_DIR = getUploadsDir();
+      }
+
+      return res.json({
+        success: true,
+        message: 'مسیرهای ذخیره‌سازی با موفقیت به‌روزرسانی و روی هارد دیسک ذخیره شدند.',
+        db_path: dbService.getDbPath(),
+        upload_dir: dbService.getUploadDir(),
+        is_external_drive: isExternalPath(dbService.getDbPath()) || isExternalPath(dbService.getUploadDir())
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: 'خطا در تنظیم مسیرهای ذخیره‌سازی: ' + err.message });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
    * API: دریافت اطلاعات سیستم، دایرکتوری آپلود و وضعیت ذخیره‌سازی
    * --------------------------------------------------------------------------
    */
   app.get(['/api/admin/storage-info', '/api/version', '/version'], (_req: Request, res: Response) => {
+    const activeUpload = getUploadsDir();
+    const activeDb = typeof dbService.getDbPath === 'function' ? dbService.getDbPath() : DB_PATH;
+
     let uploadedFilesCount = 0;
     let uploadDirExists = false;
     try {
-      if (fs.existsSync(UPLOADS_DIR)) {
+      if (fs.existsSync(activeUpload)) {
         uploadDirExists = true;
-        uploadedFilesCount = fs.readdirSync(UPLOADS_DIR).length;
+        uploadedFilesCount = fs.readdirSync(activeUpload).length;
       }
     } catch (e) {}
 
     let dbExists = false;
     let dbSize = 0;
     try {
-      if (fs.existsSync(DB_PATH)) {
+      if (fs.existsSync(activeDb)) {
         dbExists = true;
-        dbSize = fs.statSync(DB_PATH).size;
+        dbSize = fs.statSync(activeDb).size;
       }
     } catch (e) {}
+
+    const lastStatus = typeof dbService.getLastStorageStatus === 'function' ? dbService.getLastStorageStatus() : null;
 
     res.json({
       success: true,
@@ -3579,14 +3772,15 @@ async function startServer() {
       version: SERVER_VERSION,
       build_date: BUILD_DATE,
       port: PORT,
-      upload_dir: UPLOADS_DIR,
+      upload_dir: activeUpload,
       raw_upload_dir: RAW_UPLOAD_DIR,
-      db_path: DB_PATH,
+      db_path: activeDb,
       upload_dir_exists: uploadDirExists,
       db_exists: dbExists,
       db_size_bytes: dbSize,
       total_uploaded_files: uploadedFilesCount,
-      is_external_drive: UPLOADS_DIR.startsWith('/media') || UPLOADS_DIR.startsWith('/mnt') || UPLOADS_DIR.includes('external'),
+      is_external_drive: isExternalPath(activeUpload) || isExternalPath(activeDb),
+      last_storage_status: lastStatus,
       bot_username: BOT_USERNAME,
       webhook_url: DEFAULT_WEBHOOK_URL,
       database: 'SQLite / JSON Persistent Store',

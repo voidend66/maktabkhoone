@@ -87,6 +87,7 @@ export const AdminPanel: React.FC = () => {
     addAdminByPhone,
     customAvatars,
     addCustomAvatar,
+    updateCustomAvatar,
     deleteCustomAvatar,
     suspendUser,
     unsuspendUser,
@@ -217,13 +218,156 @@ export const AdminPanel: React.FC = () => {
     }
   };
 
-  // Backup and Restore states & handlers
+  // Avatar Edit State
+  const [editingAvatar, setEditingAvatar] = useState<{ id: string; name: string; url: string; bg?: string } | null>(null);
+  const [editAvatarName, setEditAvatarName] = useState('');
+  const [editAvatarUrl, setEditAvatarUrl] = useState('');
+  const [isEditingAvatarUploading, setIsEditingAvatarUploading] = useState(false);
+
+  const handleStartEditAvatar = (avatar: { id: string; name: string; url: string; bg?: string }) => {
+    setEditingAvatar(avatar);
+    setEditAvatarName(avatar.name || '');
+    setEditAvatarUrl(avatar.url || '');
+  };
+
+  const handleAvatarEditFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setAvatarErrorMsg('لطفاً یک فایل تصویری انتخاب کنید.');
+      return;
+    }
+
+    setIsEditingAvatarUploading(true);
+    try {
+      const uploadRes = await api.uploadImage(file);
+      if (uploadRes.success && uploadRes.fileUrl) {
+        setEditAvatarUrl(uploadRes.fileUrl);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          if (reader.result) {
+            setEditAvatarUrl(reader.result.toString());
+          }
+        };
+        reader.readAsDataURL(file);
+      }
+    } catch {
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (reader.result) {
+          setEditAvatarUrl(reader.result.toString());
+        }
+      };
+      reader.readAsDataURL(file);
+    } finally {
+      setIsEditingAvatarUploading(false);
+    }
+  };
+
+  const handleSaveEditedAvatar = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingAvatar) return;
+    if (!editAvatarName.trim()) {
+      setAvatarErrorMsg('نام آواتار نمی‌تواند خالی باشد.');
+      return;
+    }
+    if (!editAvatarUrl) {
+      setAvatarErrorMsg('تصویر آواتار نمی‌تواند خالی باشد.');
+      return;
+    }
+
+    const res = await updateCustomAvatar(editingAvatar.id, editAvatarName.trim(), editAvatarUrl, editingAvatar.bg);
+    if (res.success) {
+      setAvatarSuccessMsg('آواتار با موفقیت ویرایش و به‌روزرسانی شد.');
+      setEditingAvatar(null);
+      setTimeout(() => setAvatarSuccessMsg(''), 4000);
+    } else {
+      setAvatarErrorMsg(res.message || 'خطا در ویرایش آواتار.');
+    }
+  };
+
+  // Backup, Restore and Storage states & handlers
   const [isRestoring, setIsRestoring] = useState(false);
   const [restoreError, setRestoreError] = useState<string | null>(null);
   const [restoreSuccess, setRestoreSuccess] = useState<boolean>(false);
+  const [isDownloadingPhotos, setIsDownloadingPhotos] = useState(false);
+
+  // Storage Paths Configuration & Test State
+  const [customDbPath, setCustomDbPath] = useState('');
+  const [customUploadDir, setCustomUploadDir] = useState('');
+  const [isTestingStorage, setIsTestingStorage] = useState(false);
+  const [storageTestResult, setStorageTestResult] = useState<any>(null);
+  const [isUpdatingPaths, setIsUpdatingPaths] = useState(false);
+  const [pathUpdateMsg, setPathUpdateMsg] = useState<string | null>(null);
+  const [pathUpdateError, setPathUpdateError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (storageInfo) {
+      if (!customDbPath && storageInfo.db_path) {
+        setCustomDbPath(storageInfo.db_path);
+      }
+      if (!customUploadDir && storageInfo.upload_dir) {
+        setCustomUploadDir(storageInfo.upload_dir);
+      }
+    }
+  }, [storageInfo]);
 
   const handleDownloadBackup = () => {
     window.location.href = '/api/admin/backup';
+  };
+
+  const handleDownloadPhotosBackup = () => {
+    setIsDownloadingPhotos(true);
+    window.location.href = '/api/admin/backup/photos';
+    setTimeout(() => {
+      setIsDownloadingPhotos(false);
+    }, 4000);
+  };
+
+  const handleTestStorage = async () => {
+    setIsTestingStorage(true);
+    setPathUpdateMsg(null);
+    setPathUpdateError(null);
+    try {
+      const res = await api.testStoragePaths(customDbPath || undefined, customUploadDir || undefined);
+      setStorageTestResult(res);
+      const updatedInfo = await api.getStorageInfo();
+      if (updatedInfo) setStorageInfo(updatedInfo);
+      if (typeof fetchSystemLogs === 'function') fetchSystemLogs();
+    } catch (err: any) {
+      alert('خطا در تست مسیرهای حافظه: ' + err.message);
+    } finally {
+      setIsTestingStorage(false);
+    }
+  };
+
+  const handleSaveStoragePaths = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customDbPath.trim() || !customUploadDir.trim()) {
+      setPathUpdateError('لطفاً هر دو مسیر دیتابیس و آپلود تصاویر را مشخص فرمایید.');
+      return;
+    }
+    setIsUpdatingPaths(true);
+    setPathUpdateMsg(null);
+    setPathUpdateError(null);
+    try {
+      const res = await api.updateStoragePaths(customDbPath.trim(), customUploadDir.trim());
+      if (res.success) {
+        setPathUpdateMsg(res.message);
+        const updatedInfo = await api.getStorageInfo();
+        if (updatedInfo) setStorageInfo(updatedInfo);
+        if (typeof fetchSystemLogs === 'function') fetchSystemLogs();
+        alert('✅ ' + res.message);
+      } else {
+        setPathUpdateError(res.message);
+      }
+    } catch (err: any) {
+      setPathUpdateError(err.message || 'خطا در اعمال مسیرهای ذخیره‌سازی');
+    } finally {
+      setIsUpdatingPaths(false);
+    }
   };
 
   const handleUploadBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2567,148 +2711,343 @@ export const AdminPanel: React.FC = () => {
             </div>
           </form>
 
-          {/* Section 3: Backup and Restore Database Panel */}
+          {/* Section 3: Backup and Restore Database & Photos Panel */}
           <div className="border-t border-slate-200 pt-8 mt-8 space-y-6">
             <div>
               <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
                 <Database className="w-5 h-5 text-indigo-600" />
-                <span>پشتیبان‌گیری و بازیابی هوشمند کل اطلاعات (دیتابیس):</span>
+                <span>پشتیبان‌گیری جامع (دیتابیس و عکس‌ها) و بازیابی اطلاعات هارد:</span>
               </h4>
               <p className="text-xs text-slate-500 mt-1 font-medium">
-                از این بخش می‌توانید یک بکاپ جامع از کلیه اطلاعات سامانه (کاربران، کتب، امانت‌ها، کلاس‌ها، لاگ‌ها و تنظیمات) دانلود کرده و در صورت نیاز مجدداً بازیابی کنید.
+                در این بخش می‌توانید از تمام داده‌های متنی سامانه و کلیه فایل‌های تصویری آپلود شده (کتاب‌ها و آواتارها) پشتیبان دانلود کنید و همچنین دیتابیس را مستقیماً روی مسیر قطعی هارد بازیابی نمایید.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {/* Backup Card */}
-              <div className="p-5 bg-indigo-50/40 border border-indigo-100 rounded-2xl flex flex-col justify-between space-y-4">
-                <div className="space-y-1">
-                  <span className="text-xs font-black text-indigo-950 block">۱. دریافت فایل پشتیبان (بکاپ کامل)</span>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Backup Card 1: Database JSON */}
+              <div className="p-5 bg-indigo-50/50 border border-indigo-200/80 rounded-2xl flex flex-col justify-between space-y-4 shadow-2xs">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-indigo-950 font-black text-xs">
+                    <Database className="w-4 h-4 text-indigo-600" />
+                    <span>۱. دریافت بکاپ دیتابیس (JSON)</span>
+                  </div>
                   <p className="text-[11px] text-indigo-900/80 leading-relaxed font-medium">
-                    با کلیک روی دکمه زیر، فایل پشتیبان کاملی با فرمت JSON دریافت خواهید کرد که شامل تمام اطلاعات ثبت شده در کتابخانه مدرسه است. این فایل را در جای امن نگهداری کنید تا به راحتی کل سایت را بازنشانی کنید.
+                    شامل کلیه کاربران، کتب، کلاس‌ها، تاریخچه امانات، لاگ‌های سیستمی و تنظیمات مدرسه.
                   </p>
                 </div>
                 <div>
                   <button
                     type="button"
                     onClick={handleDownloadBackup}
-                    className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                    className="w-full px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
                   >
                     <Download className="w-4 h-4" />
-                    <span>دانلود بکاپ جامع دیتابیس (.json)</span>
+                    <span>دانلود بکاپ دیتابیس (.json)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Restore Card */}
-              <div className="p-5 bg-rose-50/20 border border-rose-100 rounded-2xl flex flex-col justify-between space-y-4">
-                <div className="space-y-1">
-                  <span className="text-xs font-black text-rose-950 block">۲. بازنشانی و بازیابی اطلاعات (Restore)</span>
-                  <p className="text-[11px] text-rose-900/80 leading-relaxed font-medium">
-                    فایل بکاپ دانلود شده قبلی خود را انتخاب کنید. سامانه به صورت خودکار اطلاعات را اعتبارسنجی کرده و کل وضعیت کتابخانه (اعضا، کلاس‌ها، کتاب‌ها و امانت‌ها) را دقیقاً به همان لحظه بازمی‌گرداند.
+              {/* Backup Card 2: Photos ZIP */}
+              <div className="p-5 bg-emerald-50/50 border border-emerald-200/80 rounded-2xl flex flex-col justify-between space-y-4 shadow-2xs">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-emerald-950 font-black text-xs">
+                    <Folder className="w-4 h-4 text-emerald-600" />
+                    <span>۲. دانلود پشتیبان کلیه تصاویر (ZIP)</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-900/80 leading-relaxed font-medium">
+                    دانلود تمامی تصاویر جلد کتب و آواتارهای آپلود شده درون یک فولدر فشرده با نام و مشخصات اصلی.
                   </p>
                 </div>
-                <div className="space-y-3">
-                  <div className="flex items-center gap-2">
-                    <label className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer shadow-xs">
-                      <Upload className="w-4 h-4 text-emerald-400" />
-                      <span>{isRestoring ? 'در حال بازیابی...' : 'انتخاب و آپلود فایل پشتیبان'}</span>
-                      <input
-                        type="file"
-                        accept=".json"
-                        onChange={handleUploadBackup}
-                        disabled={isRestoring}
-                        className="hidden"
-                      />
-                    </label>
+                <div>
+                  <button
+                    type="button"
+                    onClick={handleDownloadPhotosBackup}
+                    disabled={isDownloadingPhotos}
+                    className="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-xs cursor-pointer"
+                  >
+                    {isDownloadingPhotos ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>در حال بسته‌بندی ZIP...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-4 h-4" />
+                        <span>دانلود کلیه عکس‌ها (.zip)</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Restore Card: Direct Hard Drive Overwrite */}
+              <div className="p-5 bg-rose-50/30 border border-rose-200/80 rounded-2xl flex flex-col justify-between space-y-4 shadow-2xs">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-rose-950 font-black text-xs">
+                    <Upload className="w-4 h-4 text-rose-600" />
+                    <span>۳. بازیابی فایل دیتابیس روی هارد</span>
                   </div>
+                  <p className="text-[11px] text-rose-900/80 leading-relaxed font-medium">
+                    بازنویسی مستقیم داده‌ها روی مسیر فعال هارد دیسک (<code className="font-mono text-[10px] bg-rose-100/80 px-1 py-0.5 rounded text-rose-950">{storageInfo?.db_path || '/media/mahdi/mm/maktab_data/maktab.db'}</code>).
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="w-full px-4 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
+                    <Upload className="w-4 h-4 text-emerald-400" />
+                    <span>{isRestoring ? 'در حال بازیابی اطلاعات...' : 'انتخاب و بازیابی فایل بکاپ'}</span>
+                    <input
+                      type="file"
+                      accept=".json"
+                      onChange={handleUploadBackup}
+                      disabled={isRestoring}
+                      className="hidden"
+                    />
+                  </label>
 
                   {restoreSuccess && (
-                    <p className="text-[11px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 p-2 rounded-xl animate-in fade-in">
-                      ✅ پایگاه داده با موفقیت بازنویسی و بازیابی شد. اطلاعات به‌روزرسانی گردید.
+                    <p className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 p-2 rounded-xl animate-in fade-in">
+                      ✅ پایگاه داده در مسیر هارد بازنویسی و ذخیره شد.
                     </p>
                   )}
 
                   {restoreError && (
-                    <p className="text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-xl animate-in fade-in">
-                      ❌ خطا در بازیابی فایل بکاپ: {restoreError}
+                    <p className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-xl animate-in fade-in">
+                      ❌ خطا در بازیابی: {restoreError}
                     </p>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Section 4: Server Storage & Environment Paths (Raspberry Pi External Drive) */}
-            <div className="border-t border-slate-200 pt-8 mt-8 space-y-4">
-              <div className="flex items-center justify-between flex-wrap gap-2">
+            {/* Section 4: Server Storage Paths, Testing & Diagnostics */}
+            <div className="border-t border-slate-200 pt-8 mt-8 space-y-5">
+              <div className="flex items-center justify-between flex-wrap gap-3">
                 <div className="flex items-center gap-3">
-                  <div className="p-3 bg-cyan-50 text-cyan-700 rounded-2xl border border-cyan-200">
+                  <div className="p-3 bg-indigo-50 text-indigo-700 rounded-2xl border border-indigo-200 shadow-2xs">
                     <HardDrive className="w-5 h-5" />
                   </div>
                   <div>
                     <h4 className="text-sm font-black text-slate-800 flex items-center gap-2">
-                      <span>محل ذخیره‌سازی داده‌ها و تصاویر سرور (Raspberry Pi & External Drive)</span>
+                      <span>مدیریت و بررسی محل ذخیره‌سازی هارد دیسک و لاگ حافظه</span>
+                      {storageInfo?.is_external_drive && (
+                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-black px-2 py-0.5 rounded-full border border-emerald-300">
+                          هارد اکسترنال فعال است
+                        </span>
+                      )}
                     </h4>
                     <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                      مسیرهای فعال ذخیره‌سازی تصاویر آپلودی (Multer) و دیتابیس روی هارد اکسترنال یا حافظه محلی
+                      بررسی وضعیت دسترسی، امکان تست و ویرایش مسیرهای دیتابیس و عکس‌ها، و گزارش لحظه‌ای ذخیره در دیسک
                     </p>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    api.getStorageInfo().then((info) => info && setStorageInfo(info));
-                  }}
-                  className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  <span>به‌روزرسانی وضعیت ذخیره‌سازی</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestStorage}
+                    disabled={isTestingStorage}
+                    className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isTestingStorage ? (
+                      <>
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                        <span>در حال بررسی هارد...</span>
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>تست دسترسی و سلامت حافظه</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      api.getStorageInfo().then((info) => info && setStorageInfo(info));
+                    }}
+                    className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    <span>بازخوانی وضعیت</span>
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
-                {/* Upload Directory Info */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                      <Folder className="w-4 h-4 text-amber-600" />
-                      <span>مسیر آپلود تصاویر (UPLOAD_DIR):</span>
-                    </span>
-                    <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black ${
-                      storageInfo?.is_external_drive
-                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
-                        : 'bg-indigo-100 text-indigo-800 border border-indigo-200'
-                    }`}>
-                      {storageInfo?.is_external_drive ? '💾 هارد اکسترنال' : '📁 دایرکتوری محلی'}
-                    </span>
+              {/* Path Modification Form */}
+              <form onSubmit={handleSaveStoragePaths} className="bg-slate-50 border border-slate-200 rounded-3xl p-5 space-y-4 shadow-2xs">
+                <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                  <div className="flex items-center gap-2">
+                    <Sliders className="w-4 h-4 text-indigo-600" />
+                    <span className="text-xs font-black text-slate-800">پیکربندی و ویرایش مسیرهای فیزیکی ذخیره‌سازی:</span>
                   </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 font-mono text-xs text-slate-900 dir-ltr text-left overflow-x-auto select-all shadow-xs">
-                    {storageInfo?.upload_dir || '/media/mahdi/mm/maktab_uploads'}
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    (تغییرات به طور خودکار ذخیره شده و پس از ریستارت سرور نیز حفظ می‌گردند)
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Database Path Input */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-slate-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Database className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>مسیر فایل اصلی دیتابیس (DB_PATH):</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">/media/mahdi/mm/maktab_data/maktab.db</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={customDbPath}
+                      onChange={(e) => setCustomDbPath(e.target.value)}
+                      placeholder="/media/mahdi/mm/maktab_data/maktab.db"
+                      dir="ltr"
+                      className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-mono text-slate-900 font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                      required
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>حجم دیتابیس: {((storageInfo?.db_size_bytes || 0) / 1024).toFixed(1)} کیلوبایت</span>
+                      <span>وضعیت فعلی: {storageInfo?.db_exists ? '✅ متصل و موجود' : '⏳ در حال ایجاد'}</span>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
-                    <span>وضعیت پوشه: {storageInfo?.upload_dir_exists ? '✅ موجود و آماده' : '⏳ در حال ساخت'}</span>
-                    <span>تعداد تصاویر آپلودشده: <strong className="text-slate-900">{storageInfo?.total_uploaded_files ?? 0}</strong> فایل</span>
+
+                  {/* Upload Directory Input */}
+                  <div className="space-y-1.5">
+                    <label className="block text-xs font-black text-slate-700 flex items-center justify-between">
+                      <span className="flex items-center gap-1">
+                        <Folder className="w-3.5 h-3.5 text-amber-600" />
+                        <span>مسیر پوشه ذخیره‌سازی عکس‌ها (UPLOAD_DIR):</span>
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">/media/mahdi/mm/maktab_uploads</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={customUploadDir}
+                      onChange={(e) => setCustomUploadDir(e.target.value)}
+                      placeholder="/media/mahdi/mm/maktab_uploads"
+                      dir="ltr"
+                      className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-mono text-slate-900 font-semibold focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-600"
+                      required
+                    />
+                    <div className="flex items-center justify-between text-[10px] text-slate-500">
+                      <span>تعداد عکس‌های ذخیره شده: {storageInfo?.total_uploaded_files ?? 0} تصویر</span>
+                      <span>وضعیت پوشه: {storageInfo?.upload_dir_exists ? '✅ قابل نوشتن' : '⏳ ساخت خودکار'}</span>
+                    </div>
                   </div>
                 </div>
 
-                {/* Database Path Info */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-                      <Database className="w-4 h-4 text-indigo-600" />
-                      <span>مسیر فایل دیتابیس (DB_PATH):</span>
-                    </span>
-                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-black bg-cyan-100 text-cyan-800 border border-cyan-200">
-                      SQLite JSON Store
+                {/* Notifications & Submit */}
+                <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+                  <div className="flex-1">
+                    {pathUpdateMsg && (
+                      <p className="text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-2 rounded-xl animate-in fade-in">
+                        ✓ {pathUpdateMsg}
+                      </p>
+                    )}
+                    {pathUpdateError && (
+                      <p className="text-xs font-black text-rose-700 bg-rose-50 border border-rose-200 px-3 py-2 rounded-xl animate-in fade-in">
+                        ⚠️ {pathUpdateError}
+                      </p>
+                    )}
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={isUpdatingPaths}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>{isUpdatingPaths ? 'در حال اعمال...' : 'ذخیره و انتقال محل ذخیره‌سازی'}</span>
+                  </button>
+                </div>
+              </form>
+
+              {/* Diagnostic Test Results Display */}
+              {storageTestResult && (
+                <div className="p-4 bg-white border border-slate-200 rounded-2xl space-y-3 animate-in fade-in shadow-2xs">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <div className="flex items-center gap-2">
+                      <Terminal className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-black text-slate-800">نتیجه تست زنده سلامت هارد و حافظه ({storageTestResult.timestampFa}):</span>
+                    </div>
+                    <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${
+                      storageTestResult.db?.writable && storageTestResult.uploads?.writable
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : 'bg-rose-100 text-rose-800'
+                    }`}>
+                      {storageTestResult.db?.writable && storageTestResult.uploads?.writable ? '✅ تست کامل موفق' : '⚠️ دارای هشدار'}
                     </span>
                   </div>
-                  <div className="bg-white p-3 rounded-xl border border-slate-200 font-mono text-xs text-slate-900 dir-ltr text-left overflow-x-auto select-all shadow-xs">
-                    {storageInfo?.db_path || './data/maktab.db'}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+                      <div className="font-bold text-slate-700 flex items-center justify-between">
+                        <span>دسترسی نوشتن دیتابیس:</span>
+                        <span className={storageTestResult.db?.writable ? 'text-emerald-600' : 'text-rose-600'}>
+                          {storageTestResult.db?.writable ? '✅ تایید شد (قابل نوشتن)' : '❌ ناموفق: ' + storageTestResult.db?.error}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-600 dir-ltr text-left truncate">
+                        {storageTestResult.db?.path}
+                      </div>
+                    </div>
+
+                    <div className="p-3 bg-slate-50 rounded-xl space-y-1">
+                      <div className="font-bold text-slate-700 flex items-center justify-between">
+                        <span>دسترسی نوشتن پوشه تصاویر:</span>
+                        <span className={storageTestResult.uploads?.writable ? 'text-emerald-600' : 'text-rose-600'}>
+                          {storageTestResult.uploads?.writable ? `✅ تایید شد (${storageTestResult.uploads?.fileCount} فایل)` : '❌ ناموفق: ' + storageTestResult.uploads?.error}
+                        </span>
+                      </div>
+                      <div className="text-[11px] font-mono text-slate-600 dir-ltr text-left truncate">
+                        {storageTestResult.uploads?.dir}
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-600 font-medium">
-                    <span>وضعیت دیتابیس: {storageInfo?.db_exists ? '✅ متصل و فعال' : '⏳ ایجاد اولیه'}</span>
-                    <span>پورت سرور: <strong className="text-slate-900">{storageInfo?.port || 8098}</strong></span>
+                </div>
+              )}
+
+              {/* Hard Drive Storage Status & Log Verification */}
+              <div className="p-4 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-3xl space-y-3 shadow-sm">
+                <div className="flex items-center justify-between flex-wrap gap-2 border-b border-indigo-800/60 pb-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+                    <span className="text-xs font-black text-indigo-100">وضعیت لاگ و همگام‌سازی لحظه‌ای هارد دیسک:</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-indigo-300">
+                    آخرین ذخیره‌سازی: {storageInfo?.last_storage_status?.timestampFa || 'هم‌اکنون'}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 space-y-1">
+                    <span className="text-[10px] text-indigo-200 font-bold block">وضعیت هارد درایو:</span>
+                    <span className="text-xs font-black text-emerald-300 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{storageInfo?.last_storage_status?.status === 'error' ? 'خطا در ذخیره' : 'ذخیره‌سازی پایدار و بدون باگ'}</span>
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 space-y-1">
+                    <span className="text-[10px] text-indigo-200 font-bold block">نوع حافظه شناسایی‌شده:</span>
+                    <span className="text-xs font-black text-cyan-300">
+                      {storageInfo?.is_external_drive ? 'هارد اکسترنال (/media/mahdi/mm)' : 'حافظه سیستمی'}
+                    </span>
+                  </div>
+
+                  <div className="p-2.5 bg-white/5 rounded-xl border border-white/10 space-y-1">
+                    <span className="text-[10px] text-indigo-200 font-bold block">بررسی لاگ‌های سیستمی دیتابیس:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTab('system_logs');
+                        setLogLevelFilter('db');
+                      }}
+                      className="text-xs font-bold text-amber-300 hover:text-amber-200 underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <Terminal className="w-3.5 h-3.5" />
+                      <span>مشاهده لاگ‌های دیسک و دیتابیس ({systemLogs.filter(l => l.level === 'db').length})</span>
+                    </button>
                   </div>
                 </div>
               </div>
@@ -3835,7 +4174,7 @@ export const AdminPanel: React.FC = () => {
             <h4 className="text-sm font-black text-slate-900 flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <Smile className="w-5 h-5 text-amber-500" />
-                <span>آواتارهای اختصاصی ثبت‌شده توسط مدیریت ({customAvatars.length})</span>
+                <span>آواتارهای اختصاصی و بارگذاری‌شده سامانه ({customAvatars.length})</span>
               </div>
             </h4>
 
@@ -3843,7 +4182,7 @@ export const AdminPanel: React.FC = () => {
               <div className="p-8 text-center bg-slate-50 rounded-2xl border border-dashed border-slate-300 space-y-2">
                 <ImageIcon className="w-10 h-10 text-slate-400 mx-auto" />
                 <p className="text-xs font-bold text-slate-600">هنوز آواتار اختصاصی جدیدی ثبت نشده است.</p>
-                <p className="text-[11px] text-slate-400">با استفاده از فرم بالا می‌توانید اولین آواتار PNG سفارشی را اضافه نمایید.</p>
+                <p className="text-[11px] text-slate-400">با استفاده از فرم بالا می‌توانید آواتارهای سفارشی و تازه برای کاربران تعریف یا ویرایش نمایید.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 gap-4">
@@ -3857,7 +4196,7 @@ export const AdminPanel: React.FC = () => {
                     </div>
                     <div className="text-center w-full">
                       <span className="text-xs font-black text-slate-800 block truncate" title={avatar.name}>
-                        {avatar.name}
+                        {avatar.name || 'بدون نام'}
                       </span>
                       {avatar.createdAt && (
                         <span className="text-[10px] text-slate-400 block mt-0.5">
@@ -3865,19 +4204,121 @@ export const AdminPanel: React.FC = () => {
                         </span>
                       )}
                     </div>
-                    <button
-                      onClick={() => handleDeleteCustomAvatar(avatar.id, avatar.name)}
-                      className="w-full py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold rounded-xl border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
-                      title="حذف این آواتار"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>حذف</span>
-                    </button>
+                    <div className="grid grid-cols-2 gap-1.5 w-full">
+                      <button
+                        onClick={() => handleStartEditAvatar(avatar)}
+                        className="py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold rounded-xl border border-indigo-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                        title="ویرایش نام یا تصویر این آواتار"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                        <span>ویرایش</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteCustomAvatar(avatar.id, avatar.name)}
+                        className="py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold rounded-xl border border-rose-200 transition flex items-center justify-center gap-1 cursor-pointer"
+                        title="حذف این آواتار"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>حذف</span>
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
+
+          {/* Edit Avatar Modal */}
+          {editingAvatar && (
+            <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-55 overflow-y-auto">
+              <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden border border-slate-200 shadow-2xl flex flex-col my-8 animate-in fade-in zoom-in-95 duration-150">
+                <div className="bg-gradient-to-r from-pink-600 to-rose-600 text-white px-6 py-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Smile className="w-5 h-5 text-amber-300" />
+                    <h3 className="font-bold text-sm">ویرایش آواتار</h3>
+                  </div>
+                  <button
+                    onClick={() => setEditingAvatar(null)}
+                    className="p-1 hover:bg-white/20 rounded-xl transition cursor-pointer"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+
+                <form onSubmit={handleSaveEditedAvatar} className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1.5">
+                      عنوان یا نام آواتار:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      value={editAvatarName}
+                      onChange={(e) => setEditAvatarName(e.target.value)}
+                      placeholder="نام آواتار..."
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-pink-500 outline-none transition"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-black text-slate-700 mb-1.5">
+                      تغییر تصویر آواتار (آپلود PNG/JPG جدید یا حفظ تصویر فعلی):
+                    </label>
+                    <label className="cursor-pointer w-full px-4 py-2 bg-pink-50 hover:bg-pink-100 border border-pink-200 text-pink-900 text-xs font-bold rounded-2xl flex items-center justify-center gap-2 transition">
+                      {isEditingAvatarUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-pink-600" />
+                      ) : (
+                        <Upload className="w-4 h-4 text-pink-600" />
+                      )}
+                      <span>انتخاب فایل تصویر جدید</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleAvatarEditFileUpload}
+                        disabled={isEditingAvatarUploading}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+
+                  {/* Preview of edited avatar */}
+                  {editAvatarUrl && (
+                    <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex items-center gap-4">
+                      <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-white border border-slate-300 p-1 flex items-center justify-center shadow-xs">
+                        <img src={editAvatarUrl} alt="پیش‌نمایش" className="w-full h-full object-cover rounded-xl" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-black text-slate-800 block">پیش‌نمایش تصویر</span>
+                        <span className="text-[11px] text-slate-500 block truncate max-w-[200px]">{editAvatarName || 'بدون نام'}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditingAvatar(null)}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-2xl transition cursor-pointer"
+                    >
+                      انصراف
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isEditingAvatarUploading || !editAvatarName.trim() || !editAvatarUrl}
+                      className="px-5 py-2.5 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-700 hover:to-rose-700 disabled:opacity-50 text-white text-xs font-black rounded-2xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                    >
+                      {isEditingAvatarUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Save className="w-4 h-4" />
+                      )}
+                      <span>ذخیره تغییرات آواتار</span>
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

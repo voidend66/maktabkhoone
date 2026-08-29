@@ -474,6 +474,22 @@ export const api = {
     }
   },
 
+  async updateCustomAvatar(id: string, name: string, url: string, bg?: string): Promise<CustomAvatar | null> {
+    try {
+      const res = await fetch(`${API_BASE}/avatars/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, url, bg })
+      });
+      if (!res.ok) throw new Error('Failed to update avatar');
+      const data = await res.json();
+      return data.avatar;
+    } catch (err) {
+      console.error('API updateCustomAvatar error:', err);
+      return null;
+    }
+  },
+
   async deleteCustomAvatar(id: string): Promise<boolean> {
     try {
       const res = await fetch(`${API_BASE}/avatars/${id}`, {
@@ -522,6 +538,16 @@ export const api = {
     db_size_bytes?: number;
     total_uploaded_files?: number;
     is_external_drive?: boolean;
+    last_storage_status?: {
+      timestamp: string;
+      timestampFa: string;
+      status: 'success' | 'warning' | 'error';
+      path: string;
+      uploadDir: string;
+      sizeBytes: number;
+      isExternal: boolean;
+      lastError?: string | null;
+    } | null;
   } | null> {
     try {
       const res = await fetch(`${API_BASE}/admin/storage-info`);
@@ -530,6 +556,66 @@ export const api = {
     } catch (err) {
       console.warn('API getStorageInfo error:', err);
       return null;
+    }
+  },
+
+  // Test target storage paths for write/read access
+  async testStoragePaths(dbPath?: string, uploadDir?: string): Promise<{
+    success: boolean;
+    timestampFa: string;
+    db: {
+      path: string;
+      exists: boolean;
+      writable: boolean;
+      sizeBytes: number;
+      isExternal: boolean;
+      error: string | null;
+    };
+    uploads: {
+      dir: string;
+      exists: boolean;
+      writable: boolean;
+      fileCount: number;
+      isExternal: boolean;
+      error: string | null;
+    };
+    message?: string;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/storage/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ db_path: dbPath, upload_dir: uploadDir })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        timestampFa: new Date().toLocaleTimeString('fa-IR'),
+        db: { path: dbPath || '', exists: false, writable: false, sizeBytes: 0, isExternal: false, error: err.message },
+        uploads: { dir: uploadDir || '', exists: false, writable: false, fileCount: 0, isExternal: false, error: err.message },
+        message: err.message
+      };
+    }
+  },
+
+  // Update storage paths on the server
+  async updateStoragePaths(dbPath: string, uploadDir: string): Promise<{
+    success: boolean;
+    message: string;
+    db_path?: string;
+    upload_dir?: string;
+    is_external_drive?: boolean;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/storage/paths`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ db_path: dbPath, upload_dir: uploadDir })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ارتباط با سرور' };
     }
   }
 };

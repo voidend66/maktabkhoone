@@ -15,6 +15,13 @@ import {
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
+// Function to check if a path is on an external drive or mount point
+export function isExternalPath(targetPath: string): boolean {
+  if (!targetPath) return false;
+  const p = targetPath.toLowerCase();
+  return p.startsWith('/media') || p.startsWith('/mnt') || p.startsWith('/volumes') || p.includes('external') || p.includes('usb') || p.includes('sdcard');
+}
+
 // Function to determine valid DB path and ensure directory exists
 function initDbPath(): string {
   const preferredPath = process.env.DB_PATH || '/media/mahdi/mm/maktab_data/maktab.db';
@@ -24,6 +31,9 @@ function initDbPath(): string {
     if (!fs.existsSync(dataDir)) {
       fs.mkdirSync(dataDir, { recursive: true });
     }
+    const testFile = path.join(dataDir, `.db_probe_${Date.now()}`);
+    fs.writeFileSync(testFile, 'probe');
+    fs.unlinkSync(testFile);
     console.log(`💾 [دیتابیس] پوشه ذخیره‌سازی دیتابیس در ${dataDir} تایید و آماده است.`);
     return preferredPath;
   } catch (err: any) {
@@ -37,12 +47,37 @@ function initDbPath(): string {
   }
 }
 
-export const DB_PATH = initDbPath();
-const DATA_DIR = path.dirname(DB_PATH);
+let activeDbPath = initDbPath();
+export const DB_PATH = activeDbPath;
+const DATA_DIR = path.dirname(activeDbPath);
+
+let activeUploadDir = process.env.UPLOAD_DIR || '/media/mahdi/mm/maktab_uploads';
+
+export interface StorageStatusInfo {
+  timestamp: string;
+  timestampFa: string;
+  status: 'success' | 'warning' | 'error';
+  path: string;
+  uploadDir: string;
+  sizeBytes: number;
+  isExternal: boolean;
+  lastError?: string | null;
+}
+
+let lastStorageStatus: StorageStatusInfo = {
+  timestamp: new Date().toISOString(),
+  timestampFa: new Date().toLocaleDateString('fa-IR') + ' ' + new Date().toLocaleTimeString('fa-IR'),
+  status: 'success',
+  path: activeDbPath,
+  uploadDir: activeUploadDir,
+  sizeBytes: 0,
+  isExternal: isExternalPath(activeDbPath),
+  lastError: null
+};
 
 // Support legacy JSON database file if DB_PATH does not exist yet
 const LEGACY_DB_FILE = path.join(process.cwd(), 'data', 'maktabkhune.json');
-const DB_BACKUP = `${DB_PATH}.bak`;
+let DB_BACKUP = `${activeDbPath}.bak`;
 
 export interface SystemLog {
   id: string;
@@ -80,23 +115,60 @@ let memoryDb: DatabaseSchema = {
 };
 
 /**
- * Persist database to disk atomically at DB_PATH
+ * Persist database to disk atomically at activeDbPath
  */
-function saveToDisk() {
+function saveToDisk(): boolean {
   try {
+    const dir = path.dirname(activeDbPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const jsonStr = JSON.stringify(memoryDb, null, 2);
-    const tempFile = `${DB_PATH}.tmp`;
+    const tempFile = `${activeDbPath}.tmp_${Date.now()}`;
     fs.writeFileSync(tempFile, jsonStr, 'utf-8');
-    fs.renameSync(tempFile, DB_PATH);
+    fs.renameSync(tempFile, activeDbPath);
 
-    // Keep a backup occasionally
+    // Keep a backup copy
     try {
-      fs.copyFileSync(DB_PATH, DB_BACKUP);
+      DB_BACKUP = `${activeDbPath}.bak`;
+      fs.copyFileSync(activeDbPath, DB_BACKUP);
     } catch {
       // ignore backup errors
     }
-  } catch (error) {
-    console.error(`Error persisting database to ${DB_PATH}:`, error);
+
+    const byteLen = Buffer.byteLength(jsonStr, 'utf-8');
+    lastStorageStatus = {
+      timestamp: new Date().toISOString(),
+      timestampFa: new Date().toLocaleDateString('fa-IR') + ' ' + new Date().toLocaleTimeString('fa-IR'),
+      status: 'success',
+      path: activeDbPath,
+      uploadDir: activeUploadDir,
+      sizeBytes: byteLen,
+      isExternal: isExternalPath(activeDbPath),
+      lastError: null
+    };
+    return true;
+  } catch (error: any) {
+    console.error(`Error persisting database to ${activeDbPath}:`, error);
+    lastStorageStatus = {
+      timestamp: new Date().toISOString(),
+      timestampFa: new Date().toLocaleDateString('fa-IR') + ' ' + new Date().toLocaleTimeString('fa-IR'),
+      status: 'error',
+      path: activeDbPath,
+      uploadDir: activeUploadDir,
+      sizeBytes: 0,
+      isExternal: isExternalPath(activeDbPath),
+      lastError: error.message
+    };
+    
+    // Emergency local fallback write
+    try {
+      const fallbackPath = path.join(process.cwd(), 'data', 'maktab.db');
+      const fDir = path.dirname(fallbackPath);
+      if (!fs.existsSync(fDir)) fs.mkdirSync(fDir, { recursive: true });
+      fs.writeFileSync(fallbackPath, JSON.stringify(memoryDb, null, 2), 'utf-8');
+    } catch (fErr) {}
+    return false;
   }
 }
 
@@ -105,7 +177,7 @@ function saveToDisk() {
  */
 function loadFromDisk(): boolean {
   try {
-    let fileToRead = DB_PATH;
+    let fileToRead = activeDbPath;
     if (!fs.existsSync(fileToRead) && fs.existsSync(LEGACY_DB_FILE)) {
       fileToRead = LEGACY_DB_FILE;
     }
@@ -508,6 +580,11 @@ export const dbService = {
     const book = this.getBookById(bookId);
     if (!book) return null;
 
+    // Disallow owners from reviewing their own books
+    if (review.userId && book.ownerId && review.userId === book.ownerId) {
+      return null;
+    }
+
     const existingReviews = Array.isArray(book.reviews) ? [...book.reviews] : [];
     const existingIndex = existingReviews.findIndex((r) => r.userId === review.userId);
 
@@ -884,15 +961,55 @@ export const dbService = {
     return newAvatar;
   },
 
+  updateCustomAvatar(id: string, updates: { name?: string; url?: string; bg?: string }): CustomAvatar | null {
+    if (!memoryDb.customAvatars) memoryDb.customAvatars = [];
+    const index = memoryDb.customAvatars.findIndex((a) => a.id === id);
+    if (index === -1) {
+      // If it's a built-in avatar being edited for the first time, allow saving it as custom
+      const newAvatar: CustomAvatar = {
+        id,
+        name: updates.name?.trim() || 'آواتار',
+        url: updates.url?.trim() || '',
+        bg: updates.bg || 'bg-amber-100 border-amber-300',
+        createdAt: new Date().toLocaleDateString('fa-IR')
+      };
+      memoryDb.customAvatars.push(newAvatar);
+      saveToDisk();
+      return newAvatar;
+    }
+
+    const current = memoryDb.customAvatars[index];
+    const updated: CustomAvatar = {
+      ...current,
+      name: updates.name !== undefined ? updates.name.trim() : current.name,
+      url: updates.url !== undefined ? updates.url.trim() : current.url,
+      bg: updates.bg !== undefined ? updates.bg : current.bg
+    };
+
+    memoryDb.customAvatars[index] = updated;
+    saveToDisk();
+    return updated;
+  },
+
   deleteCustomAvatar(id: string): boolean {
-    if (!memoryDb.customAvatars) return false;
+    if (!memoryDb.customAvatars) memoryDb.customAvatars = [];
     const initialLen = memoryDb.customAvatars.length;
     memoryDb.customAvatars = memoryDb.customAvatars.filter((a) => a.id !== id);
-    if (memoryDb.customAvatars.length !== initialLen) {
-      saveToDisk();
-      return true;
+    
+    // Also track soft-deleted built-in avatar if it matches standard IDs
+    if (!memoryDb.settings['deleted_avatar_ids']) {
+      memoryDb.settings['deleted_avatar_ids'] = JSON.stringify([]);
     }
-    return false;
+    try {
+      const deletedIds: string[] = JSON.parse(memoryDb.settings['deleted_avatar_ids'] || '[]');
+      if (!deletedIds.includes(id)) {
+        deletedIds.push(id);
+        memoryDb.settings['deleted_avatar_ids'] = JSON.stringify(deletedIds);
+      }
+    } catch {}
+
+    saveToDisk();
+    return true;
   },
 
   // Bootstrap full state
@@ -1024,5 +1141,182 @@ export const dbService = {
       return true;
     }
     return false;
+  },
+
+  // ---- STORAGE & HARD DRIVE MANAGEMENT ----
+  getDbPath(): string {
+    return activeDbPath;
+  },
+
+  setDbPath(newPath: string): { success: boolean; message: string; path: string } {
+    if (!newPath || typeof newPath !== 'string' || !newPath.trim()) {
+      return { success: false, message: 'مسیر دیتابیس معتبر نیست.', path: activeDbPath };
+    }
+
+    const trimmed = newPath.trim();
+    const targetDir = path.dirname(trimmed);
+
+    try {
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+
+      const probeFile = path.join(targetDir, `.db_test_${Date.now()}`);
+      fs.writeFileSync(probeFile, 'write_test');
+      fs.unlinkSync(probeFile);
+
+      activeDbPath = trimmed;
+      DB_BACKUP = `${activeDbPath}.bak`;
+      memoryDb.settings['custom_db_path'] = trimmed;
+      
+      // Persist current state immediately to the new target
+      saveToDisk();
+
+      this.addSystemLog(
+        'db',
+        'تغییر موفقیت‌آمیز مسیر دیتابیس هارد دیسک',
+        `مسیر فعال دیتابیس به «${trimmed}» تغییر یافت و نسخه ذخیره‌سازی جاری نوشته شد.`
+      );
+
+      return {
+        success: true,
+        message: `مسیر ذخیره‌سازی دیتابیس با موفقیت به ${trimmed} منتقل شد و ذخیره‌سازی انجام پذیرفت.`,
+        path: activeDbPath
+      };
+    } catch (err: any) {
+      this.addSystemLog(
+        'error',
+        'خطا در تغییر مسیر دیتابیس',
+        `امکان نوشتن در مسیر «${trimmed}» وجود ندارد: ${err.message}`
+      );
+      return {
+        success: false,
+        message: `امکان دسترسی به مسیر دیتابیس درخواستی وجود ندارد: ${err.message}`,
+        path: activeDbPath
+      };
+    }
+  },
+
+  getUploadDir(): string {
+    return activeUploadDir;
+  },
+
+  setUploadDir(newDir: string): { success: boolean; message: string; dir: string } {
+    if (!newDir || typeof newDir !== 'string' || !newDir.trim()) {
+      return { success: false, message: 'مسیر دایرکتوری آپلود معتبر نیست.', dir: activeUploadDir };
+    }
+
+    const trimmed = newDir.trim();
+
+    try {
+      if (!fs.existsSync(trimmed)) {
+        fs.mkdirSync(trimmed, { recursive: true });
+      }
+
+      const probeFile = path.join(trimmed, `.upload_test_${Date.now()}`);
+      fs.writeFileSync(probeFile, 'write_test');
+      fs.unlinkSync(probeFile);
+
+      activeUploadDir = trimmed;
+      memoryDb.settings['custom_upload_dir'] = trimmed;
+      saveToDisk();
+
+      this.addSystemLog(
+        'db',
+        'تغییر مسیر دایرکتوری آپلود تصاویر',
+        `پوشه ذخیره‌سازی تصاویر به «${trimmed}» تنظیم شد.`
+      );
+
+      return {
+        success: true,
+        message: `مسیر آپلود تصاویر با موفقیت به ${trimmed} تغییر یافت و دسترسی نوشتن تایید شد.`,
+        dir: activeUploadDir
+      };
+    } catch (err: any) {
+      this.addSystemLog(
+        'error',
+        'خطا در تغییر دایرکتوری آپلود',
+        `امکان نوشتن در پوشه «${trimmed}» وجود ندارد: ${err.message}`
+      );
+      return {
+        success: false,
+        message: `امکان دسترسی به پوشه آپلود درخواستی وجود ندارد: ${err.message}`,
+        dir: activeUploadDir
+      };
+    }
+  },
+
+  getLastStorageStatus(): StorageStatusInfo {
+    return lastStorageStatus;
+  },
+
+  testStoragePaths(targetDbPath?: string, targetUploadDir?: string) {
+    const dbTestPath = (targetDbPath && targetDbPath.trim()) || activeDbPath;
+    const uploadTestDir = (targetUploadDir && targetUploadDir.trim()) || activeUploadDir;
+
+    const result = {
+      timestamp: new Date().toISOString(),
+      timestampFa: new Date().toLocaleDateString('fa-IR') + ' ' + new Date().toLocaleTimeString('fa-IR'),
+      db: {
+        path: dbTestPath,
+        exists: false,
+        writable: false,
+        sizeBytes: 0,
+        isExternal: isExternalPath(dbTestPath),
+        error: null as string | null
+      },
+      uploads: {
+        dir: uploadTestDir,
+        exists: false,
+        writable: false,
+        fileCount: 0,
+        isExternal: isExternalPath(uploadTestDir),
+        error: null as string | null
+      }
+    };
+
+    // Test DB Path
+    try {
+      const dir = path.dirname(dbTestPath);
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      const testFile = path.join(dir, `.probe_db_${Date.now()}`);
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      result.db.writable = true;
+
+      if (fs.existsSync(dbTestPath)) {
+        result.db.exists = true;
+        result.db.sizeBytes = fs.statSync(dbTestPath).size;
+      }
+    } catch (err: any) {
+      result.db.error = err.message;
+    }
+
+    // Test Uploads Directory
+    try {
+      if (!fs.existsSync(uploadTestDir)) {
+        fs.mkdirSync(uploadTestDir, { recursive: true });
+      }
+      const testFile = path.join(uploadTestDir, `.probe_upload_${Date.now()}`);
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      result.uploads.writable = true;
+      result.uploads.exists = true;
+      result.uploads.fileCount = fs.readdirSync(uploadTestDir).length;
+    } catch (err: any) {
+      result.uploads.error = err.message;
+    }
+
+    // Log diagnostic event
+    const ok = result.db.writable && result.uploads.writable;
+    this.addSystemLog(
+      ok ? 'db' : 'warn',
+      'بررسی و تست مسیرهای ذخیره‌سازی هارد',
+      `تست دیتابیس (${dbTestPath}): ${result.db.writable ? 'موفق' : 'ناموفق (' + result.db.error + ')'} | تست آپلود (${uploadTestDir}): ${result.uploads.writable ? 'موفق (' + result.uploads.fileCount + ' فایل)' : 'ناموفق (' + result.uploads.error + ')'}`
+    );
+
+    return result;
   }
 };
