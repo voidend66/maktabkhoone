@@ -587,17 +587,74 @@ export async function getBaleWebhookInfo() {
 }
 
 /**
- * ذخیره و به‌روزرسانی شناسه چت مدیران برای دریافت اعلانات (فقط چت‌های خصوصی کاربران، بدون کانال یا گروه)
+ * دریافت شناسه‌های چت بله فقط برای مدیران احراز هویت شده و واقعی در سامانه
+ * (جلوگیری قطعی از ارسال لاگ‌ها و اعلانات مدیریتی به کاربران و دانش‌آموزان عادی)
  */
-export function registerAdminBaleChatId(chatId: string | number) {
+export function getVerifiedAdminBaleChatIds(): string[] {
+  try {
+    const allUsers = dbService.getAllUsers();
+    const adminChatIds = new Set<string>();
+
+    // فقط کاربرانی که نقش admin دارند یا شماره‌شان جزو شماره‌های مدیر سیستم (isAdminPhone) است
+    allUsers.forEach((u) => {
+      const isRealAdmin = u.role === 'admin' || (u.phone && isAdminPhone(u.phone));
+      if (isRealAdmin && u.baleChatId) {
+        const strId = u.baleChatId.toString().trim();
+        if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
+          adminChatIds.add(strId);
+        }
+      }
+    });
+
+    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
+    const verifiedList = Array.from(adminChatIds).filter(id => {
+      if (!/^\d+$/.test(id) || id.startsWith('-') || id.startsWith('@')) return false;
+      if (channelUsername && id.toLowerCase() === channelUsername) return false;
+      return true;
+    });
+
+    // همگام‌سازی و پاک‌سازی خودکار تنظیمات برای حذف دائمی چت‌آیدی‌های کاربران عادی که در گذشته ذخیره شده بودند
+    try {
+      dbService.setSetting('admin_bale_chat_ids', JSON.stringify(verifiedList));
+    } catch {}
+
+    return verifiedList;
+  } catch (err) {
+    console.error('Error computing verified admin Bale chat IDs:', err);
+    return [];
+  }
+}
+
+/**
+ * ذخیره و به‌روزرسانی شناسه چت مدیران برای دریافت اعلانات (فقط برای مدیران احراز هویت شده)
+ */
+export function registerAdminBaleChatId(chatId: string | number, phone?: string) {
   try {
     const strId = chatId.toString().trim();
-    // Channels or groups have negative IDs or start with @. Valid user private chat IDs are positive numbers.
     if (!strId || strId.startsWith('@') || strId.startsWith('-') || !/^\d+$/.test(strId)) {
       return;
     }
+
     const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
     if (channelUsername && strId.toLowerCase() === channelUsername) {
+      return;
+    }
+
+    // احراز هویت دقیق: تنها در صورتی مجاز است که شماره مدیر باشد یا حساب متصل دارای نقش admin باشد
+    const allUsers = dbService.getAllUsers();
+    let isConfirmedAdmin = false;
+
+    if (phone && isAdminPhone(phone)) {
+      isConfirmedAdmin = true;
+    } else {
+      const matchedUser = allUsers.find(u => u.baleChatId?.toString().trim() === strId);
+      if (matchedUser && (matchedUser.role === 'admin' || (matchedUser.phone && isAdminPhone(matchedUser.phone)))) {
+        isConfirmedAdmin = true;
+      }
+    }
+
+    if (!isConfirmedAdmin) {
+      console.log(`⚠️ [Bale Security] تلاش برای ثبت چت‌آیدی غیرمدیر (${strId}) نادیده گرفته شد.`);
       return;
     }
 
@@ -623,45 +680,11 @@ export function registerAdminBaleChatId(chatId: string | number) {
 }
 
 /**
- * ارسال اعلان هوشمند به مدیران در پیام‌رسان بله (همراه با دکمه‌های تایید / رد)
+ * ارسال اعلان هوشمند ثبت‌نام کاربر جدید به مدیران در پیام‌رسان بله (همراه با دکمه‌های تایید / رد)
  */
 export async function notifyAdminsOnBale(user: User) {
   try {
-    const allUsers = dbService.getAllUsers();
-    const adminChatIds = new Set<string>();
-
-    // 1. مدیران ثبت‌شده در دیتابیس
-    allUsers.forEach((u) => {
-      if (u.role === 'admin' && u.baleChatId) {
-        const strId = u.baleChatId.toString().trim();
-        if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
-          adminChatIds.add(strId);
-        }
-      }
-    });
-
-    // 2. چت‌آیدی‌های ذخیره‌شده از بله
-    const savedSetting = dbService.getSetting('admin_bale_chat_ids');
-    if (savedSetting) {
-      try {
-        const parsed = JSON.parse(savedSetting);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((id) => {
-            const strId = id.toString().trim();
-            if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
-              adminChatIds.add(strId);
-            }
-          });
-        }
-      } catch (e) {}
-    }
-
-    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
-    const filteredAdminIds = Array.from(adminChatIds).filter(id => {
-      if (!/^\d+$/.test(id) || id.startsWith('-') || id.startsWith('@')) return false;
-      if (channelUsername && id.toLowerCase() === channelUsername) return false;
-      return true;
-    });
+    const filteredAdminIds = getVerifiedAdminBaleChatIds();
 
     if (filteredAdminIds.length === 0) {
       console.log('⚠️ [Bale Notify] هیچ چت‌آیدی مدیری برای ارسال پیام ثبت نشده است.');
@@ -697,43 +720,11 @@ export async function notifyAdminsOnBale(user: User) {
 }
 
 /**
- * ارسال پیام عمومی به تمامی مدیران ثبت‌شده در پیام‌رسان بله
+ * ارسال پیام عمومی، لاگ‌ها و هشدارهای سیستمی صرفاً به مدیران احراز هویت شده در پیام‌رسان بله
  */
 export async function notifyAdminsGeneralOnBale(text: string, replyMarkup?: any) {
   try {
-    const allUsers = dbService.getAllUsers();
-    const adminChatIds = new Set<string>();
-
-    allUsers.forEach((u) => {
-      if (u.role === 'admin' && u.baleChatId) {
-        const strId = u.baleChatId.toString().trim();
-        if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
-          adminChatIds.add(strId);
-        }
-      }
-    });
-
-    const savedSetting = dbService.getSetting('admin_bale_chat_ids');
-    if (savedSetting) {
-      try {
-        const parsed = JSON.parse(savedSetting);
-        if (Array.isArray(parsed)) {
-          parsed.forEach((id) => {
-            const strId = id.toString().trim();
-            if (/^\d+$/.test(strId) && !strId.startsWith('-') && !strId.startsWith('@')) {
-              adminChatIds.add(strId);
-            }
-          });
-        }
-      } catch (e) {}
-    }
-
-    const channelUsername = (dbService.getSystemConfig().baleChannelUsername || '').replace(/^@/, '').trim().toLowerCase();
-    const filteredAdminIds = Array.from(adminChatIds).filter(id => {
-      if (!/^\d+$/.test(id) || id.startsWith('-') || id.startsWith('@')) return false;
-      if (channelUsername && id.toLowerCase() === channelUsername) return false;
-      return true;
-    });
+    const filteredAdminIds = getVerifiedAdminBaleChatIds();
 
     for (const chatId of filteredAdminIds) {
       await sendBaleMessage(chatId, text, replyMarkup);
@@ -814,8 +805,27 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
     const fromChatId = callbackQuery.message?.chat?.id || callbackQuery.from?.id;
     const messageId = callbackQuery.message?.message_id;
 
-    if (fromChatId) {
-      registerAdminBaleChatId(fromChatId);
+    // بررسی دسترسی برای عملیات‌های مدیریتی در بله
+    const isAdminAction =
+      data.startsWith('approve_user:') ||
+      data.startsWith('reject_user:') ||
+      data.startsWith('rj_rs:') ||
+      data.startsWith('rj_back:') ||
+      data.startsWith('apprv_rc:') ||
+      data.startsWith('rej_rc:');
+
+    if (isAdminAction) {
+      const verifiedAdminChatIds = getVerifiedAdminBaleChatIds();
+      const isSenderVerifiedAdmin = fromChatId && verifiedAdminChatIds.includes(fromChatId.toString().trim());
+
+      if (!isSenderVerifiedAdmin) {
+        await callBaleApi('answerCallbackQuery', {
+          callback_query_id: queryId,
+          text: '⛔ دسترسی غیرمجاز! تنها مدیران تاییدشده مکتب‌خانه مجاز به انجام این عملیات هستند.',
+          show_alert: true,
+        });
+        return;
+      }
     }
 
     // 1. تایید عضویت کاربر توسط مدیر
@@ -1433,18 +1443,46 @@ export async function handleIncomingBaleMessage(message: any) {
 
     // Handle deep link /start admin
     if (passedSessionId === 'admin') {
-      registerAdminBaleChatId(chatId);
-      dbService.addSystemLog(
-        'info',
-        `ثبت چت مدیریت بله از لینک مستقیم`,
-        `چت‌آیدی بله: ${chatId}`
+      const allUsers = dbService.getAllUsers();
+      const existingAdmin = allUsers.find(
+        (u) =>
+          (u.role === 'admin' || (u.phone && isAdminPhone(u.phone))) &&
+          u.baleChatId &&
+          u.baleChatId.toString().trim() === chatId.toString().trim()
       );
-      await sendBaleMessage(
-        chatId,
-        `👑 <b>مدیر محترم مکتب‌خانه خوش آمدید!</b>\n\n` +
-        `چت بله شما به عنوان شناسه مدیریت اصلی سامانه ثبت گردید. کلیه اعلانات ثبت‌نام، پرداخت‌ها و گزارش‌های خسارت به همراه دکمه‌های تایید/رد مستقیم به همین چت ارسال خواهد شد. 🎒✨`,
-        { remove_keyboard: true }
-      );
+
+      if (existingAdmin) {
+        registerAdminBaleChatId(chatId, existingAdmin.phone);
+        dbService.addSystemLog(
+          'info',
+          `احراز هویت مجدد چت مدیریت بله (${existingAdmin.name})`,
+          `چت‌آیدی بله: ${chatId}`
+        );
+        await sendBaleMessage(
+          chatId,
+          `👑 <b>مدیر محترم مکتب‌خانه خوش آمدید!</b>\n\n` +
+          `چت بله شما به عنوان شناسه مدیریت برای حساب <b>${existingAdmin.name}</b> فعال و تایید شده است. کلیه اعلانات ثبت‌نام و گزارش‌ها به همین چت ارسال خواهد شد. 🎒✨`,
+          { remove_keyboard: true }
+        );
+      } else {
+        await sendBaleMessage(
+          chatId,
+          `🔐 <b>احراز هویت مدیریت سامانه مکتب‌خانه</b> 🎒\n\n` +
+          `جهت اتصال این چت به پنل مدیریت مکتب‌خانه، لطفاً دکمه زیر را لمس کرده و شماره همراه مدیریت خود را ارسال فرمایید تا هویت شما تایید گردد:`,
+          {
+            keyboard: [
+              [
+                {
+                  text: '📲 ارسال شماره همراه جهت تایید هویت مدیر',
+                  request_contact: true,
+                },
+              ],
+            ],
+            resize_keyboard: true,
+            one_time_keyboard: true,
+          }
+        );
+      }
       return;
     }
 

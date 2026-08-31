@@ -13,6 +13,7 @@ import { BaleOtpModal } from './components/BaleOtpModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
 import { SystemGuideModal } from './components/SystemGuideModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { NotFoundPage } from './components/NotFoundPage';
 import { Book } from './types';
 import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
@@ -118,6 +119,33 @@ function MainAppContent() {
     };
   }, [currentUser]);
 
+  // 404 Route Detection (e.g. /404, #404, or tab=404)
+  const [is404Route, setIs404Route] = useState<boolean>(() => {
+    const path = window.location.pathname;
+    const hash = window.location.hash;
+    const params = new URLSearchParams(window.location.search);
+    return path === '/404' || hash === '#404' || params.get('page') === '404';
+  });
+
+  useEffect(() => {
+    const checkRoute = () => {
+      const path = window.location.pathname;
+      const hash = window.location.hash;
+      const params = new URLSearchParams(window.location.search);
+      if (path === '/404' || hash === '#404' || params.get('page') === '404') {
+        setIs404Route(true);
+      } else {
+        setIs404Route(false);
+      }
+    };
+    window.addEventListener('popstate', checkRoute);
+    window.addEventListener('hashchange', checkRoute);
+    return () => {
+      window.removeEventListener('popstate', checkRoute);
+      window.removeEventListener('hashchange', checkRoute);
+    };
+  }, []);
+
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
@@ -148,6 +176,20 @@ function MainAppContent() {
       }
     }
   };
+
+  if (is404Route || activeTab === '404') {
+    return (
+      <NotFoundPage
+        onGoBack={() => {
+          setIs404Route(false);
+          setActiveTab('library');
+          try {
+            window.history.pushState(null, '', '/');
+          } catch {}
+        }}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-['Vazirmatn',sans-serif] dir-rtl">

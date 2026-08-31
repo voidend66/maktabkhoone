@@ -324,6 +324,28 @@ function seedInitialDataIfEmpty() {
     }
   }
 
+  // Purge any non-admin chat IDs from settings if present
+  if (memoryDb.settings && memoryDb.settings['admin_bale_chat_ids']) {
+    try {
+      const current = JSON.parse(memoryDb.settings['admin_bale_chat_ids']);
+      if (Array.isArray(current) && current.length > 0) {
+        const verifiedAdminChatIds = new Set<string>();
+        memoryDb.users.forEach((u) => {
+          if ((u.role === 'admin' || (u.phone && isAdminPhone(u.phone))) && u.baleChatId) {
+            verifiedAdminChatIds.add(u.baleChatId.toString().trim());
+          }
+        });
+        const sanitized = current
+          .map((x) => x.toString().trim())
+          .filter((id) => verifiedAdminChatIds.has(id));
+        if (sanitized.length !== current.length) {
+          memoryDb.settings['admin_bale_chat_ids'] = JSON.stringify(sanitized);
+          hasChanges = true;
+        }
+      }
+    } catch {}
+  }
+
   if (hasChanges) {
     saveToDisk();
   }
@@ -1076,6 +1098,26 @@ export const dbService = {
     }
     if (rawJson.systemConfig && typeof rawJson.systemConfig === 'object') {
       settingsObj['system_config'] = JSON.stringify(rawJson.systemConfig);
+    }
+
+    // Purge any non-admin chat IDs from restored settings
+    if (settingsObj['admin_bale_chat_ids']) {
+      try {
+        const current = JSON.parse(settingsObj['admin_bale_chat_ids']);
+        if (Array.isArray(current) && current.length > 0) {
+          const verifiedAdminChatIds = new Set<string>();
+          const usersList = Array.isArray(rawJson.users) ? rawJson.users : [];
+          usersList.forEach((u: any) => {
+            if ((u.role === 'admin' || (u.phone && isAdminPhone(u.phone))) && u.baleChatId) {
+              verifiedAdminChatIds.add(u.baleChatId.toString().trim());
+            }
+          });
+          const sanitized = current
+            .map((x) => x.toString().trim())
+            .filter((id) => verifiedAdminChatIds.has(id));
+          settingsObj['admin_bale_chat_ids'] = JSON.stringify(sanitized);
+        }
+      } catch {}
     }
 
     memoryDb = {
