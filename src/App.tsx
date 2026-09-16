@@ -20,6 +20,84 @@ import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
 import { api } from './services/api';
 
+const VALID_TABS = new Set([
+  'library',
+  'league',
+  'benefits',
+  'rules',
+  'my_books',
+  'my-books',
+  'requests',
+  'profile',
+  'admin'
+]);
+
+function checkIs404Route(booksList: Book[], isLoadingData: boolean): { is404: boolean; matchedTab?: string; targetBook?: Book } {
+  try {
+    const pathname = window.location.pathname.replace(/\/$/, '') || '/';
+    const rawHash = window.location.hash.replace(/^#\/?/, '').toLowerCase();
+    const searchParams = new URLSearchParams(window.location.search);
+    const tabParam = (searchParams.get('tab') || searchParams.get('page') || '').toLowerCase();
+    const bookIdParam = searchParams.get('book');
+
+    // Explicit 404
+    if (pathname === '/404' || rawHash === '404' || tabParam === '404') {
+      return { is404: true };
+    }
+
+    // Check pathname
+    const cleanPath = pathname.toLowerCase();
+    const isRootPath = cleanPath === '/' || cleanPath === '' || cleanPath === '/index.html';
+
+    let resolvedTab: string | undefined = undefined;
+
+    if (!isRootPath) {
+      const pathTab = cleanPath.replace(/^\//, '');
+      if (VALID_TABS.has(pathTab)) {
+        resolvedTab = pathTab === 'my-books' ? 'my_books' : pathTab;
+      } else {
+        // Unknown path segment (e.g. /broken-url, /test, /panel)
+        return { is404: true };
+      }
+    }
+
+    // Check hash if present
+    if (rawHash && rawHash !== 'guide' && rawHash !== 'auth') {
+      if (VALID_TABS.has(rawHash)) {
+        resolvedTab = rawHash === 'my-books' ? 'my_books' : rawHash;
+      } else {
+        return { is404: true };
+      }
+    }
+
+    // Check tabParam if present
+    if (tabParam) {
+      if (VALID_TABS.has(tabParam)) {
+        resolvedTab = tabParam === 'my-books' ? 'my_books' : tabParam;
+      } else {
+        return { is404: true };
+      }
+    }
+
+    // Check book deep link if present
+    if (bookIdParam) {
+      if (!isLoadingData && booksList.length > 0) {
+        const foundBook = booksList.find((b) => b.id === bookIdParam);
+        if (foundBook) {
+          return { is404: false, matchedTab: 'library', targetBook: foundBook };
+        } else {
+          // Specified a book ID that does not exist -> 404!
+          return { is404: true };
+        }
+      }
+    }
+
+    return { is404: false, matchedTab: resolvedTab };
+  } catch {
+    return { is404: false };
+  }
+}
+
 function MainAppContent() {
   const {
     requestBookLoan,
@@ -29,11 +107,14 @@ function MainAppContent() {
     notifications,
     markNotificationRead,
     clearNotifications,
-    requests
+    requests,
+    isLoading
   } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
   const [selectedBookForDetail, setSelectedBookForDetail] = useState<Book | null>(null);
   const [showNotifications, setShowNotifications] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   const borrowedBooksCountdowns = useMemo(() => {
     if (!currentUser) return [];
@@ -43,13 +124,12 @@ function MainAppContent() {
         const now = Date.now();
         let ts = r.dueDateTimestamp;
         if (!ts) {
-          // Fallback if timestamp isn't explicitly set
-          ts = Date.now() + 4 * 24 * 60 * 60 * 1000; // 4 days fallback
+          ts = Date.now() + 4 * 24 * 60 * 60 * 1000;
         }
         const diffMs = ts - now;
         const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
         const hoursLeft = Math.ceil(diffMs / (1000 * 60 * 60));
-        
+
         return {
           request: r,
           daysLeft: diffDays,
@@ -59,32 +139,6 @@ function MainAppContent() {
       });
   }, [requests, currentUser]);
 
-  // Deep Link Handling (e.g. from Bale Channel post ?book=id)
-  useEffect(() => {
-    if (books && books.length > 0) {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const bookId = urlParams.get('book');
-        if (bookId) {
-          const targetBook = books.find((b) => b.id === bookId);
-          if (targetBook) {
-            setSelectedBookForDetail(targetBook);
-            setActiveTab('library');
-          }
-        }
-      } catch (err) {
-        console.warn('Error reading book deep link param:', err);
-      }
-    }
-  }, [books]);
-
-  // Unified Auth Modal (Login / Register via Bale)
-  const [showAuthModal, setShowAuthModal] = useState(false);
-
-  // Guide Modal
-  const [showGuideModal, setShowGuideModal] = useState(false);
-
-  // Complete Profile Modal Trigger (Profile completeness: Name check only)
   const isProfileIncomplete =
     currentUser &&
     currentUser.role !== 'admin' &&
@@ -119,32 +173,33 @@ function MainAppContent() {
     };
   }, [currentUser]);
 
-  // 404 Route Detection (e.g. /404, #404, or tab=404)
   const [is404Route, setIs404Route] = useState<boolean>(() => {
-    const path = window.location.pathname;
-    const hash = window.location.hash;
-    const params = new URLSearchParams(window.location.search);
-    return path === '/404' || hash === '#404' || params.get('page') === '404';
+    const res = checkIs404Route([], true);
+    return res.is404;
   });
 
+  // Evaluate URL on load, route change, or when books load
   useEffect(() => {
-    const checkRoute = () => {
-      const path = window.location.pathname;
-      const hash = window.location.hash;
-      const params = new URLSearchParams(window.location.search);
-      if (path === '/404' || hash === '#404' || params.get('page') === '404') {
-        setIs404Route(true);
-      } else {
-        setIs404Route(false);
+    const evaluateRoute = () => {
+      const { is404, matchedTab, targetBook } = checkIs404Route(books, isLoading);
+      setIs404Route(is404);
+      if (targetBook) {
+        setSelectedBookForDetail(targetBook);
+      }
+      if (matchedTab) {
+        setActiveTab(matchedTab);
       }
     };
-    window.addEventListener('popstate', checkRoute);
-    window.addEventListener('hashchange', checkRoute);
+
+    evaluateRoute();
+
+    window.addEventListener('popstate', evaluateRoute);
+    window.addEventListener('hashchange', evaluateRoute);
     return () => {
-      window.removeEventListener('popstate', checkRoute);
-      window.removeEventListener('hashchange', checkRoute);
+      window.removeEventListener('popstate', evaluateRoute);
+      window.removeEventListener('hashchange', evaluateRoute);
     };
-  }, []);
+  }, [books, isLoading]);
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);

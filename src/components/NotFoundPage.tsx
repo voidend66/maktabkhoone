@@ -5,9 +5,26 @@ interface NotFoundPageProps {
 }
 
 export function NotFoundPage({ onGoBack }: NotFoundPageProps) {
+  const handleClick = () => {
+    if (onGoBack) {
+      onGoBack();
+    } else {
+      window.location.href = '/';
+    }
+  };
+
   return (
     <main
-      className="relative w-full min-h-[100svh] bg-black overflow-x-hidden overflow-y-auto select-none"
+      onClick={handleClick}
+      role="button"
+      tabIndex={0}
+      title="برای بازگشت به صفحه اصلی کلیک یا لمس کنید"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          handleClick();
+        }
+      }}
+      className="relative w-full min-h-[100svh] bg-black overflow-x-hidden overflow-y-auto select-none cursor-pointer"
       style={{
         fontFamily: '"Geist Mono:SemiBold", monospace',
       }}
@@ -29,7 +46,7 @@ export function NotFoundPage({ onGoBack }: NotFoundPageProps) {
 
       {/* Header Logo */}
       <header
-        className="absolute left-1/2 -translate-x-1/2 top-8 sm:top-20 z-10 flex items-center justify-center scale-75 sm:scale-100 origin-center pointer-events-auto"
+        className="absolute left-1/2 -translate-x-1/2 top-8 sm:top-20 z-10 flex items-center justify-center scale-75 sm:scale-100 origin-center pointer-events-none"
         style={{
           width: '233px',
           height: '40px',
@@ -72,7 +89,7 @@ export function NotFoundPage({ onGoBack }: NotFoundPageProps) {
 
       {/* Centered 404 Content */}
       <div
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center text-center gap-[28px] sm:gap-[44px] w-[min(100%-40px,360px)] sm:w-[483px]"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-10 flex flex-col items-center text-center gap-[28px] sm:gap-[44px] w-[min(100%-40px,360px)] sm:w-[483px] pointer-events-none"
       >
         {/* 404 Heading */}
         <h1

@@ -6,7 +6,26 @@ import { createServer as createViteServer } from 'vite';
 import crypto from 'crypto';
 import multer from 'multer';
 import * as archiverModule from 'archiver';
-const archiver = (archiverModule as any).default || archiverModule;
+
+function createZipArchive(options?: any): archiverModule.Archiver {
+  const mod = archiverModule as any;
+  if (typeof mod.ZipArchive === 'function') {
+    return new mod.ZipArchive(options);
+  }
+  if (mod.default && typeof mod.default.ZipArchive === 'function') {
+    return new mod.default.ZipArchive(options);
+  }
+  if (typeof mod.default === 'function') {
+    return mod.default('zip', options);
+  }
+  if (typeof mod === 'function') {
+    return mod('zip', options);
+  }
+  if (mod.create && typeof mod.create === 'function') {
+    return mod.create('zip', options);
+  }
+  throw new Error('کتابخانه ساخت فایل فشرده (archiver) در دسترس نیست.');
+}
 import { dbService, addSystemLogListener, DB_PATH, isExternalPath } from './server/db';
 import { isAdminPhone } from './src/data/mockData';
 import {
@@ -3354,7 +3373,7 @@ async function startServer() {
         targetDir = fallbackDir;
       }
 
-      const archive = archiver('zip', {
+      const archive = createZipArchive({
         zlib: { level: 9 }
       });
 
