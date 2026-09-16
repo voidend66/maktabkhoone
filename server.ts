@@ -4,7 +4,9 @@ import path from 'path';
 import fs from 'fs';
 import { createServer as createViteServer } from 'vite';
 import crypto from 'crypto';
+import os from 'os';
 import multer from 'multer';
+import AdmZip from 'adm-zip';
 import * as archiverModule from 'archiver';
 
 function createZipArchive(options?: any): archiverModule.Archiver {
@@ -3468,6 +3470,92 @@ async function startServer() {
     } catch (err: any) {
       dbService.addSystemLog('error', 'خطا در بازیابی دیتابیس', err.message);
       return res.status(500).json({ success: false, message: 'خطا در بازیابی فایل دیتابیس: ' + err.message });
+    }
+  });
+
+  const zipUpload = multer({
+    dest: os.tmpdir(),
+    limits: { fileSize: 500 * 1024 * 1024 } // 500MB limit for photos archive
+  });
+
+  /**
+   * API: بازیابی و استخراج فایل فشرده تصاویر (ZIP) در پوشه تصاویر فعال سرور
+   */
+  app.post('/api/admin/restore/photos', zipUpload.single('photosZip'), (req: Request, res: Response): any => {
+    const tempFilePath = req.file?.path;
+    try {
+      if (!req.file || !tempFilePath) {
+        return res.status(400).json({
+          success: false,
+          message: 'لطفاً یک فایل فشرده (.zip) معتبر حاوی تصاویر انتخاب کنید.'
+        });
+      }
+
+      const activeUploadDir = getUploadsDir();
+      if (!fs.existsSync(activeUploadDir)) {
+        fs.mkdirSync(activeUploadDir, { recursive: true });
+      }
+
+      const zip = new AdmZip(tempFilePath);
+      const zipEntries = zip.getEntries();
+
+      let extractedCount = 0;
+      let skippedCount = 0;
+
+      for (const entry of zipEntries) {
+        if (entry.isDirectory) continue;
+
+        const originalName = entry.entryName;
+        const cleanBaseName = path.basename(originalName);
+
+        // Security check: avoid directory traversal or hidden/system files
+        if (
+          !cleanBaseName ||
+          cleanBaseName.startsWith('.') ||
+          cleanBaseName === 'README.txt' ||
+          cleanBaseName.toLowerCase() === 'thumbs.db' ||
+          originalName.includes('__MACOSX')
+        ) {
+          skippedCount++;
+          continue;
+        }
+
+        const ext = path.extname(cleanBaseName).toLowerCase();
+        if (!ALLOWED_IMAGE_EXTENSIONS.includes(ext)) {
+          skippedCount++;
+          continue;
+        }
+
+        const targetFilePath = path.join(activeUploadDir, cleanBaseName);
+        fs.writeFileSync(targetFilePath, entry.getData());
+        extractedCount++;
+      }
+
+      dbService.addSystemLog(
+        'db',
+        'بازیابی فایل فشرده تصاویر (ZIP)',
+        `تعداد ${extractedCount} تصویر با موفقیت در پوشه ذخیره‌سازی تصاویر (${activeUploadDir}) بازگردانی و ذخیره شد. (${skippedCount} فایل غیرتصویر یا سیستمی نادیده گرفته شد)`
+      );
+
+      return res.json({
+        success: true,
+        message: `تعداد ${extractedCount} تصویر با موفقیت در پوشه تصاویر (${activeUploadDir}) بازگردانی شد.`,
+        extractedCount,
+        uploadDir: activeUploadDir
+      });
+    } catch (err: any) {
+      console.error('Error in /api/admin/restore/photos:', err);
+      dbService.addSystemLog('error', 'خطا در استخراج فایل زیپ تصاویر', err.message);
+      return res.status(500).json({
+        success: false,
+        message: 'خطا در باز کردن و استخراج فایل فشرده تصاویر: ' + err.message
+      });
+    } finally {
+      if (tempFilePath && fs.existsSync(tempFilePath)) {
+        try {
+          fs.unlinkSync(tempFilePath);
+        } catch (e) {}
+      }
     }
   });
 

@@ -57,7 +57,8 @@ import {
   Loader2,
   Megaphone,
   HardDrive,
-  Folder
+  Folder,
+  FolderUp
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -410,6 +411,60 @@ export const AdminPanel: React.FC = () => {
       setRestoreError(err.message || 'خطای شبکه در ارتباط با سرور.');
     } finally {
       setIsRestoring(false);
+      e.target.value = '';
+    }
+  };
+
+  const [isRestoringPhotos, setIsRestoringPhotos] = useState(false);
+  const [photosRestoreSuccess, setPhotosRestoreSuccess] = useState<string | null>(null);
+  const [photosRestoreError, setPhotosRestoreError] = useState<string | null>(null);
+
+  const handleUploadPhotosBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      alert('لطفاً یک فایل فشرده با فرمت .zip حاوی تصاویر انتخاب فرمایید.');
+      e.target.value = '';
+      return;
+    }
+
+    const confirmRestore = window.confirm(
+      '⚠️ تایید بازیابی فایل فشرده تصاویر:\n\nآیا از استخراج و بازیابی فایل فشرده تصاویر (ZIP) روی سرور اطمینان دارید؟\nتصاویر درون فایل در پوشه عکس‌های سرور استخراج شده و جلد کتب و آواتارها به طور کامل نمایش داده خواهند شد.'
+    );
+    if (!confirmRestore) {
+      e.target.value = '';
+      return;
+    }
+
+    setIsRestoringPhotos(true);
+    setPhotosRestoreError(null);
+    setPhotosRestoreSuccess(null);
+
+    const formData = new FormData();
+    formData.append('photosZip', file);
+
+    try {
+      const res = await fetch('/api/admin/restore/photos', {
+        method: 'POST',
+        body: formData
+      });
+
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setPhotosRestoreSuccess(data.message || `تعداد ${data.extractedCount || 0} تصویر با موفقیت در سرور استخراج شد.`);
+        if (typeof fetchSystemLogs === 'function') {
+          fetchSystemLogs();
+        }
+        await refreshData();
+        alert('✅ ' + (data.message || 'تصاویر با موفقیت روی سرور استخراج و بازیابی شدند.'));
+      } else {
+        setPhotosRestoreError(data.message || 'خطا در باز کردن و استخراج فایل فشرده تصاویر.');
+      }
+    } catch (err: any) {
+      setPhotosRestoreError(err.message || 'خطای شبکه در ارتباط با سرور.');
+    } finally {
+      setIsRestoringPhotos(false);
       e.target.value = '';
     }
   };
@@ -2719,11 +2774,11 @@ export const AdminPanel: React.FC = () => {
                 <span>پشتیبان‌گیری جامع (دیتابیس و عکس‌ها) و بازیابی اطلاعات هارد:</span>
               </h4>
               <p className="text-xs text-slate-500 mt-1 font-medium">
-                در این بخش می‌توانید از تمام داده‌های متنی سامانه و کلیه فایل‌های تصویری آپلود شده (کتاب‌ها و آواتارها) پشتیبان دانلود کنید و همچنین دیتابیس را مستقیماً روی مسیر قطعی هارد بازیابی نمایید.
+                در این بخش می‌توانید از تمام داده‌های متنی سامانه و کلیه فایل‌های تصویری آپلود شده (کتاب‌ها و آواتارها) پشتیبان دانلود کنید و همچنین فایل دیتابیس و آرشیو زیپ تصاویر را بدون نیاز به ورود به سرور بازیابی نمایید.
               </p>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               {/* Backup Card 1: Database JSON */}
               <div className="p-5 bg-indigo-50/50 border border-indigo-200/80 rounded-2xl flex flex-col justify-between space-y-4 shadow-2xs">
                 <div className="space-y-1.5">
@@ -2788,7 +2843,7 @@ export const AdminPanel: React.FC = () => {
                     <span>۳. بازیابی فایل دیتابیس روی هارد</span>
                   </div>
                   <p className="text-[11px] text-rose-900/80 leading-relaxed font-medium">
-                    بازنویسی مستقیم داده‌ها روی مسیر فعال هارد دیسک (<code className="font-mono text-[10px] bg-rose-100/80 px-1 py-0.5 rounded text-rose-950">{storageInfo?.db_path || '/media/mahdi/mm/maktab_data/maktab.db'}</code>).
+                    بازنویسی مستقیم داده‌ها روی مسیر فعال هارد (<code className="font-mono text-[10px] bg-rose-100/80 px-1 py-0.5 rounded text-rose-950">{storageInfo?.db_path || '/media/mahdi/mm/maktab_data/maktab.db'}</code>).
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -2813,6 +2868,53 @@ export const AdminPanel: React.FC = () => {
                   {restoreError && (
                     <p className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-xl animate-in fade-in">
                       ❌ خطا در بازیابی: {restoreError}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              {/* Restore Card 4: Photos ZIP Upload & Extraction */}
+              <div className="p-5 bg-sky-50/40 border border-sky-200/80 rounded-2xl flex flex-col justify-between space-y-4 shadow-2xs">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 text-sky-950 font-black text-xs">
+                    <FolderUp className="w-4 h-4 text-sky-600" />
+                    <span>۴. بازیابی و اکسترکت فایل عکس‌ها (ZIP)</span>
+                  </div>
+                  <p className="text-[11px] text-sky-900/80 leading-relaxed font-medium">
+                    استخراج خودکار عکس‌ها در پوشه فعال سرور (<code className="font-mono text-[10px] bg-sky-100/80 px-1 py-0.5 rounded text-sky-950">{storageInfo?.upload_dir || '/media/mahdi/mm/maktab_data/photos'}</code>) بدون نیاز به دستور دستی در ترمینال.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="w-full px-4 py-2.5 bg-sky-700 hover:bg-sky-800 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-xs">
+                    {isRestoringPhotos ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-sky-200" />
+                        <span>در حال استخراج و ذخیره عکس‌ها...</span>
+                      </>
+                    ) : (
+                      <>
+                        <FolderUp className="w-4 h-4 text-sky-200" />
+                        <span>انتخاب و بازیابی فایل عکس‌ها (.zip)</span>
+                      </>
+                    )}
+                    <input
+                      type="file"
+                      accept=".zip"
+                      onChange={handleUploadPhotosBackup}
+                      disabled={isRestoringPhotos}
+                      className="hidden"
+                    />
+                  </label>
+
+                  {photosRestoreSuccess && (
+                    <p className="text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 p-2 rounded-xl animate-in fade-in">
+                      ✅ {photosRestoreSuccess}
+                    </p>
+                  )}
+
+                  {photosRestoreError && (
+                    <p className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 p-2 rounded-xl animate-in fade-in">
+                      ❌ خطا در بازیابی تصاویر: {photosRestoreError}
                     </p>
                   )}
                 </div>
