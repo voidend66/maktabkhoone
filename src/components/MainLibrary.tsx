@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { BookCard } from './BookCard';
 import { Book } from '../types';
-import { CATEGORIES } from '../constants';
+import { CATEGORIES } from '../data/mockData';
 import { analyticsTracker } from '../services/analyticsTracker';
 import {
   MaktabKhanehHouseLogo,
