@@ -20,7 +20,11 @@ import {
   FileCheck,
   Send,
   Loader2,
-  FolderOpen
+  FolderOpen,
+  KeyRound,
+  HelpCircle,
+  Copy,
+  Check
 } from 'lucide-react';
 import { GoogleDriveConfig, GoogleDriveScheduleFrequency } from '../types';
 
@@ -61,16 +65,21 @@ export const GoogleDriveBackupSection: React.FC = () => {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
-  // Form states for schedule settings
+  // Form states for schedule & OAuth settings
   const [enabled, setEnabled] = useState<boolean>(false);
   const [frequency, setFrequency] = useState<GoogleDriveScheduleFrequency>('daily');
   const [scheduledHour, setScheduledHour] = useState<number>(2);
   const [autoPrune, setAutoPrune] = useState<boolean>(true);
   const [maxSnapshots, setMaxSnapshots] = useState<number>(30);
+  const [clientId, setClientId] = useState<string>('');
 
-  // Manual token input dialog / modal
+  // Modals & Helpers
   const [showManualTokenModal, setShowManualTokenModal] = useState<boolean>(false);
+  const [showHelpGuideModal, setShowHelpGuideModal] = useState<boolean>(false);
   const [manualToken, setManualToken] = useState<string>('');
+  const [copiedOrigin, setCopiedOrigin] = useState<boolean>(false);
+
+  const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
 
   const fetchStatus = async () => {
     try {
@@ -89,6 +98,7 @@ export const GoogleDriveBackupSection: React.FC = () => {
         setScheduledHour(data.config.scheduledHour ?? 2);
         setAutoPrune(data.config.autoPruneOldDbSnapshots ?? true);
         setMaxSnapshots(data.config.maxDbSnapshotsToKeep ?? 30);
+        setClientId(data.config.clientId || '');
       }
     } catch (err: any) {
       setErrorMsg('خطا در دریافت وضعیت گوگل درایو: ' + err.message);
@@ -108,14 +118,18 @@ export const GoogleDriveBackupSection: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
 
+    const effectiveClientId = (clientId || config?.clientId || '').trim();
+
+    if (!effectiveClientId) {
+      setShowHelpGuideModal(true);
+      return;
+    }
+
     // Check if GIS client is loaded in window
     if (typeof window !== 'undefined' && window.google?.accounts?.oauth2) {
       try {
-        // AI Studio Applet Client ID
-        const clientId = '267727679201-google-oauth-client.apps.googleusercontent.com';
-
         const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: clientId,
+          client_id: effectiveClientId,
           scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
           callback: async (tokenResponse: any) => {
             if (tokenResponse.error) {
@@ -131,7 +145,8 @@ export const GoogleDriveBackupSection: React.FC = () => {
 
         tokenClient.requestAccessToken({ prompt: 'consent' });
       } catch (err: any) {
-        console.warn('GIS Token client error, opening fallback modal:', err);
+        console.warn('GIS Token client error:', err);
+        setErrorMsg('خطا در باز کردن پنجره ورود گوگل: ' + err.message);
         setShowManualTokenModal(true);
       }
     } else {
@@ -194,12 +209,13 @@ export const GoogleDriveBackupSection: React.FC = () => {
           frequency,
           scheduledHour: Number(scheduledHour),
           autoPruneOldDbSnapshots: autoPrune,
-          maxDbSnapshotsToKeep: Number(maxSnapshots)
+          maxDbSnapshotsToKeep: Number(maxSnapshots),
+          clientId: clientId.trim()
         })
       });
       const data = await res.json();
       if (data.success) {
-        setSuccessMsg('✅ تنظیمات زمان‌بندی پشتیبان‌گیری درایو با موفقیت ذخیره شد.');
+        setSuccessMsg('✅ تنظیمات زمان‌بندی و کلید گوگل درایو با موفقیت ذخیره شد.');
         await fetchStatus();
       } else {
         setErrorMsg(data.message);
@@ -237,6 +253,14 @@ export const GoogleDriveBackupSection: React.FC = () => {
       setErrorMsg('خطا در برقراری ارتباط با سرور: ' + err.message);
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  const copyOriginToClipboard = () => {
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(currentOrigin);
+      setCopiedOrigin(true);
+      setTimeout(() => setCopiedOrigin(false), 3000);
     }
   };
 
@@ -317,14 +341,34 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={handleConnectGoogle}
-                className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer"
-              >
-                <CloudUpload className="w-4 h-4 text-blue-600" />
-                <span>اتصال حساب گوگل درایو</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={handleConnectGoogle}
+                  className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer"
+                >
+                  <CloudUpload className="w-4 h-4 text-blue-600" />
+                  <span>اتصال حساب گوگل درایو</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowHelpGuideModal(true)}
+                  className="px-3 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <HelpCircle className="w-4 h-4 text-sky-300" />
+                  <span>راهنمای ۳ دقیقه‌ای اتصال</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowManualTokenModal(true)}
+                  className="p-2.5 bg-white/10 hover:bg-white/20 text-white text-xs rounded-xl border border-white/20 transition cursor-pointer"
+                  title="وارد کردن دستی توکن دسترسی"
+                >
+                  <KeyRound className="w-4 h-4 text-amber-300" />
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -361,7 +405,18 @@ export const GoogleDriveBackupSection: React.FC = () => {
       {errorMsg && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold rounded-2xl flex items-center gap-2.5 animate-in fade-in">
           <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          <span>{errorMsg}</span>
+          <div className="flex-1">
+            <p>{errorMsg}</p>
+            {errorMsg.includes('invalid_client') && (
+              <button
+                type="button"
+                onClick={() => setShowHelpGuideModal(true)}
+                className="text-[11px] text-rose-700 underline font-bold mt-1 inline-block"
+              >
+                مشاهده راهنمای رفع خطای invalid_client در ۳ مرحله
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -472,7 +527,7 @@ export const GoogleDriveBackupSection: React.FC = () => {
               <div className="flex items-center gap-2">
                 <Sliders className="w-4 h-4 text-indigo-600" />
                 <h4 className="text-xs font-black text-slate-800">
-                  تنظیمات زمان‌بندی پشتیبان‌گیری خودکار (Scheduler)
+                  تنظیمات زمان‌بندی و احراز هویت گوگل (Scheduler & OAuth)
                 </h4>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -487,6 +542,33 @@ export const GoogleDriveBackupSection: React.FC = () => {
                   {enabled ? 'بکاپ خودکار فعال است' : 'غیرفعال'}
                 </span>
               </label>
+            </div>
+
+            {/* Google OAuth Client ID Configuration */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <label className="block text-xs font-black text-slate-700">
+                  شناسه کلاینت گوگل (Google OAuth Client ID):
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowHelpGuideModal(true)}
+                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                  <span>راهنمای ساخت رایگان در گوگل کلود</span>
+                </button>
+              </div>
+              <input
+                type="text"
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                placeholder="1234567890-abcdefg.apps.googleusercontent.com"
+                className="w-full text-xs p-3 bg-white border border-slate-300 rounded-xl font-mono text-slate-800 focus:border-indigo-500 transition"
+              />
+              <p className="text-[10px] text-slate-500 font-medium">
+                پس از ساخت در کنسول گوگل کلود، Client ID خود را اینجا وارد کرده و دکمه ذخیره را بزنید.
+              </p>
             </div>
 
             {/* Frequency Selection */}
@@ -582,7 +664,7 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    <span>ذخیره تنظیمات زمان‌بندی</span>
+                    <span>ذخیره تنظیمات و کلید کلاینت</span>
                   </>
                 )}
               </button>
@@ -591,26 +673,131 @@ export const GoogleDriveBackupSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Manual OAuth Token Modal */}
-      {showManualTokenModal && (
+      {/* Step-by-Step Google Cloud Guide Modal */}
+      {showHelpGuideModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 space-y-5 shadow-2xl border border-slate-200 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
-                <CloudUpload className="w-5 h-5 text-blue-600" />
-                <span>اتصال دستی یا تمدید توکن Google OAuth</span>
+              <div className="flex items-center gap-2.5 text-slate-800 font-black text-sm">
+                <Cloud className="w-5 h-5 text-blue-600" />
+                <span>راهنمای ۳ مرحله‌ای رفع خطای invalid_client و اتصال به گوگل</span>
               </div>
               <button
                 type="button"
-                onClick={() => setShowManualTokenModal(false)}
-                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+                onClick={() => setShowHelpGuideModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
               >
                 ✕
               </button>
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              اگر پنجره خودکار گوگل به دلیل تنظیمات مرورگر باز نشد، می‌توانید توکن دسترسی (OAuth Access Token) ایجاد شده را مستقیماً وارد فرمایید:
+              خطای <strong>invalid_client</strong> به این دلیل رخ می‌دهد که گوگل نیاز دارد دامنه این سامانه در یک <strong>OAuth Client ID</strong> ثبت شده باشد. انجام این کار کاملاً رایگان است و تنها ۳ دقیقه زمان می‌برد:
+            </p>
+
+            <div className="space-y-4 text-xs text-slate-700">
+              {/* Step 1 */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2 font-black text-indigo-900">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">۱</span>
+                  <span>گام اول: ورود به کنسول گوگل کلود</span>
+                </div>
+                <p className="text-slate-600 pr-8">
+                  وارد سایت <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-blue-600 font-bold underline">Google Cloud Console &gt; Credentials</a> شوید.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2 font-black text-indigo-900">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">۲</span>
+                  <span>گام دوم: ایجاد OAuth Client ID</span>
+                </div>
+                <p className="text-slate-600 pr-8 leading-relaxed">
+                  روی دکمه <strong>+ CREATE CREDENTIALS</strong> کلیک کرده و گزینه <strong>OAuth client ID</strong> را انتخاب کنید.
+                  <br />
+                  - نوع اپلیکیشن (Application type): <strong>Web application</strong>
+                  <br />
+                  - نام: <strong>MaktabKhaneh Backup</strong>
+                </p>
+
+                {/* Origin copy box */}
+                <div className="pr-8 pt-1">
+                  <span className="block text-[11px] font-bold text-slate-700 mb-1">
+                    در بخش Authorized JavaScript origins، آدرس سامانه خود را اضافه کنید:
+                  </span>
+                  <div className="flex items-center gap-2 bg-white border border-slate-300 rounded-xl p-2 font-mono text-xs">
+                    <span className="flex-1 text-indigo-950 font-bold truncate">{currentOrigin}</span>
+                    <button
+                      type="button"
+                      onClick={copyOriginToClipboard}
+                      className="px-2.5 py-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {copiedOrigin ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedOrigin ? 'کپی شد' : 'کپی آدرس'}</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Step 3 */}
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
+                <div className="flex items-center gap-2 font-black text-indigo-900">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs">۳</span>
+                  <span>گام سوم: قرار دادن Client ID در سامانه</span>
+                </div>
+                <p className="text-slate-600 pr-8">
+                  پس از ذخیره، عبارت <strong>Client ID</strong> (که شبیه <code>...apps.googleusercontent.com</code> است) را کپی کرده و در کادر بالا قرار دهید و دکمه ذخیره را بزنید.
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowHelpGuideModal(false);
+                  setShowManualTokenModal(true);
+                }}
+                className="text-xs text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>یا اتصال فوری از طریق وارد کردن مستقیم توکن (Access Token)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowHelpGuideModal(false)}
+                className="px-5 py-2.5 bg-slate-900 text-white font-bold text-xs rounded-xl shadow-xs transition"
+              >
+                متوجه شدم
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Manual OAuth Token Modal */}
+      {showManualTokenModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
+                <KeyRound className="w-5 h-5 text-blue-600" />
+                <span>اتصال سریع از طریق Access Token</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowManualTokenModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              می‌توانید توکن دسترسی موقت حساب گوگل خود (OAuth Access Token یا Bearer Token تولید شده از OAuth Playground) را مستقیماً وارد نمایید:
             </p>
 
             <div className="space-y-1.5">
@@ -628,7 +815,7 @@ export const GoogleDriveBackupSection: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setShowManualTokenModal(false)}
-                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition"
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
               >
                 انصراف
               </button>
@@ -636,7 +823,7 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 type="button"
                 onClick={() => sendTokenToServer(manualToken.trim())}
                 disabled={!manualToken.trim() || isLoadingStatus}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
               >
                 {isLoadingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 <span>ثبت و اعتبارسنجی توکن</span>
