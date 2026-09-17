@@ -112,6 +112,9 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
     return () => clearInterval(pollInterval);
   }, [step, sessionId, sessionStatus, successMessage]);
 
+  const cleanInputDigits = toEnglishDigits(phone).replace(/[\s\-\(\)\+]/g, '');
+  const isTestCode = cleanInputDigits === '001100';
+
   // --------------------------------------------------------------------------
   // مرحله ۱: ارسال شماره موبایل به سرور (POST /api/request-otp)
   // --------------------------------------------------------------------------
@@ -120,10 +123,36 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
     setErrorMessage('');
     setSuccessMessage('');
 
-    const cleanPhone = phone.trim();
+    const cleanPhone = toEnglishDigits(phone).replace(/[\s\-\(\)\+]/g, '').trim();
     if (!cleanPhone) {
       setErrorMessage('لطفاً شماره تلفن همراه را وارد کنید.');
       return;
+    }
+
+    // ورود سریع و مستقیم با کد تست 001100
+    if (cleanPhone === '001100') {
+      setIsLoading(true);
+      try {
+        const res = await loginWithBale('001100');
+        if (res.success && res.user) {
+          setSuccessMessage('🎉 خوش آمدید! ورود موفق به عنوان مدیر آزمایشی با کد 001100');
+          if (onSuccessLogin) {
+            onSuccessLogin('001100');
+          }
+          setTimeout(() => {
+            onClose();
+          }, 400);
+          return;
+        } else {
+          setErrorMessage(res.message || 'ورود با کد آزمایشی 001100 غیرفعال است یا با خطا مواجه شد.');
+          setIsLoading(false);
+          return;
+        }
+      } catch (err: any) {
+        setErrorMessage(err.message || 'خطا در ورود با کد تستی 001100');
+        setIsLoading(false);
+        return;
+      }
     }
 
     setIsLoading(true);
@@ -148,6 +177,18 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
       }
 
       if (response.ok && data.success) {
+        if (data.is_test_admin && data.user) {
+          await loginWithBale('001100');
+          setSuccessMessage('🎉 خوش آمدید! ورود موفق به عنوان مدیر سامانه با کد 001100');
+          if (onSuccessLogin) {
+            onSuccessLogin('001100');
+          }
+          setTimeout(() => {
+            onClose();
+          }, 400);
+          return;
+        }
+
         setSessionId(data.session_id);
         setBaleLink(data.bale_link);
         setBaleWebLink(data.bale_web_link || `https://ble.ir/${data.bot_username || 'Maktabkunebot'}?start=${data.session_id}`);
@@ -381,22 +422,33 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
                   شماره تلفن همراه شما *:
                 </label>
                 <div className="relative">
-                  <Phone className="w-4 h-4 text-emerald-600 absolute right-3.5 top-1/2 -translate-y-1/2" />
+                  <Phone className={`w-4 h-4 absolute right-3.5 top-1/2 -translate-y-1/2 ${isTestCode ? 'text-amber-600' : 'text-emerald-600'}`} />
                   <input
                     id="bale-phone-input"
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="مثال: 09123456789"
-                    className="w-full text-sm pr-10 pl-3 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 text-left font-mono font-bold text-slate-900"
+                    className={`w-full text-sm pr-10 pl-3 py-3 rounded-xl focus:ring-2 text-left font-mono font-bold transition ${
+                      isTestCode
+                        ? 'bg-amber-50 border-2 border-amber-400 text-amber-950 focus:ring-amber-500 shadow-xs'
+                        : 'bg-slate-50 border border-slate-200 text-slate-900 focus:ring-emerald-500'
+                    }`}
                     dir="ltr"
                     required
                     autoFocus
                   />
                 </div>
-                <span className="text-[11px] text-slate-500 mt-1 block">
-                  شماره وارد شده باید با شماره اکانت شما در پیام‌رسان بله یکسان باشد.
-                </span>
+                {isTestCode ? (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs font-black text-amber-800 bg-amber-100/80 p-2.5 rounded-xl border border-amber-300 animate-in fade-in">
+                    <Sparkles className="w-4 h-4 text-amber-600 animate-bounce shrink-0" />
+                    <span>کد آزمایشی ورود فوری مدیر سامانه (001100) فعال است. نیازی به بله نیست.</span>
+                  </div>
+                ) : (
+                  <span className="text-[11px] text-slate-500 mt-1 block">
+                    شماره وارد شده باید با شماره اکانت شما در پیام‌رسان بله یکسان باشد.
+                  </span>
+                )}
               </div>
 
               <div className="pt-2">
@@ -404,10 +456,19 @@ export const BaleOtpModal: React.FC<BaleOtpModalProps> = ({
                   id="request-bale-otp-btn"
                   type="submit"
                   disabled={isLoading}
-                  className="w-full py-3.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs rounded-xl shadow-md shadow-emerald-600/20 transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
+                  className={`w-full py-3.5 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer ${
+                    isTestCode
+                      ? 'bg-gradient-to-r from-amber-600 via-amber-700 to-orange-700 hover:from-amber-700 hover:to-orange-800 shadow-amber-600/30'
+                      : 'bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 shadow-emerald-600/20'
+                  }`}
                 >
                   {isLoading ? (
-                    <span>در حال ارتباط با بات بله...</span>
+                    <span>در حال اعتبارسنجی و ورود...</span>
+                  ) : isTestCode ? (
+                    <>
+                      <Sparkles className="w-4 h-4 text-amber-300" />
+                      <span>🚀 ورود فوری به عنوان مدیر کل سامانه (تست)</span>
+                    </>
                   ) : (
                     <>
                       <Send className="w-4 h-4" />

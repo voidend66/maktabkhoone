@@ -2,7 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { EditProfileModal } from './EditProfileModal';
 import { api } from '../services/api';
+import { AnalyticsDashboard } from './AnalyticsDashboard';
+import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
 import {
+  Activity,
   ShieldAlert,
   UserCheck,
   UserX,
@@ -98,7 +101,7 @@ export const AdminPanel: React.FC = () => {
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
+    'pending_users' | 'analytics' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
   >('pending_users');
   const [reviewsSubTab, setReviewsSubTab] = useState<'book_reviews' | 'user_feedbacks'>('book_reviews');
   const [userStatusFilter, setUserStatusFilter] = useState<'approved' | 'suspended' | 'rejected'>('approved');
@@ -552,6 +555,9 @@ export const AdminPanel: React.FC = () => {
   const [announcementDuration, setAnnouncementDuration] = useState(systemConfig?.announcement?.durationDays || 7);
   const [announcementPublishBale, setAnnouncementPublishBale] = useState(false);
 
+  // Testing & Backdoor Shortcut State
+  const [allowMasterTestCode, setAllowMasterTestCode] = useState(systemConfig?.allowMasterTestCode ?? true);
+
   // Testing & Channel Action States
   const [isTestingChannel, setIsTestingChannel] = useState(false);
   const [channelTestStatus, setChannelTestStatus] = useState<{ success: boolean; message: string } | null>(null);
@@ -578,6 +584,7 @@ export const AdminPanel: React.FC = () => {
       setSupportHours(systemConfig.supportHours ?? 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰');
       setBaleChannelUsername(systemConfig.baleChannelUsername ?? '@maktabkhune_books');
       setAutoPublishBooks(systemConfig.autoPublishBooksToBale ?? true);
+      setAllowMasterTestCode(systemConfig.allowMasterTestCode !== undefined ? systemConfig.allowMasterTestCode : true);
       if (systemConfig.websiteBaseUrl) {
         setWebsiteBaseUrl(systemConfig.websiteBaseUrl);
       } else if (typeof window !== 'undefined') {
@@ -608,6 +615,7 @@ export const AdminPanel: React.FC = () => {
         supportHours: supportHours.trim(),
         baleChannelUsername: baleChannelUsername.trim(),
         autoPublishBooksToBale: autoPublishBooks,
+        allowMasterTestCode: allowMasterTestCode,
         websiteBaseUrl: websiteBaseUrl.trim(),
         announcement: {
           text: announcementText.trim(),
@@ -909,6 +917,19 @@ export const AdminPanel: React.FC = () => {
         </button>
 
         <button
+          onClick={() => setActiveTab('analytics')}
+          className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'analytics'
+              ? 'bg-indigo-600 text-white shadow-xs'
+              : 'text-slate-700 hover:text-indigo-950 bg-indigo-50/70 border border-indigo-100'
+          }`}
+        >
+          <Activity className="w-4 h-4 text-cyan-500 animate-pulse" />
+          <span>📊 مانیتورینگ و آمار زنده</span>
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping absolute top-2 left-2" />
+        </button>
+
+        <button
           onClick={() => setActiveTab('bank_card')}
           className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
             activeTab === 'bank_card'
@@ -1019,6 +1040,13 @@ export const AdminPanel: React.FC = () => {
           <span>مدیریت آواتارها ({customAvatars.length})</span>
         </button>
       </div>
+
+      {/* Tab: Realtime Analytics & Monitoring */}
+      {activeTab === 'analytics' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <AnalyticsDashboard />
+        </div>
+      )}
 
       {/* Tab 1: Pending User Registrations */}
       {activeTab === 'pending_users' && (
@@ -2753,6 +2781,63 @@ export const AdminPanel: React.FC = () => {
               </div>
             </div>
 
+            {/* Section 6: Test Mode & Master Backdoor Shortcut */}
+            <div className="space-y-4 pt-6 border-t border-slate-100">
+              <h4 className="text-sm font-black text-slate-800 flex items-center gap-2 text-right">
+                <Sparkles className="w-4 h-4 text-amber-500" />
+                <span>دسترسی ویژه آزمایشی مدیر (کد میانبر 001100):</span>
+              </h4>
+
+              <div className="p-5 bg-gradient-to-r from-amber-50 to-orange-50/40 rounded-2xl border border-amber-200 space-y-4">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <div className="space-y-1 text-right">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-black text-amber-950">
+                        ورود سریع با شماره <code>001100</code> جهت تست و بررسی سامانه
+                      </span>
+                      <span
+                        className={`text-[10px] font-black px-2 py-0.5 rounded-full border ${
+                          allowMasterTestCode
+                            ? 'bg-emerald-100 text-emerald-800 border-emerald-300'
+                            : 'bg-rose-100 text-rose-800 border-rose-300'
+                        }`}
+                      >
+                        {allowMasterTestCode ? 'فعال و مجاز ✓' : 'غیرفعال و مسدود ✕'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 font-medium leading-relaxed max-w-2xl">
+                      با فعال بودن این قابلیت، وارد کردن کد <code className="bg-white px-1.5 py-0.5 rounded border border-amber-300 font-bold text-amber-900">001100</code> به عنوان شماره همراه در فرم ورود، فوراً حساب کاربری مدیر کل را ساخته و دسترسی کامل مدیریتی را برای بررسی سایت فراهم می‌کند. پس از اتمام تست و بررسی، می‌توانید این گزینه را در هر زمان خاموش و مسدود نمایید.
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0 bg-white p-2 rounded-xl border border-amber-200 shadow-xs">
+                    <button
+                      type="button"
+                      onClick={() => setAllowMasterTestCode(true)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                        allowMasterTestCode
+                          ? 'bg-amber-500 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      روشن (فعال)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setAllowMasterTestCode(false)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black transition cursor-pointer ${
+                        !allowMasterTestCode
+                          ? 'bg-rose-600 text-white shadow-xs'
+                          : 'text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      خاموش (غیرفعال)
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             {/* Save Button */}
             <div className="pt-4 flex items-center justify-end gap-3 border-t border-slate-100">
               <button
@@ -2765,6 +2850,11 @@ export const AdminPanel: React.FC = () => {
               </button>
             </div>
           </form>
+
+          {/* Section 2.5: Google Drive Automated & Differential Cloud Backup */}
+          <div className="pt-4">
+            <GoogleDriveBackupSection />
+          </div>
 
           {/* Section 3: Backup and Restore Database & Photos Panel */}
           <div className="border-t border-slate-200 pt-8 mt-8 space-y-6">

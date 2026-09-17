@@ -211,6 +211,36 @@ export interface SystemAnnouncement {
   createdAtTimestamp?: number;
 }
 
+export type GoogleDriveScheduleFrequency = 'daily' | 'every_12_hours' | 'every_6_hours' | 'weekly' | 'manual';
+
+export interface GoogleDriveBackupLog {
+  id: string;
+  timestamp: string;
+  status: 'success' | 'failed' | 'running';
+  totalUploadedPhotos: number;
+  totalSkippedPhotos: number;
+  dbBackupSizeBytes: number;
+  totalDurationMs: number;
+  details?: string;
+  driveFolderUrl?: string;
+  baleNotificationSent: boolean;
+}
+
+export interface GoogleDriveConfig {
+  enabled: boolean;
+  frequency: GoogleDriveScheduleFrequency;
+  scheduledHour: number; // 0 to 23 (e.g. 2 for 02:00 AM)
+  userEmail?: string;
+  accessToken?: string;
+  tokenExpiresAt?: number;
+  refreshToken?: string;
+  lastBackupTimestamp?: string;
+  lastBackupStatus?: 'success' | 'failed' | 'running' | 'idle';
+  lastBackupSummary?: string;
+  autoPruneOldDbSnapshots?: boolean;
+  maxDbSnapshotsToKeep?: number;
+}
+
 export interface SystemConfig {
   minBooksForRegistration: number;
   maxBooksForRegistration: number;
@@ -227,6 +257,8 @@ export interface SystemConfig {
   autoPublishBooksToBale?: boolean;
   websiteBaseUrl?: string;
   announcement?: SystemAnnouncement;
+  allowMasterTestCode?: boolean;
+  googleDrive?: GoogleDriveConfig;
 }
 
 export interface CustomAvatar {

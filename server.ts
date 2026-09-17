@@ -29,6 +29,8 @@ function createZipArchive(options?: any): archiverModule.Archiver {
   throw new Error('کتابخانه ساخت فایل فشرده (archiver) در دسترس نیست.');
 }
 import { dbService, addSystemLogListener, DB_PATH, isExternalPath } from './server/db';
+import { analytics } from './server/analytics';
+import { GoogleDriveBackupService } from './server/googleDriveService';
 import { isAdminPhone } from './src/data/mockData';
 import {
   User,
@@ -38,7 +40,8 @@ import {
   MutualFeedback,
   BankCardInfo,
   RegistrationInput,
-  NewBookInput
+  NewBookInput,
+  GoogleDriveConfig
 } from './src/types';
 
 /**
@@ -58,7 +61,7 @@ const DEFAULT_WEBHOOK_URL =
   process.env.BALE_WEBHOOK_URL ||
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
-const SERVER_VERSION = '3.0.0';
+const SERVER_VERSION = '3.0.1';
 const BUILD_DATE = '2026-08-28';
 
 // Configurable Port (Environment variable PORT with default 8098)
@@ -210,7 +213,67 @@ export function normalizePhoneNumber(phone: string): string | null {
     return cleaned;
   }
 
+  if (cleaned === '001100' || cleaned === '98001100' || cleaned === '0098001100' || cleaned === '09001100') {
+    return '001100';
+  }
+
   return null;
+}
+
+/**
+ * بررسی آیا کد وارد شده، کد تست آزمایشی مدیریت (001100) است یا خیر
+ */
+export function isMasterTestCode(phone?: string): boolean {
+  if (!phone) return false;
+  const cleaned = toEnglishDigits(phone).replace(/[\s\-\(\)\+]/g, '');
+  return (
+    cleaned === '001100' ||
+    cleaned === '98001100' ||
+    cleaned === '0098001100' ||
+    cleaned === '09001100'
+  );
+}
+
+/**
+ * ایجاد یا بازیابی اکانت مدیر تست سامانه با کد 001100
+ */
+export function getOrCreateMasterTestAdmin(): User {
+  let user = dbService.getUserByPhone('001100');
+  if (!user) {
+    const masterAdmin: User = {
+      id: 'u_admin_master_test_001100',
+      name: 'مدیر تست سامانه (کد 001100)',
+      phone: '001100',
+      className: 'مدیریت کل کتابخانه',
+      role: 'admin',
+      password: 'test',
+      rating: 5.0,
+      ratingsCount: 1,
+      booksContributedCount: 0,
+      booksReadCount: 0,
+      medals: [
+        {
+          id: 'm_admin_crown',
+          title: 'راهبر کل سامانه',
+          icon: '👑',
+          description: 'دسترسی نامحدود مدیریت و تست سیستم',
+          color: 'bg-amber-100 text-amber-800 border-amber-300'
+        }
+      ],
+      joinedDate: new Date().toLocaleDateString('fa-IR'),
+      avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=MasterTestAdmin',
+      status: 'approved'
+    };
+    user = dbService.createUser(masterAdmin);
+    dbService.addSystemLog(
+      'info',
+      'ایجاد حساب مدیر کل آزمایشی (کد 001100)',
+      'اکانت مدیریت آزمایشی جهت بررسی کامل سایت ایجاد گردید.'
+    );
+  } else if (user.role !== 'admin' || user.status !== 'approved') {
+    user = dbService.updateUser(user.id, { role: 'admin', status: 'approved' })!;
+  }
+  return user;
 }
 
 /**
@@ -1862,6 +1925,27 @@ async function startServer() {
         });
       }
 
+      // Check Master Test Code 001100
+      if (isMasterTestCode(phone)) {
+        const sysConfig = dbService.getSystemConfig();
+        if (sysConfig.allowMasterTestCode === false) {
+          return res.status(403).json({
+            success: false,
+            message: 'ورود سریع با کد تست 001100 از بخش تنظیمات پنل مدیریت غیرفعال شده است.'
+          });
+        }
+        const masterAdmin = getOrCreateMasterTestAdmin();
+        return res.json({
+          success: true,
+          is_test_admin: true,
+          session_id: 'test_session_001100',
+          phone: '001100',
+          normalized_phone: '001100',
+          user: masterAdmin,
+          message: 'ورود موفق به عنوان مدیر آزمایشی با کد 001100'
+        });
+      }
+
       const normalized = normalizePhoneNumber(phone);
       if (!normalized) {
         return res.status(400).json({
@@ -2029,6 +2113,22 @@ async function startServer() {
         return res.status(400).json({ success: false, message: 'شماره تلفن الزامی است.' });
       }
 
+      if (isMasterTestCode(phone)) {
+        const sysConfig = dbService.getSystemConfig();
+        if (sysConfig.allowMasterTestCode === false) {
+          return res.status(403).json({
+            success: false,
+            message: 'ورود با کد تست 001100 از تنظیمات پنل مدیریت غیرفعال است.'
+          });
+        }
+        const masterAdmin = getOrCreateMasterTestAdmin();
+        return res.json({
+          success: true,
+          message: 'ورود موفق به عنوان مدیر آزمایشی با کد 001100',
+          user: masterAdmin
+        });
+      }
+
       const isSystemAdmin = isAdminPhone(phone);
       let user = dbService.getUserByPhone(phone);
 
@@ -2117,7 +2217,27 @@ async function startServer() {
   app.post('/api/auth/login', (req: Request, res: Response): any => {
     try {
       const { phone, password } = req.body || {};
-      if (!phone || !password) {
+      if (!phone) {
+        return res.status(400).json({ success: false, message: 'شماره تلفن الزامی است.' });
+      }
+
+      if (isMasterTestCode(phone)) {
+        const sysConfig = dbService.getSystemConfig();
+        if (sysConfig.allowMasterTestCode === false) {
+          return res.status(403).json({
+            success: false,
+            message: 'ورود آزمایشی با کد 001100 توسط مسئول سامانه غیرفعال شده است.'
+          });
+        }
+        const masterAdmin = getOrCreateMasterTestAdmin();
+        return res.json({
+          success: true,
+          message: 'خوش آمدید مدیر گرامی! ورود موفق با کد تست 001100 انجام شد.',
+          user: masterAdmin
+        });
+      }
+
+      if (!password) {
         return res.status(400).json({ success: false, message: 'شماره تلفن و رمز عبور الزامی است.' });
       }
 
@@ -3338,6 +3458,131 @@ async function startServer() {
     res.json({ success: true, message: 'لیست لاگ‌های سامانه با موفقیت پاک شد.' });
   });
 
+  // ============================================================================
+  // Lightweight Analytics & User Engagement Monitoring Endpoints
+  // ============================================================================
+  app.post('/api/analytics/heartbeat', (req: Request, res: Response) => {
+    const { sessionId, userId, userName, userRole, currentPath, seconds, userAgent, screenWidth } = req.body || {};
+    if (!sessionId) {
+      return res.status(400).json({ error: 'sessionId is required' });
+    }
+    analytics.recordHeartbeat({
+      sessionId: String(sessionId),
+      userId: userId ? String(userId) : undefined,
+      userName: userName ? String(userName) : undefined,
+      userRole: userRole ? String(userRole) : undefined,
+      currentPath: currentPath ? String(currentPath) : '/',
+      userAgent: userAgent ? String(userAgent) : (req.headers['user-agent'] || ''),
+      screenWidth: Number(screenWidth) || undefined,
+      seconds: Number(seconds) || 15
+    });
+    res.json({ ok: true });
+  });
+
+  app.post('/api/analytics/event', (req: Request, res: Response) => {
+    const { type, label, userId, metadata } = req.body || {};
+    if (!type) {
+      return res.status(400).json({ error: 'type is required' });
+    }
+    analytics.recordEvent(
+      String(type),
+      label ? String(label) : '',
+      userId ? String(userId) : undefined,
+      metadata
+    );
+    res.json({ ok: true });
+  });
+
+  app.get('/api/admin/analytics', (req: Request, res: Response) => {
+    const days = Math.min(Math.max(Number(req.query.days) || 7, 1), 30);
+    const summary = analytics.getSummary(days);
+
+    // Compute real database metrics (100% genuine from real DB tables)
+    try {
+      const allBooks = dbService.getAllBooks();
+      const allRequests = dbService.getAllRequests();
+      const allUsers = dbService.getAllUsers();
+
+      // Top loaned books calculation from real requests table
+      const bookLoanCounts: Record<string, number> = {};
+      allRequests.forEach((r) => {
+        if (r.bookId) {
+          bookLoanCounts[r.bookId] = (bookLoanCounts[r.bookId] || 0) + 1;
+        }
+      });
+
+      const topLoanedBooks = Object.entries(bookLoanCounts)
+        .map(([bookId, count]) => {
+          const book = allBooks.find((b) => String(b.id) === String(bookId));
+          return {
+            id: bookId,
+            title: book?.title || 'کتاب نامشخص',
+            author: book?.author || 'نویسنده نامشخص',
+            ownerName: book?.ownerName || 'نامشخص',
+            coverImage: book?.coverImage || '',
+            category: book?.category || 'عمومی',
+            loanCount: count
+          };
+        })
+        .sort((a, b) => b.loanCount - a.loanCount)
+        .slice(0, 6);
+
+      // Real Class Leaderboard calculation
+      const classStats: Record<string, { donatedBooks: number; borrowCount: number; studentCount: number }> = {};
+      allUsers.forEach((u) => {
+        const cls = u.className || 'نامشخص';
+        if (!classStats[cls]) {
+          classStats[cls] = { donatedBooks: 0, borrowCount: 0, studentCount: 0 };
+        }
+        if (u.role === 'student') {
+          classStats[cls].studentCount += 1;
+        }
+      });
+
+      allBooks.forEach((b) => {
+        const owner = allUsers.find((u) => u.id === b.ownerId);
+        const cls = owner?.className || b.ownerClass || 'عمومی';
+        if (!classStats[cls]) classStats[cls] = { donatedBooks: 0, borrowCount: 0, studentCount: 0 };
+        classStats[cls].donatedBooks += 1;
+      });
+
+      allRequests.forEach((r) => {
+        const requester = allUsers.find((u) => u.id === r.borrowerId);
+        const cls = requester?.className || r.borrowerClass || 'عمومی';
+        if (!classStats[cls]) classStats[cls] = { donatedBooks: 0, borrowCount: 0, studentCount: 0 };
+        classStats[cls].borrowCount += 1;
+      });
+
+      const classLeaderboard = Object.entries(classStats)
+        .filter(([cls]) => cls !== 'نامشخص')
+        .map(([schoolClass, stats]) => ({
+          schoolClass,
+          ...stats,
+          totalScore: stats.donatedBooks * 10 + stats.borrowCount * 5
+        }))
+        .sort((a, b) => b.totalScore - a.totalScore)
+        .slice(0, 6);
+
+      (summary as any).realLibraryMetrics = {
+        totalBooksInLibrary: allBooks.length,
+        totalRegisteredStudents: allUsers.filter((u) => u.role !== 'admin').length,
+        totalLendingRequests: allRequests.length,
+        activeLoans: allRequests.filter((r) => r.status === 'accepted' || r.status === 'handover_confirmed' || r.status === 'payment_completed').length,
+        completedLoans: allRequests.filter((r) => r.status === 'returned').length,
+        topLoanedBooks,
+        classLeaderboard
+      };
+    } catch (e) {
+      console.error('[Analytics] Error calculating DB metrics:', e);
+    }
+
+    res.json({
+      success: true,
+      days,
+      summary
+    });
+  });
+
   /**
    * --------------------------------------------------------------------------
    * API: پشتیبان‌گیری و بازیابی کل اطلاعات دیتابیس (Backup & Restore System)
@@ -3556,6 +3801,169 @@ async function startServer() {
           fs.unlinkSync(tempFilePath);
         } catch (e) {}
       }
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: پشتیبان‌گیری ابری تفاضلی گوگل درایو (Google Drive Cloud Backup System)
+   * --------------------------------------------------------------------------
+   */
+  // 1. Get GDrive status & configuration
+  app.get('/api/admin/gdrive/status', async (_req: Request, res: Response): Promise<any> => {
+    try {
+      const config = dbService.getSystemConfig();
+      const gdrive = config.googleDrive || {
+        enabled: false,
+        frequency: 'daily',
+        scheduledHour: 2,
+        autoPruneOldDbSnapshots: true,
+        maxDbSnapshotsToKeep: 30
+      };
+
+      let connectionInfo = null;
+      if (gdrive.accessToken) {
+        connectionInfo = await GoogleDriveBackupService.testConnection(gdrive.accessToken);
+      }
+
+      return res.json({
+        success: true,
+        config: gdrive,
+        connectionInfo,
+        hasToken: !!gdrive.accessToken,
+        userEmail: gdrive.userEmail || connectionInfo?.userEmail || null
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // 2. Save Google OAuth Auth Token
+  app.post('/api/admin/gdrive/auth', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { accessToken, expiresIn, userEmail } = req.body;
+      if (!accessToken) {
+        return res.status(400).json({ success: false, message: 'توکن دسترسی گوگل الزامی است.' });
+      }
+
+      // Verify token
+      const test = await GoogleDriveBackupService.testConnection(accessToken);
+      if (!test.ok) {
+        return res.status(400).json({ success: false, message: 'توکن دسترسی گوگل نامعتبر است: ' + test.error });
+      }
+
+      const expiresAt = expiresIn ? Date.now() + (Number(expiresIn) * 1000) : Date.now() + 3600000;
+      const currentConfig = dbService.getSystemConfig();
+      const updatedGdrive: GoogleDriveConfig = {
+        ...(currentConfig.googleDrive || {
+          enabled: true,
+          frequency: 'daily',
+          scheduledHour: 2,
+          autoPruneOldDbSnapshots: true,
+          maxDbSnapshotsToKeep: 30
+        }),
+        enabled: true,
+        accessToken,
+        tokenExpiresAt: expiresAt,
+        userEmail: userEmail || test.userEmail || 'حساب گوگل متصل',
+        lastBackupStatus: currentConfig.googleDrive?.lastBackupStatus || 'idle'
+      };
+
+      dbService.setSystemConfig({ googleDrive: updatedGdrive });
+      dbService.addSystemLog(
+        'info',
+        'اتصال موفق حساب گوگل درایو',
+        `حساب ${updatedGdrive.userEmail} با موفقیت به عنوان مقصد پشتیبان‌گیری ابری متصل گردید.`
+      );
+
+      return res.json({
+        success: true,
+        message: `حساب گوگل (${updatedGdrive.userEmail}) با موفقیت به سامانه متصل شد.`,
+        config: updatedGdrive,
+        connectionInfo: test
+      });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: 'خطا در ثبت احراز هویت گوگل: ' + err.message });
+    }
+  });
+
+  // 3. Update Google Drive Config (Schedule, hour, autoPrune, etc.)
+  app.post('/api/admin/gdrive/config', (req: Request, res: Response): any => {
+    try {
+      const { enabled, frequency, scheduledHour, autoPruneOldDbSnapshots, maxDbSnapshotsToKeep } = req.body;
+      const currentConfig = dbService.getSystemConfig();
+      const currentGdrive = currentConfig.googleDrive || {
+        enabled: false,
+        frequency: 'daily',
+        scheduledHour: 2,
+        autoPruneOldDbSnapshots: true,
+        maxDbSnapshotsToKeep: 30
+      };
+
+      const updated: GoogleDriveConfig = {
+        ...currentGdrive,
+        enabled: typeof enabled === 'boolean' ? enabled : currentGdrive.enabled,
+        frequency: frequency || currentGdrive.frequency || 'daily',
+        scheduledHour: typeof scheduledHour === 'number' ? scheduledHour : currentGdrive.scheduledHour ?? 2,
+        autoPruneOldDbSnapshots: typeof autoPruneOldDbSnapshots === 'boolean' ? autoPruneOldDbSnapshots : currentGdrive.autoPruneOldDbSnapshots ?? true,
+        maxDbSnapshotsToKeep: typeof maxDbSnapshotsToKeep === 'number' ? maxDbSnapshotsToKeep : currentGdrive.maxDbSnapshotsToKeep ?? 30
+      };
+
+      dbService.setSystemConfig({ googleDrive: updated });
+      dbService.addSystemLog(
+        'info',
+        'به‌روزرسانی تنظیمات پشتیبان‌گیری گوگل درایو',
+        `زمان‌بندی: ${updated.frequency} - ساعت: ${updated.scheduledHour}:00 - وضعیت: ${updated.enabled ? 'فعال' : 'غیرفعال'}`
+      );
+
+      return res.json({ success: true, message: 'تنظیمات زمان‌بندی با موفقیت ذخیره شد.', config: updated });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  // 4. Trigger Instant Differential Backup
+  app.post('/api/admin/gdrive/sync-now', async (_req: Request, res: Response): Promise<any> => {
+    try {
+      const result = await GoogleDriveBackupService.executeBackup({
+        dbService,
+        uploadsDir: getUploadsDir(),
+        notifyAdminsBale: notifyAdminsGeneralOnBale
+      });
+
+      return res.json({
+        success: true,
+        message: result.message,
+        details: result
+      });
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: 'خطا در انجام بکاپ گوگل درایو: ' + err.message
+      });
+    }
+  });
+
+  // 5. Disconnect Google Drive
+  app.post('/api/admin/gdrive/disconnect', (_req: Request, res: Response): any => {
+    try {
+      const currentConfig = dbService.getSystemConfig();
+      if (currentConfig.googleDrive) {
+        dbService.setSystemConfig({
+          googleDrive: {
+            ...currentConfig.googleDrive,
+            accessToken: undefined,
+            userEmail: undefined,
+            enabled: false,
+            lastBackupStatus: 'idle'
+          }
+        });
+      }
+
+      dbService.addSystemLog('info', 'قطع اتصال حساب گوگل درایو', 'حساب گوگل از بخش پشتیبان‌گیری ابری حذف گردید.');
+      return res.json({ success: true, message: 'اتصال حساب گوگل با موفقیت قطع شد.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 
@@ -3975,6 +4383,17 @@ async function startServer() {
       }
     } catch (webhookErr) {
       console.warn('⚠️ توجه: ثبت وب‌هوک در استارت:', webhookErr);
+    }
+
+    // Start Google Drive Differential Backup Scheduler
+    try {
+      GoogleDriveBackupService.startScheduler({
+        dbService,
+        uploadsDir: getUploadsDir(),
+        notifyAdminsBale: notifyAdminsGeneralOnBale
+      });
+    } catch (gdriveErr) {
+      console.warn('⚠️ توجه: راه‌اندازی زمان‌بندی گوگل درایو:', gdriveErr);
     }
   });
 }

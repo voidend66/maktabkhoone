@@ -1,7 +1,7 @@
 {
   "name": "maktabkhune",
   "private": true,
-  "version": "2.4.0",
+  "version": "3.0.1",
   "type": "module",
   "scripts": {
     "dev": "tsx server.ts",

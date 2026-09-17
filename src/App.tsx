@@ -19,6 +19,7 @@ import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, Help
 import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
 import { api } from './services/api';
+import { analyticsTracker } from './services/analyticsTracker';
 
 const VALID_TABS = new Set([
   'library',
@@ -172,6 +173,18 @@ function MainAppContent() {
       window.removeEventListener('unhandledrejection', handleUnhandledRejection);
     };
   }, [currentUser]);
+
+  // Ultra-lightweight session heartbeat & tracking for admin monitoring
+  useEffect(() => {
+    analyticsTracker.startHeartbeat({
+      userId: currentUser?.id,
+      userName: currentUser?.name,
+      userRole: currentUser?.role,
+      currentPath: activeTab
+    });
+
+    return () => analyticsTracker.stopHeartbeat();
+  }, [currentUser?.id, currentUser?.name, currentUser?.role, activeTab]);
 
   const [is404Route, setIs404Route] = useState<boolean>(() => {
     const res = checkIs404Route([], true);

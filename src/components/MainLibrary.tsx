@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { BookCard } from './BookCard';
 import { Book } from '../types';
 import { CATEGORIES } from '../data/mockData';
+import { analyticsTracker } from '../services/analyticsTracker';
 import {
   MaktabKhanehHouseLogo,
   MaktabKhanehLogo,
@@ -42,6 +43,14 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('همه تصنیف‌ها');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'reviews'>('newest');
+
+  useEffect(() => {
+    if (!searchQuery || searchQuery.trim().length < 2) return;
+    const timeout = setTimeout(() => {
+      analyticsTracker.trackEvent('search_book', searchQuery.trim());
+    }, 1200);
+    return () => clearTimeout(timeout);
+  }, [searchQuery]);
 
   const announcement = systemConfig?.announcement;
   const isAnnouncementValid = useMemo(() => {

@@ -883,7 +883,15 @@ export const dbService = {
           baleChannelUsername: parsed.baleChannelUsername ?? '@maktabkhune_books',
           autoPublishBooksToBale: parsed.autoPublishBooksToBale ?? true,
           websiteBaseUrl: parsed.websiteBaseUrl ?? '',
-          announcement: parsed.announcement ?? undefined
+          announcement: parsed.announcement ?? undefined,
+          allowMasterTestCode: parsed.allowMasterTestCode !== undefined ? parsed.allowMasterTestCode : true,
+          googleDrive: parsed.googleDrive ?? {
+            enabled: false,
+            frequency: 'daily',
+            scheduledHour: 2,
+            autoPruneOldDbSnapshots: true,
+            maxDbSnapshotsToKeep: 30
+          }
         };
       } catch (e) {
         // fallback
@@ -903,7 +911,15 @@ export const dbService = {
       supportHours: 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
       baleChannelUsername: '@maktabkhune_books',
       autoPublishBooksToBale: true,
-      websiteBaseUrl: ''
+      websiteBaseUrl: '',
+      allowMasterTestCode: true,
+      googleDrive: {
+        enabled: false,
+        frequency: 'daily',
+        scheduledHour: 2,
+        autoPruneOldDbSnapshots: true,
+        maxDbSnapshotsToKeep: 30
+      }
     };
   },
 
