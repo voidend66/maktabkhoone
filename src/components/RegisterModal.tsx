@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { NewBookInput, BookCondition } from '../types';
-import { CATEGORIES } from '../data/mockData';
+import { CATEGORIES } from '../constants';
 import { getAvailableAvatars } from '../utils/avatars';
 import { MaktabKhanehLogo } from './MaktabKhanehBranding';
 import { RulesModal } from './RulesModal';

@@ -13,7 +13,7 @@ import {
   CustomAvatar,
   AppNotification
 } from '../types';
-import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
+import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../constants';
 import { api } from '../services/api';
 import { DEFAULT_BOOK_COVER, getSafeImageUrl } from '../utils/coverPresets';
 

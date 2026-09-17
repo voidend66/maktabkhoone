@@ -13,7 +13,7 @@ import {
   CustomAvatar,
   AppNotification
 } from '../src/types';
-import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
+import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/constants';
 
 // Function to check if a path is on an external drive or mount point
 export function isExternalPath(targetPath: string): boolean {
