@@ -300,36 +300,121 @@ setInterval(() => {
   }
 }, 60 * 1000);
 
-// Background job to scan and notify borrowers about 24h remaining deadline via Bale
+// Background job to scan and notify borrowers about 48h (2 days) and 24h (1 day) remaining deadline via Bale
 setInterval(async () => {
   try {
     const allRequests = dbService.getAllRequests();
     if (!allRequests || allRequests.length === 0) return;
 
     const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+    const twoDaysMs = 48 * 60 * 60 * 1000;
+    const config = dbService.getSystemConfig();
+    const siteUrl = config.websiteBaseUrl?.trim() || process.env.APP_URL || '';
+
     for (const req of allRequests) {
       if (req.status === 'handover_confirmed' && req.dueDateTimestamp) {
         const timeLeftMs = req.dueDateTimestamp - now;
-        // If less than 24 hours left (and is not already overdue/negative), and we haven't sent the warning yet
-        if (timeLeftMs > 0 && timeLeftMs <= 24 * 60 * 60 * 1000 && !req.is24hWarningSent) {
-          // Update database first to prevent double-sending
+
+        // 1. یادآوری ۲ روز مانده به موعد تحویل (بین ۲۴ ساعت تا ۴۸ ساعت باقی‌مانده)
+        if (timeLeftMs > oneDayMs && timeLeftMs <= twoDaysMs && !req.is48hWarningSent) {
+          dbService.updateRequest(req.id, { is48hWarningSent: true });
+
+          const message =
+            `🔔 <b>یادآوری مهلت تحویل کتاب مکتب‌خانه (۲ روز مانده)</b>\n` +
+            `━━━━━━━━━━━━━━━━━━\n\n` +
+            `دانش‌آموز گرامی <b>${req.borrowerName}</b>،\n` +
+            `به اطلاع می‌رساند <b>۲ روز</b> تا پایان مهلت امانت کتاب <b>«${req.bookTitle}»</b> باقی مانده است.\n\n` +
+            `👤 <b>مالک کتاب:</b> ${req.ownerName} (کلاس ${req.ownerClass})\n` +
+            `📅 <b>تاریخ تحویل:</b> ${req.dueDate || 'طی ۲ روز آینده'}\n\n` +
+            `💡 <i>در صورتی که مطالعه کتاب به پایان رسیده، لطفاً نسبت به هماهنگی عودت آن اقدام فرمایید یا در صورت تمایل از طریق سایت درخواست تمدید ثبت کنید.</i>\n\n` +
+            `🌐 <b>سامانه مکتب‌خانه:</b> ${siteUrl || 'https://maktabkhune.ir'}`;
+
+          const replyMarkup = siteUrl ? {
+            inline_keyboard: [
+              [{ text: '📖 ورود به سامانه و تمدید / مشاهده 🚀', url: siteUrl.replace(/\/$/, '') }]
+            ]
+          } : undefined;
+
+          await notifyUserOnBale(req.borrowerId, message, replyMarkup);
+
+          dbService.createNotification({
+            userId: req.borrowerId,
+            type: 'loan_reminder_48h',
+            title: 'یادآوری تحویل کتاب (۲ روز مانده)',
+            message: `تنها ۲ روز تا پایان مهلت امانت کتاب «${req.bookTitle}» باقی مانده است.`,
+            relatedId: req.id,
+            linkTab: 'requests'
+          });
+
+          console.log(`[Scheduler] 48h (2-day) warning sent to user ${req.borrowerId} for book ${req.bookTitle}`);
+        }
+
+        // 2. هشدار فوری ۱ روز مانده به موعد تحویل (کمتر از ۲۴ ساعت باقی‌مانده)
+        if (timeLeftMs > 0 && timeLeftMs <= oneDayMs && !req.is24hWarningSent) {
           dbService.updateRequest(req.id, { is24hWarningSent: true });
-          
-          // Send Bale notification
-          const hoursLeft = Math.ceil(timeLeftMs / (1000 * 60 * 60));
-          const message = `⏰ <b>یادآوری مهم تحویل کتاب مکتب‌خانه</b>\n\n` +
-            `کاربر گرامی، تنها <b>${hoursLeft} ساعت</b> تا پایان مهلت امانت کتاب <b>«${req.bookTitle}»</b> باقی مانده است.\n\n` +
-            `👤 <b>مالک کتاب:</b> ${req.ownerName}\n` +
-            `📅 <b>مهلت تحویل:</b> ${req.dueDate}\n\n` +
-            `لطفاً جهت هماهنگی و عودت کتاب اقدام نموده و پس از عودت، دکمه «تایید تحویل فیزیکی» را در سامانه کلیک کنید تا حساب کاربری شما مسدود نگردد. 🙏📚`;
-          
+
+          const hoursLeft = Math.max(1, Math.ceil(timeLeftMs / (1000 * 60 * 60)));
+          const message =
+            `⏰ <b>هشدار فوری تحویل کتاب مکتب‌خانه (تنها ۱ روز باقی مانده)</b>\n` +
+            `━━━━━━━━━━━━━━━━━━\n\n` +
+            `دانش‌آموز گرامی <b>${req.borrowerName}</b>،\n` +
+            `تنها <b>${hoursLeft} ساعت (۱ روز)</b> تا پایان مهلت امانت کتاب <b>«${req.bookTitle}»</b> باقی مانده است.\n\n` +
+            `👤 <b>مالک کتاب:</b> ${req.ownerName} (کلاس ${req.ownerClass})\n` +
+            `📅 <b>موعد تحویل:</b> ${req.dueDate || 'فردا'}\n\n` +
+            `⚠️ <i>لطفاً حتماً فردا کتاب را عودت داده و دکمه «تایید تحویل فیزیکی» را در سامانه ثبت نمایید تا امتیاز امانت‌داری شما کسر نگردد.</i> 🙏📚\n\n` +
+            `🌐 <b>سامانه مکتب‌خانه:</b> ${siteUrl || 'https://maktabkhune.ir'}`;
+
+          const replyMarkup = siteUrl ? {
+            inline_keyboard: [
+              [{ text: '🎒 ورود به سامانه مکتب‌خانه 🏛', url: siteUrl.replace(/\/$/, '') }]
+            ]
+          } : undefined;
+
+          await notifyUserOnBale(req.borrowerId, message, replyMarkup);
+
+          dbService.createNotification({
+            userId: req.borrowerId,
+            type: 'loan_reminder_24h',
+            title: 'هشدار فوری تحویل کتاب (۱ روز مانده)',
+            message: `تنها ۱ روز تا پایان مهلت امانت کتاب «${req.bookTitle}» باقی مانده است.`,
+            relatedId: req.id,
+            linkTab: 'requests'
+          });
+
+          console.log(`[Scheduler] 24h (1-day) warning sent to user ${req.borrowerId} for book ${req.bookTitle}`);
+        }
+
+        // 3. هشدار پایان مهلت / تاخیر در تحویل (Overdue)
+        if (timeLeftMs <= 0 && !req.isOverdueWarningSent) {
+          dbService.updateRequest(req.id, { isOverdueWarningSent: true });
+
+          const message =
+            `🚨 <b>هشدار تاخیر در عودت کتاب مکتب‌خانه</b>\n` +
+            `━━━━━━━━━━━━━━━━━━\n\n` +
+            `دانش‌آموز گرامی <b>${req.borrowerName}</b>،\n` +
+            `مهلت قانونی امانت کتاب <b>«${req.bookTitle}»</b> به پایان رسیده است.\n\n` +
+            `👤 <b>مالک کتاب:</b> ${req.ownerName} (کلاس ${req.ownerClass})\n\n` +
+            `خواهشمندیم هرچه سریع‌تر کتاب را به مالک تحویل دهید و از ایشان بخواهید تایید تحویل را در سامانه ثبت نماید.\n\n` +
+            `🌐 <b>سامانه مکتب‌خانه:</b> ${siteUrl || 'https://maktabkhune.ir'}`;
+
           await notifyUserOnBale(req.borrowerId, message);
-          console.log(`[Scheduler] 24h warning sent to user ${req.borrowerId} for book ${req.bookTitle}`);
+
+          dbService.createNotification({
+            userId: req.borrowerId,
+            type: 'loan_overdue',
+            title: 'هشدار تاخیر در عودت کتاب',
+            message: `مهلت امانت کتاب «${req.bookTitle}» به پایان رسیده است. لطفاً نسبت به عودت اقدام کنید.`,
+            relatedId: req.id,
+            linkTab: 'requests'
+          });
+
+          console.log(`[Scheduler] Overdue warning sent to user ${req.borrowerId} for book ${req.bookTitle}`);
         }
       }
     }
   } catch (err) {
-    console.error('Error in 24h warning scheduler:', err);
+    console.error('Error in due date warning scheduler:', err);
   }
 }, 30 * 1000); // Run check every 30 seconds for immediate responsiveness in demo
 
@@ -363,6 +448,19 @@ async function sendBaleMessage(
     text: text,
     parse_mode: 'HTML',
     reply_markup: replyMarkup,
+  });
+}
+
+/**
+ * حذف یک پیام از چت یا کانال بله
+ */
+export async function deleteBaleMessage(
+  chatId: number | string,
+  messageId: number | string
+) {
+  return await callBaleApi('deleteMessage', {
+    chat_id: chatId,
+    message_id: Number(messageId),
   });
 }
 
@@ -528,6 +626,7 @@ export function formatBookIntroductionPost(book: Book, siteBaseUrl?: string) {
 
   const categoryTag = book.category ? `#${book.category.replace(/[\s\-\/]+/g, '_')}` : '#کتاب';
   postText += `🔖 ${categoryTag} #مکتب_خانه #کتابخوانی #امانت_کتاب #معرفی_کتاب\n\n`;
+  postText += `🌐 <b>سامانه آنلاین مکتب‌خانه:</b> ${cleanOrigin || 'https://maktabkhune.ir'}\n`;
   postText += `👇 <i>جهت رزرو و امانت فوری، روی دکمه زیر کلیک کنید:</i>`;
 
   const inlineKeyboard: any[][] = [];
@@ -566,12 +665,16 @@ export async function publishBookToBaleChannel(book: Book, siteBaseUrl?: string)
     if (book.coverImage && book.coverImage.trim()) {
       const photoResult = await sendBalePhoto(channelId, book.coverImage.trim(), text, replyMarkup, effectiveBaseUrl);
       if (photoResult && photoResult.ok) {
+        const msgId = photoResult.result?.message_id;
+        if (book.id && msgId) {
+          dbService.updateBook(book.id, { baleChannelMessageId: msgId });
+        }
         dbService.addSystemLog(
           'info',
           `انتشار کتاب «${book.title}» در کانال بله`,
-          `با موفقیت به همراه تصویر جلد به کانال ${channelId} ارسال شد. شناسه پیام: ${photoResult.result?.message_id}`
+          `با موفقیت به همراه تصویر جلد به کانال ${channelId} ارسال شد. شناسه پیام: ${msgId}`
         );
-        return { ok: true, messageId: photoResult.result?.message_id, withPhoto: true, baleResponse: photoResult };
+        return { ok: true, messageId: msgId, withPhoto: true, baleResponse: photoResult };
       }
       console.warn(`⚠️ [Bale Channel] ارسال عکس به کانال با خطا مواجه شد (${JSON.stringify(photoResult?.error || photoResult)}). در حال ارسال به عنوان متن ساده...`);
     }
@@ -579,12 +682,16 @@ export async function publishBookToBaleChannel(book: Book, siteBaseUrl?: string)
     // 2. اگر عکس نداشت یا ارسال عکس ناموفق بود، ارسال به عنوان پیام متنی
     const msgResult = await sendBaleMessage(channelId, text, replyMarkup);
     if (msgResult && msgResult.ok) {
+      const msgId = msgResult.result?.message_id;
+      if (book.id && msgId) {
+        dbService.updateBook(book.id, { baleChannelMessageId: msgId });
+      }
       dbService.addSystemLog(
         'info',
         `انتشار متنی کتاب «${book.title}» در کانال بله`,
-        `با موفقیت به کانال ${channelId} ارسال شد. شناسه پیام: ${msgResult.result?.message_id}`
+        `با موفقیت به کانال ${channelId} ارسال شد. شناسه پیام: ${msgId}`
       );
-      return { ok: true, messageId: msgResult.result?.message_id, withPhoto: false, baleResponse: msgResult };
+      return { ok: true, messageId: msgId, withPhoto: false, baleResponse: msgResult };
     } else {
       dbService.addSystemLog(
         'error',
@@ -620,7 +727,8 @@ export async function publishAnnouncementToBaleChannel(announcementText: string,
     // Add school branding header & link to main site
     const postText = `📢 <b>اطلاعیه رسمی کتابخانه مکتب‌خانه</b>\n\n` +
       `${announcementText.trim()}\n\n` +
-      `🌐 <b>سامانه مکتب‌خانه:</b> ${effectiveBaseUrl || 'سامانه فعال مدرسه'}`;
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🌐 <b>سامانه مکتب‌خانه:</b> ${effectiveBaseUrl || 'https://maktabkhune.ir'}`;
 
     const replyMarkup = {
       inline_keyboard: [
@@ -2795,9 +2903,42 @@ async function startServer() {
     res.json({ success: true, book: updated });
   });
 
-  app.delete('/api/books/:id', (req: Request, res: Response): any => {
-    const success = dbService.deleteBook(req.params.id);
-    res.json({ success });
+  app.delete('/api/books/:id', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const book = dbService.getBookById(req.params.id);
+      if (book) {
+        // If the book was published to the Bale Channel and has a message ID, delete the post from the channel
+        if (book.baleChannelMessageId) {
+          const sysConfig = dbService.getSystemConfig();
+          let channelId = sysConfig.baleChannelUsername?.trim();
+          if (channelId) {
+            if (!channelId.startsWith('@') && !channelId.startsWith('-') && !/^\d+$/.test(channelId)) {
+              channelId = `@${channelId}`;
+            }
+            try {
+              const delRes = await deleteBaleMessage(channelId, book.baleChannelMessageId);
+              if (delRes && delRes.ok) {
+                dbService.addSystemLog(
+                  'info',
+                  `حذف خودکار پست کتاب از کانال بله`,
+                  `کتاب «${book.title}» حذف شد و پیام متناظر آن (شناسه ${book.baleChannelMessageId}) از کانال ${channelId} با موفقیت پاک گردید.`
+                );
+              } else {
+                console.warn(`[Bale Channel Delete] پاسخ حذف پیام از بله:`, delRes);
+              }
+            } catch (delErr) {
+              console.error('[Bale Channel Delete] خطا در حذف پیام از کانال بله:', delErr);
+            }
+          }
+        }
+      }
+
+      const success = dbService.deleteBook(req.params.id);
+      res.json({ success });
+    } catch (err: any) {
+      console.error('Delete Book Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در حذف کتاب' });
+    }
   });
 
   app.post('/api/books/:id/review', (req: Request, res: Response): any => {
@@ -4098,6 +4239,7 @@ async function startServer() {
         `━━━━━━━━━━━━━━━━━━\n\n` +
         `✅ بات هوشمند مکتب‌خانه (<code>@${BOT_USERNAME}</code>) با موفقیت به این کانال متصل گردید.\n\n` +
         `📚 از این پس، هر کتاب جدیدی که در سامانه ثبت شود، به‌صورت خودکار همراه با تصویر و مشخصات کامل در این کانال معرفی خواهد شد.\n\n` +
+        `🌐 <b>سامانه مکتب‌خانه:</b> ${siteUrl || 'https://maktabkhune.ir'}\n\n` +
         `⏰ <b>زمان تست:</b> ${new Date().toLocaleTimeString('fa-IR')} - ${new Date().toLocaleDateString('fa-IR')}`;
 
       const replyMarkup = siteUrl ? {

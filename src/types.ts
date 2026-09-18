@@ -66,6 +66,7 @@ export interface Book {
   estimatedReturnDate?: string;
   isDamaged?: boolean;
   damageDescription?: string;
+  baleChannelMessageId?: number; // Message ID of the book in Bale channel for auto-deletion
 }
 
 export interface BankCardInfo {
@@ -125,7 +126,9 @@ export interface LendingRequest {
   paymentProof?: PaymentProof;
   dueDate?: string; // Estimated return date (7 days standard)
   dueDateTimestamp?: number; // Due date timestamp in ms
-  is24hWarningSent?: boolean; // Flag to avoid double sending 24h reminders
+  is48hWarningSent?: boolean; // Flag to avoid double sending 48h (2-day) reminders
+  is24hWarningSent?: boolean; // Flag to avoid double sending 24h (1-day) reminders
+  isOverdueWarningSent?: boolean; // Flag to avoid double sending overdue reminders
   extensionStatus?: 'none' | 'pending' | 'approved' | 'rejected';
   extensionCount?: number; // 0 or 1
   extensionRequestedAt?: string;
@@ -169,6 +172,9 @@ export type NotificationType =
   | 'account_suspended'
   | 'loan_accepted'
   | 'loan_requested'
+  | 'loan_reminder_48h'
+  | 'loan_reminder_24h'
+  | 'loan_overdue'
   | 'system';
 
 export interface AppNotification {

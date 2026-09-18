@@ -896,6 +896,22 @@ export const AdminPanel: React.FC = () => {
             <div className="text-2xl font-black text-indigo-300">{schoolClasses.length} کلاس</div>
             <div className="text-[10px] text-slate-300">کلاس‌های تعریف‌شده</div>
           </div>
+
+          {baleChannelUsername && (
+            <a
+              href={`https://ble.ir/${baleChannelUsername.replace('@', '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-sky-500/20 hover:bg-sky-500/30 backdrop-blur-md p-3 rounded-2xl border border-sky-400/30 text-center transition cursor-pointer shrink-0 group flex flex-col justify-center"
+              title="مشاهده کانال در پیام‌رسان بله"
+            >
+              <div className="text-sm font-black text-sky-200 flex items-center justify-center gap-1.5 group-hover:text-white">
+                <Send className="w-4 h-4 text-sky-300 group-hover:translate-x-0.5 transition-transform" />
+                <span>کانال بله ↗</span>
+              </div>
+              <div className="text-[10px] text-sky-200/80 mt-1 truncate max-w-[120px] font-mono">{baleChannelUsername}</div>
+            </a>
+          )}
         </div>
       </div>
 
@@ -2503,6 +2519,19 @@ export const AdminPanel: React.FC = () => {
                   </span>
 
                   <div className="flex items-center gap-2 flex-wrap">
+                    {baleChannelUsername.trim() && (
+                      <a
+                        href={`https://ble.ir/${baleChannelUsername.trim().replace('@', '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-3.5 py-2 bg-sky-600 hover:bg-sky-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                        title="مشاهده مستقیم کانال در پیام‌رسان بله"
+                      >
+                        <ExternalLink className="w-4 h-4 text-sky-200" />
+                        <span>مشاهده کانال در بله ↗</span>
+                      </a>
+                    )}
+
                     <button
                       type="button"
                       onClick={handleTestChannel}
@@ -3463,6 +3492,25 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
+          {/* Auto Bale Cleanup Banner */}
+          <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-2xl flex items-center justify-between flex-wrap gap-2 text-xs">
+            <div className="flex items-center gap-2 text-sky-900 font-bold">
+              <Send className="w-4 h-4 text-sky-600 shrink-0" />
+              <span>همگام‌سازی هوشمند با کانال بله: در صورت حذف هر کتاب از سامانه، پست مربوطه به‌صورت خودکار از کانال بله نیز حذف خواهد شد.</span>
+            </div>
+            {baleChannelUsername && (
+              <a
+                href={`https://ble.ir/${baleChannelUsername.replace('@', '')}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-700 hover:text-sky-900 font-extrabold flex items-center gap-1 underline text-[11px]"
+              >
+                <span>مشاهده کانال ({baleChannelUsername})</span>
+                <ExternalLink className="w-3 h-3" />
+              </a>
+            )}
+          </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-right text-xs">
               <thead className="bg-slate-50 text-slate-700 font-bold border-b border-slate-200">
@@ -3472,7 +3520,8 @@ export const AdminPanel: React.FC = () => {
                   <th className="p-3">دسته‌بندی</th>
                   <th className="p-3">مالک دانش‌آموز</th>
                   <th className="p-3">کلاس</th>
-                  <th className="p-3">وضعیت</th>
+                  <th className="p-3">وضعیت امانت</th>
+                  <th className="p-3">وضعیت کانال بله</th>
                   <th className="p-3 text-center">انتشار بله / حذف</th>
                 </tr>
               </thead>
@@ -3491,7 +3540,7 @@ export const AdminPanel: React.FC = () => {
                         <img
                           src={book.coverImage}
                           alt={book.title}
-                          className="w-8 h-10 object-cover rounded-md"
+                          className="w-8 h-10 object-cover rounded-md shadow-2xs shrink-0"
                         />
                         <span>{book.title}</span>
                       </td>
@@ -3510,6 +3559,21 @@ export const AdminPanel: React.FC = () => {
                           {book.status === 'available' ? 'آماده امانت' : 'در دست امانت'}
                         </span>
                       </td>
+                      <td className="p-3">
+                        {book.baleChannelMessageId ? (
+                          <span
+                            title={`شناسه پیام در کانال: ${book.baleChannelMessageId}`}
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-sky-100 text-sky-800 border border-sky-200"
+                          >
+                            <CheckCircle2 className="w-3 h-3 text-sky-600" />
+                            <span>منتشر شده در کانال</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-500 border border-slate-200">
+                            <span>منتشر نشده</span>
+                          </span>
+                        )}
+                      </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
                           <button
@@ -3527,7 +3591,10 @@ export const AdminPanel: React.FC = () => {
 
                           <button
                             onClick={() => {
-                              if (confirm(`آیا از حذف کتاب «${book.title}» مطمئن هستید؟`)) {
+                              const confirmMsg = book.baleChannelMessageId
+                                ? `آیا از حذف کتاب «${book.title}» مطمئن هستید؟\n\n📌 توجه: با حذف کتاب، پست معرفی آن نیز به‌صورت خودکار از کانال بله حذف خواهد شد.`
+                                : `آیا از حذف کتاب «${book.title}» مطمئن هستید؟`;
+                              if (confirm(confirmMsg)) {
                                 deleteBook(book.id);
                               }
                             }}

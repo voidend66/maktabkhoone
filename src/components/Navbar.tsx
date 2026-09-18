@@ -17,7 +17,8 @@ import {
   Clock,
   ShieldCheck,
   Plus,
-  HelpCircle
+  HelpCircle,
+  Send
 } from 'lucide-react';
 
 interface NavbarProps {
@@ -52,8 +53,13 @@ export const Navbar: React.FC<NavbarProps> = ({
     requests,
     notifications,
     markNotificationRead,
-    clearNotifications
+    clearNotifications,
+    systemConfig
   } = useApp();
+
+  const baleChannelUrl = systemConfig?.baleChannelUsername
+    ? `https://ble.ir/${systemConfig.baleChannelUsername.replace('@', '')}`
+    : 'https://ble.ir/maktabkhune_books';
 
   // Count pending requests for current user
   const pendingRequestsForMe = currentUser
@@ -189,6 +195,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* User Auth Buttons & Profile Badge */}
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 border-r border-slate-200 pr-2 sm:pr-3">
+            {/* Bale Channel Quick Access Button */}
+            <a
+              href={baleChannelUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="کانال رسمی معرفی کتاب‌های مکتب‌خانه در پیام‌رسان بله"
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl font-bold text-xs bg-sky-50 text-sky-800 hover:bg-sky-100 border border-sky-200 shadow-2xs transition shrink-0 whitespace-nowrap cursor-pointer group"
+            >
+              <Send className="w-3.5 h-3.5 text-sky-600 group-hover:translate-x-0.5 transition-transform" />
+              <span>کانال بله</span>
+            </a>
+
             {currentUser ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* Notification Bell Button */}
