@@ -3890,7 +3890,7 @@ async function startServer() {
   // 3. Update Google Drive Config (Schedule, hour, autoPrune, etc.)
   app.post('/api/admin/gdrive/config', (req: Request, res: Response): any => {
     try {
-      const { enabled, frequency, scheduledHour, autoPruneOldDbSnapshots, maxDbSnapshotsToKeep } = req.body;
+      const { enabled, frequency, scheduledHour, autoPruneOldDbSnapshots, maxDbSnapshotsToKeep, customClientId } = req.body;
       const currentConfig = dbService.getSystemConfig();
       const currentGdrive = currentConfig.googleDrive || {
         enabled: false,
@@ -3906,7 +3906,8 @@ async function startServer() {
         frequency: frequency || currentGdrive.frequency || 'daily',
         scheduledHour: typeof scheduledHour === 'number' ? scheduledHour : currentGdrive.scheduledHour ?? 2,
         autoPruneOldDbSnapshots: typeof autoPruneOldDbSnapshots === 'boolean' ? autoPruneOldDbSnapshots : currentGdrive.autoPruneOldDbSnapshots ?? true,
-        maxDbSnapshotsToKeep: typeof maxDbSnapshotsToKeep === 'number' ? maxDbSnapshotsToKeep : currentGdrive.maxDbSnapshotsToKeep ?? 30
+        maxDbSnapshotsToKeep: typeof maxDbSnapshotsToKeep === 'number' ? maxDbSnapshotsToKeep : currentGdrive.maxDbSnapshotsToKeep ?? 30,
+        customClientId: customClientId !== undefined ? customClientId.trim() : currentGdrive.customClientId
       };
 
       dbService.setSystemConfig({ googleDrive: updated });

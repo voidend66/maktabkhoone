@@ -230,6 +230,7 @@ export interface GoogleDriveConfig {
   enabled: boolean;
   frequency: GoogleDriveScheduleFrequency;
   scheduledHour: number; // 0 to 23 (e.g. 2 for 02:00 AM)
+  customClientId?: string;
   userEmail?: string;
   accessToken?: string;
   tokenExpiresAt?: number;

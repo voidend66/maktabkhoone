@@ -23,7 +23,10 @@ import {
   FileCheck,
   Send,
   Loader2,
-  FolderOpen
+  FolderOpen,
+  Key,
+  Settings2,
+  Globe
 } from 'lucide-react';
 import { GoogleDriveConfig, GoogleDriveScheduleFrequency } from '../types';
 
@@ -75,6 +78,17 @@ export const GoogleDriveBackupSection: React.FC = () => {
   const [showManualTokenModal, setShowManualTokenModal] = useState<boolean>(false);
   const [manualToken, setManualToken] = useState<string>('');
 
+  // Custom Client ID modal
+  const [showClientIdModal, setShowClientIdModal] = useState<boolean>(false);
+  const [customClientIdInput, setCustomClientIdInput] = useState<string>('');
+
+  // Domain check
+  const isCustomDomain = typeof window !== 'undefined' && 
+    !window.location.hostname.includes('localhost') && 
+    !window.location.hostname.includes('127.0.0.1') && 
+    !window.location.hostname.includes('run.app') &&
+    !window.location.hostname.includes('aistudio.google.com');
+
   const fetchStatus = async () => {
     try {
       setIsLoadingStatus(true);
@@ -92,6 +106,9 @@ export const GoogleDriveBackupSection: React.FC = () => {
         setScheduledHour(data.config.scheduledHour ?? 2);
         setAutoPrune(data.config.autoPruneOldDbSnapshots ?? true);
         setMaxSnapshots(data.config.maxDbSnapshotsToKeep ?? 30);
+        if (data.config.customClientId) {
+          setCustomClientIdInput(data.config.customClientId);
+        }
       }
     } catch (err: any) {
       setErrorMsg('خطا در دریافت وضعیت گوگل درایو: ' + err.message);
@@ -111,6 +128,8 @@ export const GoogleDriveBackupSection: React.FC = () => {
     setErrorMsg(null);
     setSuccessMsg(null);
     setIsLoadingStatus(true);
+
+    const effectiveClientId = config?.customClientId?.trim() || firebaseConfig.oAuthClientId || '267727679201-q0g370h7v21q099s2efjf9c1nbh6dduc.apps.googleusercontent.com';
 
     try {
       // 1. Try Firebase Authentication with Google Provider
@@ -132,16 +151,18 @@ export const GoogleDriveBackupSection: React.FC = () => {
     }
 
     // 2. Fallback to Google Identity Services (GIS)
-    const activeClientId = firebaseConfig.oAuthClientId || '267727679201-q0g370h7v21q099s2efjf9c1nbh6dduc.apps.googleusercontent.com';
-
-    if (typeof window !== 'undefined' && window.google?.accounts?.oauth2 && activeClientId) {
+    if (typeof window !== 'undefined' && window.google?.accounts?.oauth2 && effectiveClientId) {
       try {
         const tokenClient = window.google.accounts.oauth2.initTokenClient({
-          client_id: activeClientId,
+          client_id: effectiveClientId,
           scope: 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/userinfo.email',
           callback: async (tokenResponse: any) => {
             if (tokenResponse.error) {
-              setErrorMsg(`خطا در احراز هویت گوگل: ${tokenResponse.error_description || tokenResponse.error}`);
+              if (tokenResponse.error === 'origin_mismatch' || String(tokenResponse.error_description || '').includes('origin')) {
+                setErrorMsg('دامنه فعلی در فهرست دامنه‌های مجاز Google Cloud قرار ندارد. لطفاً از گزینه «اتصال از لینک سرور ابری» یا «اتصال مستقیم (توکن)» استفاده فرمایید.');
+              } else {
+                setErrorMsg(`خطا در احراز هویت گوگل: ${tokenResponse.error_description || tokenResponse.error}`);
+              }
               setIsLoadingStatus(false);
               return;
             }
@@ -188,6 +209,31 @@ export const GoogleDriveBackupSection: React.FC = () => {
     }
   };
 
+  const handleSaveCustomClientId = async () => {
+    try {
+      setIsLoadingStatus(true);
+      const res = await fetch('/api/admin/gdrive/config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customClientId: customClientIdInput.trim()
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSuccessMsg('✅ شناسه کارخواه (Client ID) با موفقیت ذخیره شد.');
+        setShowClientIdModal(false);
+        await fetchStatus();
+      } else {
+        setErrorMsg(data.message || 'خطا در ذخیره Client ID');
+      }
+    } catch (err: any) {
+      setErrorMsg('خطا در ارتباط با سرور: ' + err.message);
+    } finally {
+      setIsLoadingStatus(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     if (!confirm('آیا از قطع اتصال حساب گوگل درایو اطمینان دارید؟')) return;
     try {
@@ -197,6 +243,8 @@ export const GoogleDriveBackupSection: React.FC = () => {
       if (data.success) {
         setSuccessMsg('اتصال حساب گوگل با موفقیت قطع شد.');
         await fetchStatus();
+      } else {
+        setErrorMsg(data.message || 'خطا در قطع اتصال');
       }
     } catch (err: any) {
       setErrorMsg(err.message);
@@ -342,14 +390,33 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={handleConnectGoogle}
-                className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer"
-              >
-                <CloudUpload className="w-4 h-4 text-blue-600" />
-                <span>اتصال حساب گوگل درایو</span>
-              </button>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={handleConnectGoogle}
+                  disabled={isLoadingStatus}
+                  className="px-5 py-2.5 bg-white hover:bg-slate-100 text-slate-900 font-black text-xs rounded-xl shadow-md transition flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  {isLoadingStatus ? <Loader2 className="w-4 h-4 animate-spin text-blue-600" /> : <CloudUpload className="w-4 h-4 text-blue-600" />}
+                  <span>اتصال حساب گوگل</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowManualTokenModal(true)}
+                  className="px-3.5 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Key className="w-4 h-4 text-slate-950" />
+                  <span>اتصال مستقیم با توکن</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowClientIdModal(true)}
+                  title="تنظیمات شناسه اختصاصی Client ID"
+                  className="p-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl border border-white/20 transition cursor-pointer"
+                >
+                  <Settings2 className="w-4 h-4" />
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -358,24 +425,57 @@ export const GoogleDriveBackupSection: React.FC = () => {
         {hasToken && connectionInfo?.ok && (
           <div className="mt-5 pt-4 border-t border-white/10 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
             <div className="flex items-center gap-2 text-blue-200">
-              <ShieldCheck className="w-4 h-4 text-emerald-400" />
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
               <span>ایمیل متصل: <strong className="text-white font-mono">{userEmail || connectionInfo.userEmail}</strong></span>
             </div>
-
             <div className="flex items-center gap-2 text-blue-200">
-              <HardDrive className="w-4 h-4 text-sky-400" />
-              <span>فضای خالی درایو: <strong className="text-white font-mono">{toPersianDigits(connectionInfo.freeQuotaGb || 0)} GB</strong> از {toPersianDigits(connectionInfo.totalQuotaGb || 15)} GB</span>
+              <HardDrive className="w-4 h-4 text-sky-400 shrink-0" />
+              <span>
+                فضای درایو: <strong className="text-white font-bold">{toPersianDigits(connectionInfo.usedQuotaGb?.toFixed(2) || 0)} GB</strong> از <strong className="text-white font-bold">{toPersianDigits(connectionInfo.totalQuotaGb?.toFixed(1) || 15)} GB</strong>
+              </span>
             </div>
-
             <div className="flex items-center gap-2 text-blue-200">
-              <Clock className="w-4 h-4 text-amber-400" />
-              <span>آخرین بکاپ: <strong className="text-white">{config?.lastBackupTimestamp ? new Date(config.lastBackupTimestamp).toLocaleDateString('fa-IR') + ' ' + new Date(config.lastBackupTimestamp).toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' }) : 'هنوز اجرا نشده'}</strong></span>
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>پوشه اصلی: <strong className="text-white font-mono">MaktabKhaneh_Backups</strong></span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Notifications / Feedback Alerts */}
+      {/* Custom Domain Notice if applicable */}
+      {isCustomDomain && !hasToken && (
+        <div className="p-4 bg-amber-50/90 border border-amber-300/80 rounded-2xl space-y-2 text-xs text-amber-900 animate-in fade-in">
+          <div className="flex items-center gap-2 font-bold text-amber-950 text-xs">
+            <Globe className="w-4 h-4 text-amber-600 shrink-0" />
+            <span>راهنمای اتصال گوگل درایو روی دامنه اختصاصی ({typeof window !== 'undefined' ? window.location.hostname : 'maktabkhune.ir'}):</span>
+          </div>
+          <p className="leading-relaxed text-amber-800">
+            خطای <span className="font-mono font-bold bg-amber-100 px-1 py-0.5 rounded">origin_mismatch</span> زمانی از سمت گوگل رخ می‌دهد که پنجره ورود روی دامنه‌ای غیر از سرور اصلی ابری باز شود. برای اتصال سریع و بدون مشکل، یکی از ۳ روش زیر را انجام دهید:
+          </p>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-1">
+            <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-1">
+              <span className="font-bold text-emerald-700 block">روش ۱: اتصال از سرور اصلی ابری (فوری)</span>
+              <p className="text-[11px] text-slate-600 leading-normal">
+                پنل مدیریت را در لینک Cloud Run باز کنید و روی دکمه اتصال بزنید؛ چون دیتابیس مشترک است، دامنه maktabkhune.ir هم خودکار متصل می‌شود.
+              </p>
+            </div>
+            <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-1">
+              <span className="font-bold text-amber-800 block">روش ۲: اتصال سریع با توکن</span>
+              <p className="text-[11px] text-slate-600 leading-normal">
+                با زدن دکمه نارنجی «اتصال مستقیم با توکن» و دریافت توکن از OAuth Playground، بدون نیاز به هیچ دامنه‌ای فوراً متصل شوید.
+              </p>
+            </div>
+            <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-1">
+              <span className="font-bold text-blue-700 block">روش ۳: ثبت Client ID اختصاصی</span>
+              <p className="text-[11px] text-slate-600 leading-normal">
+                اگر در Google Cloud کنسول، Client ID با دامنه maktabkhune.ir ساخته‌اید، آن را در آیکون چرخ‌دنده تنظیمات وارد نمایید.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Status Notifications */}
       {successMsg && (
         <div className="p-4 bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs font-bold rounded-2xl flex items-center gap-2.5 animate-in fade-in">
           <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
@@ -445,60 +545,55 @@ export const GoogleDriveBackupSection: React.FC = () => {
 
       {/* Main Grid: How It Works & Configuration Settings */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Left Column: How Standard Differential Backup Works (4 cols) */}
+        {/* Left Column: How Standard Differential Backup Works (5 cols) */}
         <div className="lg:col-span-5 space-y-4">
           <div className="p-5 bg-slate-50 rounded-2xl border border-slate-200/90 space-y-3.5">
-            <h4 className="text-xs font-black text-slate-800 flex items-center gap-2">
-              <Layers className="w-4 h-4 text-indigo-600" />
-              <span>مکانیسم پشتیبان‌گیری تفاضلی استاندارد:</span>
-            </h4>
+            <div className="flex items-center gap-2 text-slate-800 font-black text-xs border-b border-slate-200/80 pb-2.5">
+              <Zap className="w-4 h-4 text-amber-500" />
+              <span>مکانیسم بهینه پشتیبان‌گیری تفاضلی (Differential Sync)</span>
+            </div>
+
             <div className="space-y-2.5 text-xs text-slate-600 leading-relaxed font-medium">
               <div className="flex items-start gap-2">
-                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                  ۱
-                </span>
-                <p>
-                  <strong>عدم آپلود فایل‌های تکراری:</strong> سیستم هش کد (MD5) هر عکس جلد و آواتار را بررسی می‌کند و فقط فایل‌های جدید را در گوگل درایو کپی می‌نماید.
-                </p>
+                <Layers className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-slate-800">۱. پوشه‌بندی استاندارد در گوگل درایو:</strong>
+                  <p className="text-[11px] text-slate-500">
+                    پوشه <span className="font-mono font-bold text-slate-700">MaktabKhaneh_Backups</span> شامل دو زیرپوشه <span className="font-mono text-slate-700">Database_Snapshots</span> و <span className="font-mono text-slate-700">Uploaded_Photos</span> در درایو شما ایجاد می‌شود.
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-start gap-2">
-                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                  ۲
-                </span>
-                <p>
-                  <strong>پوشه‌بندی اختصاصی در درایو:</strong> کلیه پشتیبان‌ها درون پوشه <code>MaktabKhaneh_Backups</code> شامل زیرپوشه‌های <code>Database_Snapshots</code> و <code>Uploaded_Photos</code> ذخیره می‌شوند.
-                </p>
+                <FileCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-slate-800">۲. مقایسه هش MD5 (تفاضلی هوشمند):</strong>
+                  <p className="text-[11px] text-slate-500">
+                    برای تصاویر کتاب‌ها، تنها فایل‌های جدید یا ویرایش‌شده آپلود می‌شوند و از مصرف حجم و ترافیک تکراری جلوگیری می‌شود.
+                  </p>
+                </div>
               </div>
 
               <div className="flex items-start gap-2">
-                <span className="w-5 h-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold text-[10px] shrink-0 mt-0.5">
-                  ۳
-                </span>
-                <p>
-                  <strong>ارسال آنی لاگ به بله و سایت:</strong> بلافاصله پس از اتمام هر نوبت بکاپ خودکار یا دستی، گزارش کامل با آمار دقیق عکس‌های جدید و حجم دیتابیس برای مدیر در پیام‌رسان بله و لاگ‌های سایت ارسال می‌شود.
-                </p>
+                <Send className="w-4 h-4 text-sky-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="text-slate-800">۳. ارسال آنی نوتیفیکیشن و لاگ به بله:</strong>
+                  <p className="text-[11px] text-slate-500">
+                    در پایان هر بکاپ، خلاصه وضعیت و تعداد فایل‌های منتقل‌شده به کانال یا ادمین بله تلگراف می‌شود.
+                  </p>
+                </div>
               </div>
-            </div>
-          </div>
-
-          <div className="p-4 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex items-start gap-3">
-            <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div className="text-[11px] text-amber-900 leading-relaxed font-medium">
-              <strong>حفظ امنیت و حریم خصوصی:</strong> مجوز درخواستی (<code className="font-mono text-[10px] bg-amber-100 px-1 py-0.5 rounded">drive.file</code>) منحصراً اجازه دسترسی به پوشه پشتیبان مکتب‌خانه را دارد و هیچ دسترسی به سایر فایل‌های شخصی حساب گوگل شما نخواهد داشت.
             </div>
           </div>
         </div>
 
-        {/* Right Column: Automation & Schedule Settings (7 cols) */}
-        <div className="lg:col-span-7 space-y-4">
-          <form onSubmit={handleSaveConfig} className="p-5 bg-slate-50 rounded-2xl border border-slate-200/90 space-y-5">
+        {/* Right Column: Configuration Form (7 cols) */}
+        <div className="lg:col-span-7">
+          <form onSubmit={handleSaveConfig} className="p-5 bg-slate-50 rounded-2xl border border-slate-200/90 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 text-slate-800 font-black text-xs">
                 <Sliders className="w-4 h-4 text-indigo-600" />
-                <h4 className="text-xs font-black text-slate-800">
-                  تنظیمات زمان‌بندی پشتیبان‌گیری خودکار (Scheduler)
-                </h4>
+                <span>تنظیمات زمان‌بندی پشتیبان‌گیری خودکار (Scheduler)</span>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                 <input
@@ -619,11 +714,11 @@ export const GoogleDriveBackupSection: React.FC = () => {
       {/* Manual OAuth Token Modal */}
       {showManualTokenModal && (
         <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-right">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
-                <CloudUpload className="w-5 h-5 text-blue-600" />
-                <span>اتصال دستی یا تمدید توکن Google OAuth</span>
+                <Key className="w-5 h-5 text-amber-600" />
+                <span>اتصال مستقیم با توکن گوگل (OAuth Access Token)</span>
               </div>
               <button
                 type="button"
@@ -634,9 +729,27 @@ export const GoogleDriveBackupSection: React.FC = () => {
               </button>
             </div>
 
-            <p className="text-xs text-slate-600 leading-relaxed font-medium">
-              اگر پنجره خودکار گوگل به دلیل تنظیمات مرورگر باز نشد، می‌توانید توکن دسترسی (OAuth Access Token) ایجاد شده را مستقیماً وارد فرمایید:
-            </p>
+            <div className="p-3.5 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-950 space-y-2 leading-relaxed">
+              <p className="font-bold">نحوه دریافت سریع توکن در ۱ دقیقه بدون نیاز به تنظیم دامنه:</p>
+              <ol className="list-decimal list-inside space-y-1 text-slate-700 text-[11px]">
+                <li>
+                  وارد سایت{' '}
+                  <a
+                    href="https://developers.google.com/oauthplayground"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 font-bold underline font-mono"
+                  >
+                    Google OAuth Playground
+                  </a>{' '}
+                  شوید.
+                </li>
+                <li>در لیست سمت چپ، دسترسی <span className="font-mono bg-white px-1 py-0.5 rounded border border-amber-200 font-bold">Drive API v3</span> را باز کرده و تیک <span className="font-mono font-semibold">https://www.googleapis.com/auth/drive.file</span> را بزنید.</li>
+                <li>روی دکمه <span className="font-bold">Authorize APIs</span> کلیک کرده و با حساب گوگل خود اجازه دسترسی دهید.</li>
+                <li>در مرحله ۲ روی <span className="font-bold">Exchange authorization code for tokens</span> کلیک کنید.</li>
+                <li>مقدار <span className="font-mono font-bold bg-white px-1 py-0.5 rounded border border-amber-200">Access token</span> را کپی کرده و در کادر زیر جای‌گذاری کنید.</li>
+              </ol>
+            </div>
 
             <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700">توکن دسترسی گوگل (Bearer Token):</label>
@@ -644,8 +757,8 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 value={manualToken}
                 onChange={(e) => setManualToken(e.target.value)}
                 placeholder="ya29.a0AfH6SM..."
-                rows={4}
-                className="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 focus:bg-white transition"
+                rows={3}
+                className="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 focus:bg-white transition text-left dir-ltr"
               />
             </div>
 
@@ -661,10 +774,65 @@ export const GoogleDriveBackupSection: React.FC = () => {
                 type="button"
                 onClick={() => sendTokenToServer(manualToken.trim())}
                 disabled={!manualToken.trim() || isLoadingStatus}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5"
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
               >
                 {isLoadingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
-                <span>ثبت و اعتبارسنجی توکن</span>
+                <span>ثبت و اتصال به گوگل درایو</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Client ID Modal */}
+      {showClientIdModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 space-y-4 shadow-2xl border border-slate-200 text-right">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2 text-slate-800 font-black text-sm">
+                <Settings2 className="w-5 h-5 text-indigo-600" />
+                <span>تنظیم شناسه کارخواه اختصاصی گوگل (OAuth Client ID)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowClientIdModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-xs font-bold"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed font-medium">
+              اگر در کنسول گوگل (<span className="font-mono text-slate-800 font-bold">Google Cloud Console</span>) برای دامنه خود یک OAuth Client ID از نوع Web Application ساخته‌اید و آدرس <span className="font-mono font-bold text-indigo-700">https://maktabkhune.ir</span> را در <span className="font-mono font-bold">Authorized JavaScript origins</span> قرار داده‌اید، شناسه آن را در کادر زیر وارد فرمایید:
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="block text-xs font-bold text-slate-700">شناسه اختصاصی Google OAuth Client ID:</label>
+              <input
+                type="text"
+                value={customClientIdInput}
+                onChange={(e) => setCustomClientIdInput(e.target.value)}
+                placeholder="مثلاً: 123456789-xyz.apps.googleusercontent.com"
+                className="w-full text-xs p-3 bg-slate-50 border border-slate-300 rounded-xl font-mono text-slate-800 focus:bg-white transition text-left dir-ltr"
+              />
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowClientIdModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                انصراف
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveCustomClientId}
+                disabled={isLoadingStatus}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
+              >
+                {isLoadingStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                <span>ذخیره Client ID</span>
               </button>
             </div>
           </div>
