@@ -11,7 +11,9 @@ import {
   BankCardInfo,
   SystemConfig,
   CustomAvatar,
-  AppNotification
+  AppNotification,
+  SystemEvent,
+  UserEventProgress
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -77,7 +79,6 @@ interface AppContextType {
     description: string;
   }) => Promise<Book>;
   deleteBook: (bookId: string) => void;
-  requestBookLoan: (bookId: string) => Promise<{ success: boolean; message: string; needBooks?: boolean }>;
   acceptLoanRequest: (
     requestId: string,
     pickupLocation: string,
@@ -123,6 +124,18 @@ interface AppContextType {
   notifications: AppNotification[];
   markNotificationRead: (id: string) => Promise<void>;
   clearNotifications: () => Promise<void>;
+  events: SystemEvent[];
+  activeEvents: SystemEvent[];
+  createEvent: (data: Partial<SystemEvent>) => Promise<{ success: boolean; event?: SystemEvent; message?: string }>;
+  updateEvent: (id: string, data: Partial<SystemEvent>) => Promise<{ success: boolean; event?: SystemEvent; message?: string }>;
+  deleteEvent: (id: string) => Promise<{ success: boolean; message?: string }>;
+  publishEventToBale: (id: string) => Promise<{ success: boolean; message: string }>;
+  getEventProgress: (eventId: string, userId?: string) => Promise<UserEventProgress | null>;
+  claimEventReward: (eventId: string) => Promise<{ success: boolean; message: string; user?: User; progress?: UserEventProgress }>;
+  requestBookLoan: (
+    bookId: string,
+    options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
+  ) => Promise<{ success: boolean; message: string; needBooks?: boolean }>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -138,6 +151,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [systemConfig, setSystemConfig] = useState<SystemConfig>(INITIAL_SYSTEM_CONFIG);
   const [customAvatars, setCustomAvatars] = useState<CustomAvatar[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
+  const [events, setEvents] = useState<SystemEvent[]>([]);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -172,6 +186,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         if (data.customAvatars) {
           setCustomAvatars(data.customAvatars);
+        }
+        if (data.events) {
+          setEvents(data.events);
         }
       }
     } catch (err) {
@@ -650,7 +667,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Request Book Loan
-  const requestBookLoan = async (bookId: string) => {
+  const requestBookLoan = async (
+    bookId: string,
+    options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
+  ) => {
     if (!currentUser) {
       return { success: false, message: 'لطفا ابتدا وارد حساب کاربری خود شوید.' };
     }
@@ -687,12 +707,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
-      const res = await api.createRequest(bookId, currentUser.id);
+      const res = await api.createRequest(bookId, currentUser.id, options);
       if (res.success && res.request) {
         setRequests((prev) => [res.request, ...prev]);
         setBooks((prev) =>
           prev.map((b) => (b.id === bookId ? { ...b, status: 'requested' } : b))
         );
+        if (options?.useFreeLoan && currentUser.freeLoanQuota && currentUser.freeLoanQuota > 0) {
+          setCurrentUser((prev) =>
+            prev ? { ...prev, freeLoanQuota: Math.max(0, (prev.freeLoanQuota || 0) - 1) } : null
+          );
+        }
         await refreshData();
         return { success: true, message: `درخواست امانت کتاب "${book.title}" برای ${book.ownerName} ارسال شد.` };
       }
@@ -1298,6 +1323,88 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   }, [feedbacks, users]);
 
+  // Active Events
+  const activeEvents = useMemo(() => {
+    const now = Date.now();
+    return events.filter((ev) => {
+      if (ev.status === 'archived' || ev.status === 'draft') return false;
+      if (ev.status === 'active') return true;
+      return (!ev.startTimestamp || ev.startTimestamp <= now) && (!ev.endTimestamp || ev.endTimestamp >= now);
+    });
+  }, [events]);
+
+  const createEvent = async (data: Partial<SystemEvent>) => {
+    try {
+      const res = await api.createEvent(data);
+      if (res.success && res.event) {
+        setEvents((prev) => [res.event!, ...prev]);
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ایجاد ایونت' };
+    }
+  };
+
+  const updateEvent = async (id: string, data: Partial<SystemEvent>) => {
+    try {
+      const res = await api.updateEvent(id, data);
+      if (res.success && res.event) {
+        setEvents((prev) => prev.map((ev) => (ev.id === id ? res.event! : ev)));
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ویرایش ایونت' };
+    }
+  };
+
+  const deleteEvent = async (id: string) => {
+    try {
+      const res = await api.deleteEvent(id);
+      if (res.success) {
+        setEvents((prev) => prev.filter((ev) => ev.id !== id));
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در حذف ایونت' };
+    }
+  };
+
+  const publishEventToBale = async (id: string) => {
+    try {
+      const res = await api.publishEventToBale(id);
+      if (res.success) {
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در انتشار در بله' };
+    }
+  };
+
+  const getEventProgress = async (eventId: string, userId?: string) => {
+    const targetUserId = userId || currentUser?.id;
+    if (!targetUserId) return null;
+    return await api.getEventProgress(eventId, targetUserId);
+  };
+
+  const claimEventReward = async (eventId: string) => {
+    if (!currentUser?.id) return { success: false, message: 'لطفا ابتدا وارد حساب خود شوید' };
+    try {
+      const res = await api.claimEventReward(eventId, currentUser.id);
+      if (res.success) {
+        if (res.user) {
+          setCurrentUser(res.user);
+        }
+        await refreshData();
+      }
+      return res;
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در دریافت پاداش ایونت' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1352,7 +1459,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         refreshData,
         notifications,
         markNotificationRead,
-        clearNotifications
+        clearNotifications,
+        events,
+        activeEvents,
+        createEvent,
+        updateEvent,
+        deleteEvent,
+        publishEventToBale,
+        getEventProgress,
+        claimEventReward
       }}
     >
       {children}

@@ -74,6 +74,188 @@ export class GoogleDriveBackupService {
   }
 
   /**
+   * Helper: Generate Access Token using Google Cloud Service Account JSON Key (RS256 JWT)
+   */
+  public static async getServiceAccountAccessToken(serviceAccountJsonStr: string): Promise<{
+    accessToken: string;
+    clientEmail: string;
+    expiresIn: number;
+  }> {
+    try {
+      const creds = JSON.parse(serviceAccountJsonStr.trim());
+      if (!creds.client_email || !creds.private_key) {
+        throw new Error('فایل سرویس اکانت گوگل ناقص است (client_email یا private_key یافت نشد).');
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const exp = now + 3600;
+
+      const header = { alg: 'RS256', typ: 'JWT' };
+      const claims = {
+        iss: creds.client_email,
+        scope: 'https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/drive.file',
+        aud: 'https://oauth2.googleapis.com/token',
+        exp,
+        iat: now
+      };
+
+      const base64Url = (obj: any) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+      const signInput = `${base64Url(header)}.${base64Url(claims)}`;
+
+      const signer = crypto.createSign('RSA-SHA256');
+      signer.update(signInput);
+      signer.end();
+      const signature = signer.sign(creds.private_key, 'base64url');
+      const jwtAssertion = `${signInput}.${signature}`;
+
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+          assertion: jwtAssertion
+        }).toString()
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error_description || data.error || 'خطا در تایید هویت با سرویس اکانت گوگل');
+      }
+
+      return {
+        accessToken: data.access_token,
+        clientEmail: creds.client_email,
+        expiresIn: data.expires_in || 3600
+      };
+    } catch (err: any) {
+      throw new Error('خطا در ایجاد توکن سرویس اکانت گوگل: ' + err.message);
+    }
+  }
+
+  /**
+   * Helper: Renew Google Access Token using OAuth Refresh Token
+   */
+  public static async refreshOAuthAccessToken(
+    refreshToken: string,
+    clientId?: string,
+    clientSecret?: string
+  ): Promise<{ accessToken: string; expiresIn: number }> {
+    try {
+      const cid = clientId?.trim() || '';
+      const csecret = clientSecret?.trim() || '';
+
+      const bodyParams: Record<string, string> = {
+        refresh_token: refreshToken.trim(),
+        grant_type: 'refresh_token'
+      };
+
+      if (cid) bodyParams.client_id = cid;
+      if (csecret) bodyParams.client_secret = csecret;
+
+      const res = await fetch('https://oauth2.googleapis.com/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(bodyParams).toString()
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error_description || data.error || 'خطا در تمدید توکن گوگل با رفرش‌توکن');
+      }
+
+      return {
+        accessToken: data.access_token,
+        expiresIn: data.expires_in || 3600
+      };
+    } catch (err: any) {
+      throw new Error('تمدید خودکار توکن گوگل ناموفق بود: ' + err.message);
+    }
+  }
+
+  /**
+   * Automatically resolves a valid, non-expired Access Token from configuration
+   * (Auto-refreshes if refresh token or service account is configured)
+   */
+  public static async getValidAccessToken(
+    dbService: any,
+    forceRefresh = false
+  ): Promise<{ accessToken: string; userEmail?: string; authType: string }> {
+    const config = dbService.getSystemConfig();
+    const gdrive: GoogleDriveConfig = config.googleDrive || {
+      enabled: false,
+      frequency: 'daily',
+      scheduledHour: 2
+    };
+
+    const now = Date.now();
+
+    // 1. Service Account (Permanent Server-Side)
+    if (gdrive.serviceAccountJson) {
+      if (!forceRefresh && gdrive.accessToken && gdrive.tokenExpiresAt && gdrive.tokenExpiresAt > now + 300000) {
+        return {
+          accessToken: gdrive.accessToken,
+          userEmail: gdrive.serviceAccountEmail || gdrive.userEmail,
+          authType: 'service_account'
+        };
+      }
+
+      console.log('🔄 [GDrive] Auto-generating fresh Access Token from Service Account...');
+      const { accessToken, clientEmail, expiresIn } = await this.getServiceAccountAccessToken(gdrive.serviceAccountJson);
+      const expiresAt = Date.now() + (expiresIn * 1000);
+
+      dbService.setSystemConfig({
+        googleDrive: {
+          ...gdrive,
+          accessToken,
+          tokenExpiresAt: expiresAt,
+          serviceAccountEmail: clientEmail,
+          userEmail: clientEmail,
+          authType: 'service_account'
+        }
+      });
+
+      return { accessToken, userEmail: clientEmail, authType: 'service_account' };
+    }
+
+    // 2. OAuth Refresh Token (Permanent Auto-Renewal)
+    if (gdrive.refreshToken) {
+      if (!forceRefresh && gdrive.accessToken && gdrive.tokenExpiresAt && gdrive.tokenExpiresAt > now + 300000) {
+        return {
+          accessToken: gdrive.accessToken,
+          userEmail: gdrive.userEmail,
+          authType: 'refresh_token'
+        };
+      }
+
+      console.log('🔄 [GDrive] Auto-renewing Google Access Token using stored Refresh Token...');
+      const { accessToken, expiresIn } = await this.refreshOAuthAccessToken(
+        gdrive.refreshToken,
+        gdrive.customClientId,
+        gdrive.customClientSecret
+      );
+      const expiresAt = Date.now() + (expiresIn * 1000);
+
+      dbService.setSystemConfig({
+        googleDrive: {
+          ...gdrive,
+          accessToken,
+          tokenExpiresAt: expiresAt,
+          authType: 'refresh_token'
+        }
+      });
+
+      return { accessToken, userEmail: gdrive.userEmail, authType: 'refresh_token' };
+    }
+
+    // 3. Simple Access Token (Temporary fallback)
+    if (gdrive.accessToken) {
+      return { accessToken: gdrive.accessToken, userEmail: gdrive.userEmail, authType: 'oauth_token' };
+    }
+
+    throw new Error('هیچ اطلاعات اعتباری برای اتصال به گوگل درایو یافت نشد. لطفاً در پنل مدیریت از طریق «اتصال دائمی با Refresh Token» یا «سرویس اکانت گوگل»، سیستم را متصل فرمایید.');
+  }
+
+  /**
    * Helper: Calls Google Drive REST API v3
    */
   private static async callDriveApi(
@@ -101,6 +283,13 @@ export class GoogleDriveBackupService {
       } catch {
         errBody = await response.text();
       }
+
+      if (response.status === 401) {
+        throw new Error(
+          `اعتبار توکن دسترسی حساب گوگل منقضی شده است (کد 401). لطفاً در پنل مدیریت حساب خود را تمدید فرمایید یا از گزینه «اتصال دائمی با Refresh Token / اکانت سرویس» استفاده کنید.`
+        );
+      }
+
       throw new Error(`Google Drive API error (${response.status}): ${errBody}`);
     }
 
@@ -232,6 +421,7 @@ export class GoogleDriveBackupService {
    */
   public static async testConnection(accessToken: string): Promise<{
     ok: boolean;
+    isTokenExpired?: boolean;
     userEmail?: string;
     userName?: string;
     totalQuotaGb?: number;
@@ -260,8 +450,14 @@ export class GoogleDriveBackupService {
         freeQuotaGb: freeGb
       };
     } catch (err: any) {
+      const isExpired =
+        err.message?.includes('401') ||
+        err.message?.includes('invalid authentication credentials') ||
+        err.message?.includes('منقضی');
+
       return {
         ok: false,
+        isTokenExpired: isExpired,
         error: err.message || 'خطا در برقراری ارتباط با گوگل درایو'
       };
     }
@@ -290,18 +486,25 @@ export class GoogleDriveBackupService {
     this.isRunning = true;
     const startTime = Date.now();
     const { dbService, uploadsDir, notifyAdminsBale } = params;
+
+    let accessToken = '';
+    let authType = 'oauth_token';
+
+    try {
+      const authInfo = await this.getValidAccessToken(dbService);
+      accessToken = authInfo.accessToken;
+      authType = authInfo.authType;
+    } catch (authErr: any) {
+      this.isRunning = false;
+      throw new Error('عدم احراز هویت گوگل درایو: ' + authErr.message);
+    }
+
     const config = dbService.getSystemConfig();
     const gdriveConfig: GoogleDriveConfig = config.googleDrive || {
       enabled: false,
       frequency: 'daily',
       scheduledHour: 2
     };
-
-    const accessToken = gdriveConfig.accessToken;
-    if (!accessToken) {
-      this.isRunning = false;
-      throw new Error('توکن دسترسی گوگل درایو یافت نشد. لطفاً ابتدا حساب گوگل خود را در پنل مدیریت متصل فرمایید.');
-    }
 
     const dataDir = typeof dbService.getDbPath === 'function' ? path.dirname(dbService.getDbPath()) : path.join(process.cwd(), 'data');
     const manifest = this.loadManifest(dataDir);
@@ -312,7 +515,7 @@ export class GoogleDriveBackupService {
     let rootFolderUrl = '';
 
     try {
-      console.log('🚀 [GDrive Backup] Starting differential Google Drive backup...');
+      console.log(`🚀 [GDrive Backup] Starting differential Google Drive backup (Auth: ${authType})...`);
 
       // 1. Initialize root and subfolders
       const rootFolder = await this.getOrCreateFolder(accessToken, ROOT_FOLDER_NAME);
@@ -413,7 +616,7 @@ export class GoogleDriveBackupService {
       const dbSizeKb = (dbBackupSizeBytes / 1024).toFixed(1);
 
       // 7. Update System Config Status
-      const summaryText = `${totalUploadedPhotos} تصویر جدید و نسخه پایگاه‌داده (${dbSizeKb} KB) با موفقیت به گوگل درایو منتقل شد (${totalSkippedPhotos} تصویر تکراری رد شد)`;
+      const summaryText = `${totalUploadedPhotos} تصویر جدید و نسخه دیتابیس (${dbSizeKb} KB) با موفقیت به گوگل درایو منتقل شد (${totalSkippedPhotos} تصویر تکراری رد شد)`;
       dbService.setSystemConfig({
         googleDrive: {
           ...gdriveConfig,
@@ -426,7 +629,7 @@ export class GoogleDriveBackupService {
       // 8. Log in System Logs
       dbService.addSystemLog(
         'info',
-        'پشتیبان‌گیری گوگل درایو (Google Drive)',
+        'پشتیبان‌گیری خودکار گوگل درایو (Google Drive)',
         summaryText
       );
 
@@ -435,7 +638,7 @@ export class GoogleDriveBackupService {
         const timeFa = new Date().toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
         const dateFa = new Date().toLocaleDateString('fa-IR', { year: 'numeric', month: 'long', day: 'numeric' });
         
-        const baleMessage = `☁️ گزارش پشتیبان‌گیری هوشمند در گوگل درایو (Google Drive)
+        const baleMessage = `☁️ گزارش پشتیبان‌گیری خودکار گوگل درایو (Google Drive)
 
 📅 تاریخ و ساعت: ${dateFa} - ساعت ${timeFa}
 📦 وضعیت: ✅ با موفقیت در پوشه ${ROOT_FOLDER_NAME} ذخیره شد
@@ -445,7 +648,7 @@ export class GoogleDriveBackupService {
 • 📸 تصاویر جدید آپلود شده: ${totalUploadedPhotos} فایل جدید
 • ⏩ تصاویر بدون تغییر (رد شده): ${totalSkippedPhotos} فایل
 • ⏱️ مدت زمان انجام: ${durationSec} ثانیه
-• 📂 دسترسی: در حساب گوگل (${gdriveConfig.userEmail || 'متصل'})
+• 📂 حساب مقصد: ${gdriveConfig.userEmail || 'حساب گوگل متصل'}
 
 🛡️ سامانه کتابخانه مکتب‌خانه`;
 
@@ -489,7 +692,7 @@ export class GoogleDriveBackupService {
 
 ⏰ زمان: ساعت ${timeFa}
 ❌ علت خطا: ${errMsg}
-لطفاً توکن یا اتصال حساب گوگل را در پنل مدیریت مکتب‌خانه بررسی فرمایید.`;
+لطفاً اتصال حساب گوگل را در پنل مدیریت مکتب‌خانه بررسی فرمایید.`;
         try {
           await notifyAdminsBale(baleErrorMsg);
         } catch {}
@@ -510,14 +713,14 @@ export class GoogleDriveBackupService {
     let lastCheckedHour = -1;
     let lastRunDate = '';
 
-    console.log('⏰ [GDrive Scheduler] Google Drive backup scheduler started.');
+    console.log('⏰ [GDrive Scheduler] Google Drive background backup scheduler active.');
 
     setInterval(async () => {
       try {
         const config: SystemConfig = params.dbService.getSystemConfig();
         const gdrive = config.googleDrive;
 
-        if (!gdrive || !gdrive.enabled || !gdrive.accessToken) {
+        if (!gdrive || !gdrive.enabled || (!gdrive.accessToken && !gdrive.refreshToken && !gdrive.serviceAccountJson)) {
           return;
         }
 
@@ -545,7 +748,7 @@ export class GoogleDriveBackupService {
             shouldRun = true;
           }
         } else if (gdrive.frequency === 'weekly') {
-          // Run on Friday (or current day) at scheduledHour once a week
+          // Run on Friday at scheduledHour once a week
           const dayOfWeek = now.getDay(); // 5 is Friday
           if (dayOfWeek === 5 && currentHour === scheduledHour && lastRunDate !== currentDate) {
             shouldRun = true;
@@ -553,7 +756,7 @@ export class GoogleDriveBackupService {
         }
 
         if (shouldRun && !this.isRunning) {
-          console.log(`⏰ [GDrive Scheduler] Triggering automatic backup for frequency: ${gdrive.frequency}`);
+          console.log(`⏰ [GDrive Scheduler] Auto-triggering background backup (Schedule: ${gdrive.frequency}, Hour: ${currentHour}:00)`);
           lastRunDate = currentDate;
           lastCheckedHour = currentHour;
           await this.executeBackup(params);

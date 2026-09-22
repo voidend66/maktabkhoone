@@ -11,7 +11,9 @@ import {
   BookReview,
   SystemConfig,
   CustomAvatar,
-  AppNotification
+  AppNotification,
+  SystemEvent,
+  UserEventProgress
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
@@ -99,6 +101,7 @@ interface DatabaseSchema {
   customAvatars?: CustomAvatar[];
   systemLogs?: SystemLog[];
   notifications?: AppNotification[];
+  events?: SystemEvent[];
 }
 
 // In-memory data store with disk persistence
@@ -111,7 +114,8 @@ let memoryDb: DatabaseSchema = {
   settings: {},
   customAvatars: [],
   systemLogs: [],
-  notifications: []
+  notifications: [],
+  events: []
 };
 
 /**
@@ -195,7 +199,8 @@ function loadFromDisk(): boolean {
           settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
           customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
-          notifications: Array.isArray(parsed.notifications) ? parsed.notifications : []
+          notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+          events: Array.isArray(parsed.events) ? parsed.events : []
         };
         return true;
       }
@@ -214,7 +219,9 @@ function loadFromDisk(): boolean {
           feedbacks: Array.isArray(parsed.feedbacks) ? parsed.feedbacks : [],
           settings: typeof parsed.settings === 'object' && parsed.settings !== null ? parsed.settings : {},
           customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
-          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : []
+          systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
+          notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
+          events: Array.isArray(parsed.events) ? parsed.events : []
         };
         return true;
       }
@@ -344,6 +351,36 @@ function seedInitialDataIfEmpty() {
         }
       }
     } catch {}
+  }
+
+  // Seed default initial event if empty
+  if (!memoryDb.events || memoryDb.events.length === 0) {
+    const now = Date.now();
+    const twoWeeksLater = now + 14 * 24 * 60 * 60 * 1000;
+    memoryDb.events = [
+      {
+        id: 'event_launch_maktabkhune',
+        title: 'ایونت بزرگ تاسیس و افتتاحیه مکتب‌خونه 🎉',
+        badgeText: '🏆 رویداد ویژه اهدای کتاب',
+        description: 'به مناسبت افتتاح رسمی سامانه تبادل کتاب مکتب‌خونه، با اضافه کردن ۸ کتاب به کتابخانه مدرسه، ۲ سهمیه امانت کتاب کاملاً رایگان (بدون کسر هیچ‌گونه حق امانت) هدیه بگیرید!',
+        imageUrl: 'https://images.unsplash.com/photo-1524995997946-a1c2e315a42f?auto=format&fit=crop&q=80&w=800',
+        themeColor: 'amber',
+        startDate: new Date(now).toLocaleDateString('fa-IR'),
+        startTimestamp: now,
+        endDate: new Date(twoWeeksLater).toLocaleDateString('fa-IR'),
+        endTimestamp: twoWeeksLater,
+        status: 'active',
+        targetType: 'add_books',
+        targetCount: 8,
+        rewardType: 'free_loans',
+        rewardCount: 2,
+        rewardTitle: '۲ امانت کتاب کاملاً رایگان',
+        rewardDescription: 'امانت ۲ کتاب دلخواه از کتابخانه بدون نیاز به پرداخت حق امانت',
+        createdAt: new Date(now).toLocaleDateString('fa-IR'),
+        createdAtTimestamp: now
+      }
+    ];
+    hasChanges = true;
   }
 
   if (hasChanges) {
@@ -1061,7 +1098,8 @@ export const dbService = {
       bankCardInfo: this.getBankCardInfo(),
       systemConfig: this.getSystemConfig(),
       customAvatars: this.getCustomAvatars(),
-      systemLogs: this.getSystemLogs()
+      systemLogs: this.getSystemLogs(),
+      events: this.getAllEvents()
     };
   },
 
@@ -1075,9 +1113,10 @@ export const dbService = {
     const systemConfig = this.getSystemConfig();
     const customAvatars = this.getCustomAvatars();
     const systemLogs = this.getSystemLogs();
+    const events = this.getAllEvents();
 
     return {
-      version: '2.4.0',
+      version: '2.5.0',
       exportedAt: new Date().toISOString(),
       exportedAtFa: new Date().toLocaleDateString('fa-IR'),
       metadata: {
@@ -1087,7 +1126,8 @@ export const dbService = {
         totalClasses: schoolClasses.length,
         totalFeedbacks: feedbacks.length,
         totalCustomAvatars: customAvatars.length,
-        totalSystemLogs: systemLogs.length
+        totalSystemLogs: systemLogs.length,
+        totalEvents: events.length
       },
       users,
       books,
@@ -1098,6 +1138,7 @@ export const dbService = {
       systemConfig,
       customAvatars,
       systemLogs,
+      events,
       settings: memoryDb.settings || {}
     };
   },
@@ -1144,7 +1185,8 @@ export const dbService = {
       feedbacks: Array.isArray(rawJson.feedbacks) ? rawJson.feedbacks : [],
       settings: settingsObj,
       customAvatars: Array.isArray(rawJson.customAvatars) ? rawJson.customAvatars : [],
-      systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : []
+      systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : [],
+      events: Array.isArray(rawJson.events) ? rawJson.events : []
     };
 
     saveToDisk();
@@ -1376,5 +1418,203 @@ export const dbService = {
     );
 
     return result;
+  },
+
+  // ==========================================
+  // ---- EVENTS & NOTICES MANAGEMENT ----
+  // ==========================================
+  getAllEvents(): SystemEvent[] {
+    return memoryDb.events || [];
+  },
+
+  getActiveEvents(): SystemEvent[] {
+    const now = Date.now();
+    return (memoryDb.events || []).filter((e) => {
+      if (e.status !== 'active') return false;
+      if (e.endTimestamp && e.endTimestamp < now) {
+        return false;
+      }
+      return true;
+    });
+  },
+
+  getEventById(id: string): SystemEvent | undefined {
+    return (memoryDb.events || []).find((e) => e.id === id);
+  },
+
+  createEvent(eventData: Omit<SystemEvent, 'id' | 'createdAt' | 'createdAtTimestamp'>): SystemEvent {
+    if (!memoryDb.events) memoryDb.events = [];
+    const now = Date.now();
+    const newEvent: SystemEvent = {
+      ...eventData,
+      id: `event_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      createdAt: new Date(now).toLocaleDateString('fa-IR'),
+      createdAtTimestamp: now
+    };
+    memoryDb.events.unshift(newEvent);
+    saveToDisk();
+
+    this.addSystemLog(
+      'info',
+      `ایجاد رویداد و ایونت جدید: ${newEvent.title}`,
+      `ایونت جدید با هدف ${newEvent.targetCount} کتاب و پاداش «${newEvent.rewardTitle}» ثبت گردید.`
+    );
+
+    return newEvent;
+  },
+
+  updateEvent(id: string, updates: Partial<SystemEvent>): SystemEvent | null {
+    if (!memoryDb.events) memoryDb.events = [];
+    const index = memoryDb.events.findIndex((e) => e.id === id);
+    if (index === -1) return null;
+
+    const current = memoryDb.events[index];
+    const updated: SystemEvent = {
+      ...current,
+      ...updates
+    };
+
+    memoryDb.events[index] = updated;
+    saveToDisk();
+
+    this.addSystemLog(
+      'info',
+      `ویرایش ایونت: ${updated.title}`,
+      `تنظیمات ایونت با شناسه ${id} به‌روزرسانی شد.`
+    );
+
+    return updated;
+  },
+
+  deleteEvent(id: string): boolean {
+    if (!memoryDb.events) memoryDb.events = [];
+    const initialLen = memoryDb.events.length;
+    memoryDb.events = memoryDb.events.filter((e) => e.id !== id);
+    if (memoryDb.events.length !== initialLen) {
+      saveToDisk();
+      this.addSystemLog('info', `حذف ایونت`, `ایونت با شناسه ${id} حذف گردید.`);
+      return true;
+    }
+    return false;
+  },
+
+  getUserEventProgress(userId: string, eventId: string): UserEventProgress | null {
+    const event = this.getEventById(eventId);
+    const user = this.getUserById(userId);
+    if (!event || !user) return null;
+
+    let currentCount = 0;
+    if (event.targetType === 'add_books') {
+      const userBooks = memoryDb.books.filter((b) => b.ownerId === userId);
+      // Check books added during event or total books if within start timestamp
+      const eligibleBooks = userBooks.filter((b) => {
+        // Try parsing timestamp from book ID (e.g. b_1727000000)
+        const tsMatch = b.id.match(/\d{10,13}/);
+        if (tsMatch) {
+          const bookTs = Number(tsMatch[0]);
+          return bookTs >= (event.startTimestamp - 60000); // 1 min margin
+        }
+        return true;
+      });
+      // Fallback: at least number of eligible or user's total books contributed
+      currentCount = Math.min(userBooks.length, eligibleBooks.length > 0 ? eligibleBooks.length : user.booksContributedCount || 0);
+    } else if (event.targetType === 'loan_books') {
+      currentCount = user.booksReadCount || 0;
+    } else {
+      currentCount = user.booksContributedCount || 0;
+    }
+
+    const targetCount = event.targetCount || 1;
+    const isCompleted = currentCount >= targetCount;
+    const percentage = Math.min(100, Math.round((currentCount / targetCount) * 100));
+    const isRewardClaimed = (user.claimedEventRewards || []).includes(eventId);
+
+    const now = Date.now();
+    const diffMs = event.endTimestamp - now;
+    const daysRemaining = Math.max(0, Math.ceil(diffMs / (24 * 60 * 60 * 1000)));
+    const hoursRemaining = Math.max(0, Math.ceil(diffMs / (60 * 60 * 1000)));
+    const isExpired = diffMs <= 0;
+
+    return {
+      eventId: event.id,
+      userId: user.id,
+      currentCount,
+      targetCount,
+      percentage,
+      isCompleted,
+      isRewardClaimed,
+      rewardTitle: event.rewardTitle || `${event.rewardCount} امانت رایگان`,
+      rewardType: event.rewardType,
+      rewardCount: event.rewardCount,
+      daysRemaining,
+      hoursRemaining,
+      isExpired
+    };
+  },
+
+  claimEventReward(userId: string, eventId: string): { success: boolean; message: string; user?: User; progress?: UserEventProgress } {
+    const event = this.getEventById(eventId);
+    const user = this.getUserById(userId);
+    if (!event || !user) {
+      return { success: false, message: 'ایونت یا کاربر مورد نظر یافت نشد.' };
+    }
+
+    const progress = this.getUserEventProgress(userId, eventId);
+    if (!progress) {
+      return { success: false, message: 'خطا در محاسبه پیشرفت کاربر در ایونت.' };
+    }
+
+    if (!progress.isCompleted) {
+      return {
+        success: false,
+        message: `شما هنوز به هدف ایونت نرسیده‌اید. (${progress.currentCount} از ${progress.targetCount} انجام شده است).`
+      };
+    }
+
+    if (progress.isRewardClaimed) {
+      return {
+        success: false,
+        message: 'شما قبلاً جایزه و پاداش این ایونت را دریافت کرده‌اید.'
+      };
+    }
+
+    // Award reward
+    if (!user.claimedEventRewards) user.claimedEventRewards = [];
+    user.claimedEventRewards.push(eventId);
+
+    if (event.rewardType === 'free_loans') {
+      const addedQuota = event.rewardCount || 2;
+      user.freeLoanQuota = (user.freeLoanQuota || 0) + addedQuota;
+    }
+
+    this.updateUser(user.id, {
+      claimedEventRewards: user.claimedEventRewards,
+      freeLoanQuota: user.freeLoanQuota
+    });
+
+    // Notify user
+    this.createNotification({
+      userId: user.id,
+      title: '🎉 دریافت جایزه ایونت کتابخانه!',
+      message: `تبریک! پاداش ایونت «${event.title}» (${event.rewardTitle}) به حساب شما واریز شد و می‌توانید کتاب‌های دلخواهتان را بدون پرداخت هزینه امانت بگیرید.`,
+      type: 'system',
+      linkTab: 'library'
+    });
+
+    this.addSystemLog(
+      'info',
+      `دریافت جایزه ایونت توسط ${user.name}`,
+      `کاربر ${user.name} (${user.className}) جایزه ایونت «${event.title}» (${event.rewardTitle}) را با موفقیت دریافت کرد.`
+    );
+
+    const updatedUser = this.getUserById(userId);
+    const updatedProgress = this.getUserEventProgress(userId, eventId);
+
+    return {
+      success: true,
+      message: `🎉 تبریک! پاداش «${event.rewardTitle}» با موفقیت فعال شد.`,
+      user: updatedUser,
+      progress: updatedProgress || undefined
+    };
   }
 };

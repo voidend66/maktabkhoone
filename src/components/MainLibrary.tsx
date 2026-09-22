@@ -4,6 +4,7 @@ import { BookCard } from './BookCard';
 import { Book } from '../types';
 import { CATEGORIES } from '../data/mockData';
 import { analyticsTracker } from '../services/analyticsTracker';
+import { EventBanner } from './EventBanner';
 import {
   MaktabKhanehHouseLogo,
   MaktabKhanehLogo,
@@ -146,6 +147,9 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Seasonal & Special Events Dynamic Banner with Progress Bar */}
+      <EventBanner onNavigateAddBooks={onNavigateAddBooks} />
 
       {/* Active Announcement Card */}
       {isAnnouncementValid && announcement && (

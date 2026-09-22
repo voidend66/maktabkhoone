@@ -4,6 +4,7 @@ import { EditProfileModal } from './EditProfileModal';
 import { api } from '../services/api';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
+import { AdminEventsManager } from './AdminEventsManager';
 import {
   Activity,
   ShieldAlert,
@@ -61,7 +62,8 @@ import {
   Megaphone,
   HardDrive,
   Folder,
-  FolderUp
+  FolderUp,
+  Gift
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -96,12 +98,13 @@ export const AdminPanel: React.FC = () => {
     suspendUser,
     unsuspendUser,
     sendBaleMessageToStudent,
-    refreshData
+    refreshData,
+    events
   } = useApp();
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'analytics' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
+    'pending_users' | 'events' | 'analytics' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
   >('pending_users');
   const [reviewsSubTab, setReviewsSubTab] = useState<'book_reviews' | 'user_feedbacks'>('book_reviews');
   const [userStatusFilter, setUserStatusFilter] = useState<'approved' | 'suspended' | 'rejected'>('approved');
@@ -916,7 +919,7 @@ export const AdminPanel: React.FC = () => {
       </div>
 
       {/* Tabs */}
-      <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs max-w-2xl flex-wrap gap-1">
+      <div className="flex bg-white p-1.5 rounded-2xl border border-slate-200 shadow-xs max-w-3xl flex-wrap gap-1">
         <button
           onClick={() => setActiveTab('pending_users')}
           className={`relative flex-1 min-w-[130px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
@@ -929,6 +932,21 @@ export const AdminPanel: React.FC = () => {
           <span>تایید افراد ({pendingUsers.length})</span>
           {pendingUsers.length > 0 && (
             <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping absolute top-2 left-2" />
+          )}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('events')}
+          className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+            activeTab === 'events'
+              ? 'bg-amber-500 text-slate-950 shadow-md font-black'
+              : 'text-amber-900 hover:text-amber-950 bg-amber-50/80 border border-amber-200'
+          }`}
+        >
+          <Gift className="w-4 h-4 text-amber-600 animate-bounce" />
+          <span>🏆 رویدادها و ایونت‌ها ({events.length})</span>
+          {events.some((e) => e.status === 'active') && (
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse absolute top-2 left-2" />
           )}
         </button>
 
@@ -1061,6 +1079,13 @@ export const AdminPanel: React.FC = () => {
       {activeTab === 'analytics' && (
         <div className="space-y-4 animate-in fade-in duration-200">
           <AnalyticsDashboard />
+        </div>
+      )}
+
+      {/* Tab: Events & Seasonal Challenges Management */}
+      {activeTab === 'events' && (
+        <div className="space-y-4 animate-in fade-in duration-200">
+          <AdminEventsManager />
         </div>
       )}
 

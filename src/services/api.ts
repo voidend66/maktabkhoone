@@ -8,7 +8,9 @@ import {
   RegistrationInput,
   BookReview,
   SystemConfig,
-  CustomAvatar
+  CustomAvatar,
+  SystemEvent,
+  UserEventProgress
 } from '../types';
 
 const API_BASE = '/api';
@@ -23,6 +25,7 @@ export interface BootstrapResponse {
   systemConfig?: SystemConfig;
   customAvatars?: CustomAvatar[];
   systemLogs?: any[];
+  events?: SystemEvent[];
 }
 
 export const api = {
@@ -227,11 +230,15 @@ export const api = {
   },
 
   // Requests APIs
-  async createRequest(bookId: string, borrowerId: string) {
+  async createRequest(
+    bookId: string,
+    borrowerId: string,
+    options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
+  ) {
     const res = await fetch(`${API_BASE}/requests`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ bookId, borrowerId })
+      body: JSON.stringify({ bookId, borrowerId, ...options })
     });
     return await res.json();
   },
@@ -616,6 +623,102 @@ export const api = {
       return await res.json();
     } catch (err: any) {
       return { success: false, message: err.message || 'خطا در ارتباط با سرور' };
+    }
+  },
+
+  // ==========================================
+  // ---- EVENTS & NOTICES API ----
+  // ==========================================
+  async getEvents(): Promise<SystemEvent[]> {
+    try {
+      const res = await fetch(`${API_BASE}/events`);
+      if (!res.ok) throw new Error('Failed to fetch events');
+      const data = await res.json();
+      return data.events || [];
+    } catch (err) {
+      console.warn('API getEvents error:', err);
+      return [];
+    }
+  },
+
+  async getActiveEvents(): Promise<SystemEvent[]> {
+    try {
+      const res = await fetch(`${API_BASE}/events/active`);
+      if (!res.ok) throw new Error('Failed to fetch active events');
+      const data = await res.json();
+      return data.events || [];
+    } catch (err) {
+      console.warn('API getActiveEvents error:', err);
+      return [];
+    }
+  },
+
+  async createEvent(eventData: Partial<SystemEvent>): Promise<{ success: boolean; event?: SystemEvent; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventData)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ایجاد ایونت' };
+    }
+  },
+
+  async updateEvent(id: string, updates: Partial<SystemEvent>): Promise<{ success: boolean; event?: SystemEvent; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updates)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ویرایش ایونت' };
+    }
+  },
+
+  async deleteEvent(id: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${id}`, { method: 'DELETE' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در حذف ایونت' };
+    }
+  },
+
+  async publishEventToBale(id: string): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${id}/publish-bale`, { method: 'POST' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در انتشار ایونت در بله' };
+    }
+  },
+
+  async getEventProgress(eventId: string, userId: string): Promise<UserEventProgress | null> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${eventId}/progress/${userId}`);
+      if (!res.ok) return null;
+      const data = await res.json();
+      return data.progress || null;
+    } catch (err) {
+      console.warn('API getEventProgress error:', err);
+      return null;
+    }
+  },
+
+  async claimEventReward(eventId: string, userId: string): Promise<{ success: boolean; message: string; user?: User; progress?: UserEventProgress }> {
+    try {
+      const res = await fetch(`${API_BASE}/events/${eventId}/claim-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در دریافت پاداش ایونت' };
     }
   }
 };

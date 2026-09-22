@@ -25,7 +25,8 @@ import {
   FileCheck,
   Upload,
   Loader2,
-  Star
+  Star,
+  Gift
 } from 'lucide-react';
 
 export const LendingRequests: React.FC = () => {
@@ -310,6 +311,11 @@ export const LendingRequests: React.FC = () => {
 
                   {/* Status Badges */}
                   <div className="flex items-center gap-2 flex-wrap">
+                    {req.isFreeEventLoan && (
+                      <span className="inline-flex items-center gap-1 bg-amber-500 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs">
+                        <Gift className="w-3.5 h-3.5" /> امانت رایگان با سهمیه ایونت ({req.freeEventTitle || 'رویداد مکتب‌خانه'})
+                      </span>
+                    )}
                     {req.status === 'pending' && (
                       <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 text-xs px-3 py-1 rounded-full font-black">
                         <Clock className="w-3.5 h-3.5" /> نیازمند تایید شما
@@ -500,6 +506,11 @@ export const LendingRequests: React.FC = () => {
 
                   {/* Status Badge */}
                   <div className="flex items-center gap-2 flex-wrap">
+                    {req.isFreeEventLoan && (
+                      <span className="inline-flex items-center gap-1 bg-amber-500 text-slate-950 text-xs px-3 py-1 rounded-full font-black shadow-xs">
+                        <Gift className="w-3.5 h-3.5" /> امانت رایگان هدیه ایونت ({req.freeEventTitle || 'رویداد مکتب‌خانه'})
+                      </span>
+                    )}
                     {req.status === 'pending' && (
                       <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-900 text-xs px-3 py-1 rounded-full font-black animate-pulse">
                         <Clock className="w-3.5 h-3.5" /> در انتظار تایید {req.ownerName}

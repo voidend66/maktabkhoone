@@ -224,14 +224,17 @@ function MainAppContent() {
     }, 4000);
   };
 
-  const handleRequestLoan = async (bookId: string) => {
+  const handleRequestLoan = async (
+    bookId: string,
+    options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
+  ) => {
     if (!currentUser) {
       setShowAuthModal(true);
       showToast('جهت ثبت درخواست امانت ابتدا باید وارد حساب کاربری شوید.', 'error');
       return;
     }
 
-    const res = await requestBookLoan(bookId);
+    const res = await requestBookLoan(bookId, options);
     if (res.success) {
       showToast(res.message, 'success');
       setSelectedBookForDetail(null);

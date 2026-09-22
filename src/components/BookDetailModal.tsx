@@ -15,13 +15,15 @@ import {
   ShieldCheck,
   AlertCircle,
   Trash2,
-  Check
+  Check,
+  Gift,
+  Sparkles
 } from 'lucide-react';
 
 interface BookDetailModalProps {
   book: Book | null;
   onClose: () => void;
-  onRequestLoan: (bookId: string) => void;
+  onRequestLoan: (bookId: string, options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }) => void;
 }
 
 export const BookDetailModal: React.FC<BookDetailModalProps> = ({
@@ -29,7 +31,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onClose,
   onRequestLoan
 }) => {
-  const { currentUser, addBookReview, deleteBookReview, users } = useApp();
+  const { currentUser, addBookReview, deleteBookReview, users, activeEvents } = useApp();
   
   const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
 
@@ -38,6 +40,10 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState('');
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
+  const [useFreeLoanQuota, setUseFreeLoanQuota] = useState(false);
+
+  const hasFreeQuota = (currentUser?.freeLoanQuota || 0) > 0;
+  const activeEvent = activeEvents[0];
 
   // Sync state if existing review changes
   React.useEffect(() => {
@@ -163,6 +169,37 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   </p>
                   <p className="leading-relaxed">{book.description || 'توضیحاتی برای این کتاب وارد نشده است.'}</p>
                 </div>
+
+                {/* Free Loan Option (Event Reward Quota) */}
+                {hasFreeQuota && isAvailable && (
+                  <div className="mt-4 p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 rounded-2xl border-2 border-amber-300 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Gift className="w-5 h-5 text-amber-600 animate-bounce shrink-0" />
+                        <div>
+                          <h4 className="text-xs font-black text-amber-950">
+                            استفاده از سهمیه امانت رایگان ایونت 🎁
+                          </h4>
+                          <p className="text-[11px] text-amber-800 font-medium mt-0.5">
+                            شما دارای <strong>{currentUser?.freeLoanQuota} سهمیه امانت رایگان</strong> هستید (بدون پرداخت هزینه کارمزد).
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <label className="flex items-center gap-2 pt-1 border-t border-amber-200/70 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={useFreeLoanQuota}
+                        onChange={(e) => setUseFreeLoanQuota(e.target.checked)}
+                        className="w-4 h-4 text-amber-600 rounded-md focus:ring-amber-500 cursor-pointer"
+                      />
+                      <span className="text-xs font-black text-slate-900">
+                        قرض گرفتن این کتاب با سهمیه رایگان ایونت (بدون پرداخت کارمزد)
+                      </span>
+                    </label>
+                  </div>
+                )}
               </div>
 
               {/* Action Request Button */}
@@ -188,17 +225,32 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
 
                 <button
                   onClick={() => {
-                    onRequestLoan(book.id);
+                    onRequestLoan(book.id, {
+                      useFreeLoan: useFreeLoanQuota,
+                      freeEventTitle: activeEvent?.title,
+                      freeEventId: activeEvent?.id
+                    });
                   }}
                   disabled={!isAvailable}
                   className={`px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
-                    isAvailable
-                      ? 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 hover:scale-102'
-                      : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    !isAvailable
+                      ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                      : useFreeLoanQuota
+                      ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 font-black hover:from-amber-600 hover:to-orange-600 shadow-lg shadow-amber-200 hover:scale-102'
+                      : 'bg-indigo-600 text-white hover:bg-indigo-700 shadow-lg shadow-indigo-100 hover:scale-102'
                   }`}
                 >
-                  <Bookmark className="w-4 h-4" />
-                  <span>ثبت درخواست امانت</span>
+                  {useFreeLoanQuota ? (
+                    <>
+                      <Gift className="w-4 h-4 text-slate-950" />
+                      <span>ثبت درخواست امانت رایگان (جایزه ایونت)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Bookmark className="w-4 h-4" />
+                      <span>ثبت درخواست امانت</span>
+                    </>
+                  )}
                 </button>
               </div>
             </div>

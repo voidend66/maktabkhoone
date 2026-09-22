@@ -28,6 +28,8 @@ export interface User {
   rejectionReason?: string;
   activeLoanCount?: number;
   baleChatId?: number | string;
+  freeLoanQuota?: number; // Active free loan quotas won from events
+  claimedEventRewards?: string[]; // Array of event IDs user has claimed rewards for
 }
 
 export interface BookReview {
@@ -135,6 +137,10 @@ export interface LendingRequest {
   isDamagedReported?: boolean;
   damageNotes?: string;
   damagePhotoUrl?: string;
+  isFreeEventLoan?: boolean;
+  freeEventId?: string;
+  freeEventTitle?: string;
+  originalFeeAmount?: number;
 }
 
 export interface SchoolClass {
@@ -217,6 +223,64 @@ export interface SystemAnnouncement {
   createdAtTimestamp?: number;
 }
 
+export type EventRewardType = 'free_loans' | 'free_loan' | 'credit_discount' | 'custom_gift' | 'points';
+export type EventTargetType = 'add_books' | 'loan_books' | 'custom';
+export type EventStatus = 'active' | 'upcoming' | 'completed' | 'draft' | 'archived';
+export type EventThemeColor = 'indigo' | 'amber' | 'emerald' | 'rose' | 'cyan' | 'purple' | 'blue';
+
+export interface SystemEvent {
+  id: string;
+  title: string; // e.g. "ایونت تاسیس مکتب‌خونه", "ایونت اول مهر", "هفته کتاب‌خوانی"
+  tag?: string; // e.g. "جشنواره تاسیس"
+  badgeText?: string; // e.g. "🎉 ایونت طلایی", "🍂 جشن اول مهر", "📚 جشنواره پاییزی"
+  description: string;
+  imageUrl?: string;
+  themeColor?: EventThemeColor;
+  startDate?: string; // e.g. "1403/07/01"
+  startDateFa?: string;
+  startTimestamp: number;
+  endDate?: string; // e.g. "1403/07/15"
+  endDateFa?: string;
+  endTimestamp: number;
+  status: EventStatus;
+  
+  // Mission / Goal
+  targetType: EventTargetType; // 'add_books'
+  targetCount: number; // e.g. 8 books
+  
+  // Reward details
+  rewardType: EventRewardType; // 'free_loans'
+  rewardCount?: number; // e.g. 2 free loans
+  freeLoanCount?: number;
+  rewardTitle?: string; // e.g. "۲ امانت کتاب کاملاً رایگان"
+  rewardDescription?: string; // e.g. "بدون کسر هیچ‌گونه هزینه امانت به عنوان جایزه ویژه ایونت"
+  
+  // Bale broadcasting
+  publishToBale?: boolean;
+  isPublishedToBale?: boolean;
+  baleMessageId?: number;
+  createdAt?: string;
+  createdAtTimestamp?: number;
+}
+
+export interface UserEventProgress {
+  eventId: string;
+  userId: string;
+  currentCount: number;
+  targetCount: number;
+  percentage: number;
+  isCompleted: boolean;
+  completedAt?: string;
+  isRewardClaimed: boolean;
+  claimedAt?: string;
+  rewardTitle: string;
+  rewardType: EventRewardType;
+  rewardCount: number;
+  daysRemaining: number;
+  hoursRemaining: number;
+  isExpired: boolean;
+}
+
 export type GoogleDriveScheduleFrequency = 'daily' | 'every_12_hours' | 'every_6_hours' | 'weekly' | 'manual';
 
 export interface GoogleDriveBackupLog {
@@ -236,11 +300,15 @@ export interface GoogleDriveConfig {
   enabled: boolean;
   frequency: GoogleDriveScheduleFrequency;
   scheduledHour: number; // 0 to 23 (e.g. 2 for 02:00 AM)
+  authType?: 'oauth_token' | 'refresh_token' | 'service_account';
   customClientId?: string;
+  customClientSecret?: string;
   userEmail?: string;
   accessToken?: string;
   tokenExpiresAt?: number;
   refreshToken?: string;
+  serviceAccountJson?: string;
+  serviceAccountEmail?: string;
   lastBackupTimestamp?: string;
   lastBackupStatus?: 'success' | 'failed' | 'running' | 'idle';
   lastBackupSummary?: string;

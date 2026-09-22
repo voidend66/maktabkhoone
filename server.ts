@@ -41,7 +41,9 @@ import {
   BankCardInfo,
   RegistrationInput,
   NewBookInput,
-  GoogleDriveConfig
+  GoogleDriveConfig,
+  SystemEvent,
+  UserEventProgress
 } from './src/types';
 
 /**
@@ -763,6 +765,78 @@ export async function publishAnnouncementToBaleChannel(announcementText: string,
     return { ok: false, error: msgResult.error || 'خطا در ارسال پیام به کانال' };
   } catch (err: any) {
     console.error('Failed to publish announcement to Bale Channel:', err);
+    return { ok: false, error: err.message || 'خطای غیرمنتظره' };
+  }
+}
+
+/**
+ * انتشار ایونت و رویداد ویژه در کانال بله
+ */
+export async function publishEventToBaleChannel(event: SystemEvent, siteBaseUrl?: string) {
+  try {
+    const config = dbService.getSystemConfig();
+    let channelId = config.baleChannelUsername?.trim();
+    if (!channelId) {
+      console.log('⚠️ [Bale Channel] آیدی کانال بله تنظیم نشده است.');
+      return { ok: false, error: 'آیدی کانال بله تنظیم نشده است.' };
+    }
+
+    if (!channelId.startsWith('@') && !channelId.startsWith('-') && !/^\d+$/.test(channelId)) {
+      channelId = `@${channelId}`;
+    }
+
+    const effectiveBaseUrl = siteBaseUrl || config.websiteBaseUrl || process.env.APP_URL || '';
+    const targetDesc = event.targetType === 'add_books'
+      ? `اضافه و اهدا کردن ${event.targetCount} کتاب به کتابخانه`
+      : event.targetType === 'loan_books'
+      ? `امانت گرفتن ${event.targetCount} کتاب از کتابخانه`
+      : `فعالیت در رویداد (${event.targetCount} مورد)`;
+
+    const postText =
+      `🎉 <b>رویداد و ایونت ویژه کتابخانه مکتب‌خانه!</b>\n\n` +
+      `🏆 <b>«${event.title}»</b>\n` +
+      `${event.badgeText ? `✨ <i>${event.badgeText}</i>\n\n` : '\n'}` +
+      `${event.description.trim()}\n\n` +
+      `🎯 <b>شرط و هدف ایونت:</b> ${targetDesc}\n` +
+      `🎁 <b>پاداش و جایزه ویژه:</b> ${event.rewardTitle || `${event.rewardCount} امانت کتاب کاملاً رایگان`}\n` +
+      `📅 <b>مهلت ایونت:</b> از ${event.startDate} تا ${event.endDate}\n\n` +
+      `━━━━━━━━━━━━━━━━━━\n` +
+      `🚀 همین حالا وارد سایت شوید، کتاب‌هایتان را ثبت کنید و جایزه را دریافت نمایید:\n` +
+      `🌐 <b>سامانه مکتب‌خانه:</b> ${effectiveBaseUrl || 'https://maktabkhune.ir'}`;
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: '📚 شرکت در ایونت و ثبت کتاب', url: effectiveBaseUrl || 'https://bale.ai' }
+        ]
+      ]
+    };
+
+    if (event.imageUrl && event.imageUrl.trim()) {
+      const photoResult = await sendBalePhoto(channelId, event.imageUrl.trim(), postText, replyMarkup, effectiveBaseUrl);
+      if (photoResult && photoResult.ok) {
+        dbService.addSystemLog(
+          'info',
+          `انتشار ایونت در کانال بله (با تصویر)`,
+          `ایونت «${event.title}» با تصویر در کانال ${channelId} منتشر شد. شناسه پیام: ${photoResult.result?.message_id}`
+        );
+        return { ok: true, messageId: photoResult.result?.message_id, withPhoto: true };
+      }
+      console.warn(`⚠️ [Bale Channel] ارسال عکس ایونت با خطا مواجه شد. در حال ارسال پیام متنی...`);
+    }
+
+    const msgResult = await sendBaleMessage(channelId, postText, replyMarkup);
+    if (msgResult && msgResult.ok) {
+      dbService.addSystemLog(
+        'info',
+        `انتشار ایونت در کانال بله`,
+        `ایونت «${event.title}» به صورت متنی در کانال ${channelId} منتشر شد. شناسه پیام: ${msgResult.result?.message_id}`
+      );
+      return { ok: true, messageId: msgResult.result?.message_id, withPhoto: false };
+    }
+    return { ok: false, error: msgResult.error || 'خطا در ارسال ایونت به کانال' };
+  } catch (err: any) {
+    console.error('Failed to publish event to Bale Channel:', err);
     return { ok: false, error: err.message || 'خطای غیرمنتظره' };
   }
 }
@@ -2993,7 +3067,7 @@ async function startServer() {
 
   app.post('/api/requests', (req: Request, res: Response): any => {
     try {
-      const { bookId, borrowerId } = req.body;
+      const { bookId, borrowerId, useFreeLoan, freeEventTitle, freeEventId } = req.body;
       const book = dbService.getBookById(bookId);
       const borrower = dbService.getUserById(borrowerId);
 
@@ -3003,6 +3077,19 @@ async function startServer() {
 
       if (book.ownerId === borrower.id) {
         return res.status(400).json({ success: false, message: 'شما مالک این کتاب هستید و نمی‌توانید آن را از خود به امانت بگیرید.' });
+      }
+
+      const defaultFee = dbService.getSystemConfig().loanFeeAmount ?? 10000;
+      let finalFee = defaultFee;
+      let isFreeLoan = false;
+
+      if (useFreeLoan && (borrower.freeLoanQuota && borrower.freeLoanQuota > 0)) {
+        finalFee = 0;
+        isFreeLoan = true;
+        // Deduct 1 quota from borrower
+        dbService.updateUser(borrower.id, {
+          freeLoanQuota: Math.max(0, borrower.freeLoanQuota - 1)
+        });
       }
 
       const reqId = `req_${Date.now()}`;
@@ -3020,8 +3107,13 @@ async function startServer() {
         borrowerPhone: borrower.phone,
         status: 'pending',
         createdAt: new Date().toLocaleDateString('fa-IR'),
-        feeAmount: 10000,
-        paymentStatus: 'pending'
+        feeAmount: finalFee,
+        originalFeeAmount: defaultFee,
+        isFreeEventLoan: isFreeLoan,
+        freeEventId: isFreeLoan ? (freeEventId || 'event_reward') : undefined,
+        freeEventTitle: isFreeLoan ? (freeEventTitle || 'سهمیه امانت رایگان ایونت') : undefined,
+        paymentStatus: isFreeLoan ? 'paid' : 'pending',
+        paidAt: isFreeLoan ? new Date().toLocaleDateString('fa-IR') : undefined
       };
 
       const created = dbService.createRequest(newReq);
@@ -3030,7 +3122,7 @@ async function startServer() {
       dbService.createNotification({
         userId: book.ownerId,
         title: 'درخواست جدید امانت کتاب',
-        message: `همکلاسی شما ${borrower.name} درخواست امانت کتاب «${book.title}» را دارد.`,
+        message: `همکلاسی شما ${borrower.name} درخواست امانت کتاب «${book.title}» را دارد.${isFreeLoan ? ' (استفاده از سهمیه رایگان ایونت)' : ''}`,
         type: 'loan_requested',
         linkTab: 'requests',
         relatedId: reqId
@@ -3042,7 +3134,8 @@ async function startServer() {
         `📚 <b>درخواست امانت کتاب جدید!</b>\n\n` +
         `👤 <b>متقاضی:</b> ${borrower.name} (کلاس ${borrower.className})\n` +
         `📖 <b>کتاب:</b> «${book.title}»\n` +
-        `📅 <b>تاریخ درخواست:</b> ${newReq.createdAt}\n\n` +
+        `📅 <b>تاریخ درخواست:</b> ${newReq.createdAt}\n` +
+        `${isFreeLoan ? '🎁 <b>نوع امانت:</b> سهمیه رایگان ایونت (بدون هزینه)\n' : ''}\n` +
         `آیا با امانت دادن این کتاب موافقت می‌فرمایید؟`,
         {
           inline_keyboard: [
@@ -3059,7 +3152,8 @@ async function startServer() {
         `🔄 <b>ثبت درخواست امانت جدید</b>\n\n` +
         `📖 <b>کتاب:</b> «${book.title}»\n` +
         `👤 <b>امانت‌گیرنده:</b> ${borrower.name} (${borrower.className})\n` +
-        `👤 <b>مالک:</b> ${book.ownerName} (${book.ownerClass})`
+        `👤 <b>مالک:</b> ${book.ownerName} (${book.ownerClass})\n` +
+        `${isFreeLoan ? '🎁 <b>وضعیت:</b> سهمیه رایگان ایونت (۰ تومان)' : '💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان'}`
       );
 
       res.json({ success: true, request: created });
@@ -3071,6 +3165,10 @@ async function startServer() {
 
   app.post('/api/requests/:id/accept', (req: Request, res: Response): any => {
     const { pickupLocation, pickupTime, pickupShift } = req.body;
+    const reqItem = dbService.getRequestById(req.params.id);
+    if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    const isFree = Boolean(reqItem.isFreeEventLoan || reqItem.feeAmount === 0);
     const now = Date.now();
     const deadline = new Date(now + 3 * 60 * 60 * 1000).toLocaleTimeString('fa-IR', {
       hour: '2-digit',
@@ -3078,13 +3176,14 @@ async function startServer() {
     });
 
     const updated = dbService.updateRequest(req.params.id, {
-      status: 'payment_pending',
+      status: isFree ? 'payment_completed' : 'payment_pending',
       pickupLocation,
       pickupTime,
       pickupShift,
       acceptedAt: new Date().toLocaleDateString('fa-IR'),
-      paymentStatus: 'pending',
-      paymentDeadline: `ساعت ${deadline} (مهلت ۳ ساعته)`
+      paymentStatus: isFree ? 'paid' : 'pending',
+      paidAt: isFree ? new Date().toLocaleDateString('fa-IR') : undefined,
+      paymentDeadline: isFree ? undefined : `ساعت ${deadline} (مهلت ۳ ساعته)`
     });
 
     if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
@@ -3093,7 +3192,9 @@ async function startServer() {
     dbService.createNotification({
       userId: updated.borrowerId,
       title: 'پذیرش درخواست امانت کتاب',
-      message: `درخواست شما برای کتاب «${updated.bookTitle}» پذیرفته شد. لطفاً فیش پرداخت را واریز و ثبت کنید.`,
+      message: isFree
+        ? `درخواست شما برای کتاب «${updated.bookTitle}» پذیرفته شد. حق امانت به دلیل سهمیه رایگان ایونت ۰ تومان محاسبه گردید و نیازی به واریز وجه نیست.`
+        : `درخواست شما برای کتاب «${updated.bookTitle}» پذیرفته شد. لطفاً فیش پرداخت را واریز و ثبت کنید.`,
       type: 'loan_accepted',
       linkTab: 'requests',
       relatedId: updated.id
@@ -3106,8 +3207,9 @@ async function startServer() {
       `مالک کتاب <b>«${updated.bookTitle}»</b> درخواست امانت شما را پذیرفت.\n` +
       `📍 <b>مکان تحویل:</b> ${pickupLocation || 'مدرسه'}\n` +
       `⏰ <b>زمان تحویل:</b> ${pickupTime || 'ساعات تفریح'}\n` +
-      `💳 <b>حق امانت:</b> ۱۰,۰۰۰ تومان\n\n` +
-      `لطفاً وارد سامانه شده و فیش پرداخت خود را ثبت فرمایید.`
+      (isFree
+        ? `🎁 <b>حق امانت:</b> رایگان (سهمیه پاداش ایونت)\n\nبا توجه به سهمیه ایونت، نیازی به واریز وجه نیست. لطفاً کتاب را طبق توافق تحویل بگیرید.`
+        : `💳 <b>حق امانت:</b> ${(updated.feeAmount || 10000).toLocaleString('fa-IR')} تومان\n\nلطفاً وارد سامانه شده و فیش پرداخت خود را ثبت فرمایید.`)
     );
 
     res.json({ success: true, request: updated });
@@ -3963,65 +4065,201 @@ async function startServer() {
       };
 
       let connectionInfo = null;
-      if (gdrive.accessToken) {
-        connectionInfo = await GoogleDriveBackupService.testConnection(gdrive.accessToken);
+      let isTokenValid = false;
+      let isTokenExpired = false;
+      const hasPermanentAuth = !!(gdrive.refreshToken || gdrive.serviceAccountJson);
+      const hasAnyAuth = !!(gdrive.accessToken || gdrive.refreshToken || gdrive.serviceAccountJson);
+
+      if (hasAnyAuth) {
+        try {
+          const auth = await GoogleDriveBackupService.getValidAccessToken(dbService);
+          connectionInfo = await GoogleDriveBackupService.testConnection(auth.accessToken);
+          if (connectionInfo.ok) {
+            isTokenValid = true;
+          } else {
+            isTokenValid = false;
+            if (
+              connectionInfo.isTokenExpired ||
+              connectionInfo.error?.includes('401') ||
+              connectionInfo.error?.includes('invalid authentication credentials') ||
+              connectionInfo.error?.includes('منقضی')
+            ) {
+              isTokenExpired = true;
+            }
+          }
+        } catch (err: any) {
+          isTokenValid = false;
+          if (
+            err.message?.includes('401') ||
+            err.message?.includes('invalid authentication credentials') ||
+            err.message?.includes('منقضی')
+          ) {
+            isTokenExpired = true;
+          }
+          connectionInfo = {
+            ok: false,
+            isTokenExpired,
+            error: err.message
+          };
+        }
       }
 
       return res.json({
         success: true,
         config: gdrive,
         connectionInfo,
-        hasToken: !!gdrive.accessToken,
-        userEmail: gdrive.userEmail || connectionInfo?.userEmail || null
+        hasToken: hasAnyAuth,
+        hasPermanentAuth,
+        authType: gdrive.authType || (gdrive.serviceAccountJson ? 'service_account' : gdrive.refreshToken ? 'refresh_token' : 'oauth_token'),
+        isTokenValid,
+        isTokenExpired,
+        userEmail: gdrive.userEmail || gdrive.serviceAccountEmail || connectionInfo?.userEmail || null
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: err.message });
     }
   });
 
-  // 2. Save Google OAuth Auth Token
+  // 2. Save Google OAuth / Refresh Token / Service Account Auth
   app.post('/api/admin/gdrive/auth', async (req: Request, res: Response): Promise<any> => {
     try {
-      const { accessToken, expiresIn, userEmail } = req.body;
-      if (!accessToken) {
-        return res.status(400).json({ success: false, message: 'توکن دسترسی گوگل الزامی است.' });
-      }
-
-      // Verify token
-      const test = await GoogleDriveBackupService.testConnection(accessToken);
-      if (!test.ok) {
-        return res.status(400).json({ success: false, message: 'توکن دسترسی گوگل نامعتبر است: ' + test.error });
-      }
-
-      const expiresAt = expiresIn ? Date.now() + (Number(expiresIn) * 1000) : Date.now() + 3600000;
-      const currentConfig = dbService.getSystemConfig();
-      const updatedGdrive: GoogleDriveConfig = {
-        ...(currentConfig.googleDrive || {
-          enabled: true,
-          frequency: 'daily',
-          scheduledHour: 2,
-          autoPruneOldDbSnapshots: true,
-          maxDbSnapshotsToKeep: 30
-        }),
-        enabled: true,
+      const {
         accessToken,
-        tokenExpiresAt: expiresAt,
-        userEmail: userEmail || test.userEmail || 'حساب گوگل متصل',
-        lastBackupStatus: currentConfig.googleDrive?.lastBackupStatus || 'idle'
+        refreshToken,
+        serviceAccountJson,
+        customClientId,
+        customClientSecret,
+        expiresIn,
+        userEmail
+      } = req.body;
+
+      const currentConfig = dbService.getSystemConfig();
+      const baseConfig = currentConfig.googleDrive || {
+        enabled: true,
+        frequency: 'daily',
+        scheduledHour: 2,
+        autoPruneOldDbSnapshots: true,
+        maxDbSnapshotsToKeep: 30
       };
 
-      dbService.setSystemConfig({ googleDrive: updatedGdrive });
-      dbService.addSystemLog(
-        'info',
-        'اتصال موفق حساب گوگل درایو',
-        `حساب ${updatedGdrive.userEmail} با موفقیت به عنوان مقصد پشتیبان‌گیری ابری متصل گردید.`
-      );
+      // Case 1: Service Account JSON
+      if (serviceAccountJson && serviceAccountJson.trim()) {
+        const saResult = await GoogleDriveBackupService.getServiceAccountAccessToken(serviceAccountJson);
+        const test = await GoogleDriveBackupService.testConnection(saResult.accessToken);
+        if (!test.ok) {
+          return res.status(400).json({ success: false, message: 'سرویس اکانت متصل نشد: ' + test.error });
+        }
 
-      return res.json({
-        success: true,
-        message: `حساب گوگل (${updatedGdrive.userEmail}) با موفقیت به سامانه متصل شد.`,
-        config: updatedGdrive,
-        connectionInfo: test
+        const expiresAt = Date.now() + (saResult.expiresIn * 1000);
+        const updatedGdrive: GoogleDriveConfig = {
+          ...baseConfig,
+          enabled: true,
+          authType: 'service_account',
+          serviceAccountJson: serviceAccountJson.trim(),
+          serviceAccountEmail: saResult.clientEmail,
+          userEmail: saResult.clientEmail,
+          accessToken: saResult.accessToken,
+          tokenExpiresAt: expiresAt,
+          refreshToken: undefined
+        };
+
+        dbService.setSystemConfig({ googleDrive: updatedGdrive });
+        dbService.addSystemLog(
+          'info',
+          'اتصال دائمی سرویس اکانت گوگل درایو (Google Service Account)',
+          `اکانت سرویس ${saResult.clientEmail} با موفقیت ثبت شد. بکاپ‌های خودکار سروری برای همیشه بدون انقضا فعال خواهند بود.`
+        );
+
+        return res.json({
+          success: true,
+          message: `کلید سرویس اکانت گوگل (${saResult.clientEmail}) با موفقیت متصل شد. بکاپ‌های خودکار سروری بدون انقضا فعال شدند.`,
+          config: updatedGdrive,
+          connectionInfo: test
+        });
+      }
+
+      // Case 2: Refresh Token (Permanent Auto-Renewal)
+      if (refreshToken && refreshToken.trim()) {
+        const refreshResult = await GoogleDriveBackupService.refreshOAuthAccessToken(
+          refreshToken,
+          customClientId,
+          customClientSecret
+        );
+
+        const test = await GoogleDriveBackupService.testConnection(refreshResult.accessToken);
+        if (!test.ok) {
+          return res.status(400).json({ success: false, message: 'توکن دریافتی با رفرش‌توکن نامعتبر است: ' + test.error });
+        }
+
+        const expiresAt = Date.now() + (refreshResult.expiresIn * 1000);
+        const email = userEmail || test.userEmail || 'حساب گوگل متصل';
+
+        const updatedGdrive: GoogleDriveConfig = {
+          ...baseConfig,
+          enabled: true,
+          authType: 'refresh_token',
+          refreshToken: refreshToken.trim(),
+          customClientId: customClientId ? customClientId.trim() : baseConfig.customClientId,
+          customClientSecret: customClientSecret ? customClientSecret.trim() : baseConfig.customClientSecret,
+          accessToken: refreshResult.accessToken,
+          tokenExpiresAt: expiresAt,
+          userEmail: email,
+          serviceAccountJson: undefined,
+          serviceAccountEmail: undefined
+        };
+
+        dbService.setSystemConfig({ googleDrive: updatedGdrive });
+        dbService.addSystemLog(
+          'info',
+          'اتصال دائمی حساب گوگل درایو با Refresh Token',
+          `حساب ${email} با موفقیت متصل گردید. توکن‌ها به صورت خودکار توسط سرور تمدید می‌شوند.`
+        );
+
+        return res.json({
+          success: true,
+          message: `اتصال دائمی گوگل درایو (${email}) با موفقیت فعال شد. توکن‌ها به صورت خودکار توسط سرور در پس‌زمینه تمدید خواهند شد.`,
+          config: updatedGdrive,
+          connectionInfo: test
+        });
+      }
+
+      // Case 3: Standard Access Token (Browser / Direct)
+      if (accessToken) {
+        const test = await GoogleDriveBackupService.testConnection(accessToken);
+        if (!test.ok) {
+          return res.status(400).json({ success: false, message: 'توکن دسترسی گوگل نامعتبر است: ' + test.error });
+        }
+
+        const expiresAt = expiresIn ? Date.now() + (Number(expiresIn) * 1000) : Date.now() + 3600000;
+        const email = userEmail || test.userEmail || 'حساب گوگل متصل';
+
+        const updatedGdrive: GoogleDriveConfig = {
+          ...baseConfig,
+          enabled: true,
+          authType: 'oauth_token',
+          accessToken,
+          tokenExpiresAt: expiresAt,
+          userEmail: email
+        };
+
+        dbService.setSystemConfig({ googleDrive: updatedGdrive });
+        dbService.addSystemLog(
+          'info',
+          'اتصال موقت حساب گوگل درایو',
+          `حساب ${email} با توکن مستقیم متصل گردید.`
+        );
+
+        return res.json({
+          success: true,
+          message: `حساب گوگل (${email}) با موفقیت به سامانه متصل شد.`,
+          config: updatedGdrive,
+          connectionInfo: test
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'هیچ کلید معتبری (توکن، رفرش‌توکن یا فایل سرویس‌اکانت) ارسال نشده است.'
       });
     } catch (err: any) {
       return res.status(500).json({ success: false, message: 'خطا در ثبت احراز هویت گوگل: ' + err.message });
@@ -4031,7 +4269,16 @@ async function startServer() {
   // 3. Update Google Drive Config (Schedule, hour, autoPrune, etc.)
   app.post('/api/admin/gdrive/config', (req: Request, res: Response): any => {
     try {
-      const { enabled, frequency, scheduledHour, autoPruneOldDbSnapshots, maxDbSnapshotsToKeep, customClientId } = req.body;
+      const {
+        enabled,
+        frequency,
+        scheduledHour,
+        autoPruneOldDbSnapshots,
+        maxDbSnapshotsToKeep,
+        customClientId,
+        customClientSecret
+      } = req.body;
+
       const currentConfig = dbService.getSystemConfig();
       const currentGdrive = currentConfig.googleDrive || {
         enabled: false,
@@ -4048,7 +4295,8 @@ async function startServer() {
         scheduledHour: typeof scheduledHour === 'number' ? scheduledHour : currentGdrive.scheduledHour ?? 2,
         autoPruneOldDbSnapshots: typeof autoPruneOldDbSnapshots === 'boolean' ? autoPruneOldDbSnapshots : currentGdrive.autoPruneOldDbSnapshots ?? true,
         maxDbSnapshotsToKeep: typeof maxDbSnapshotsToKeep === 'number' ? maxDbSnapshotsToKeep : currentGdrive.maxDbSnapshotsToKeep ?? 30,
-        customClientId: customClientId !== undefined ? customClientId.trim() : currentGdrive.customClientId
+        customClientId: customClientId !== undefined ? customClientId.trim() : currentGdrive.customClientId,
+        customClientSecret: customClientSecret !== undefined ? customClientSecret.trim() : currentGdrive.customClientSecret
       };
 
       dbService.setSystemConfig({ googleDrive: updated });
@@ -4079,6 +4327,19 @@ async function startServer() {
         details: result
       });
     } catch (err: any) {
+      const isExpired =
+        err.message?.includes('401') ||
+        err.message?.includes('invalid authentication credentials') ||
+        err.message?.includes('منقضی');
+
+      if (isExpired) {
+        return res.status(401).json({
+          success: false,
+          isTokenExpired: true,
+          message: 'اعتبار توکن حساب گوگل منقضی شده است. برای دائمی‌سازی و عدم انقضا، لطفاً از گزینه «اتصال دائمی با Refresh Token» یا «اکانت سرویس گوگل» استفاده نمایید تا سرور خودکار توکن را تمدید کند.'
+        });
+      }
+
       return res.status(500).json({
         success: false,
         message: 'خطا در انجام بکاپ گوگل درایو: ' + err.message
@@ -4095,6 +4356,10 @@ async function startServer() {
           googleDrive: {
             ...currentConfig.googleDrive,
             accessToken: undefined,
+            refreshToken: undefined,
+            serviceAccountJson: undefined,
+            serviceAccountEmail: undefined,
+            authType: undefined,
             userEmail: undefined,
             enabled: false,
             lastBackupStatus: 'idle'
@@ -4155,6 +4420,179 @@ async function startServer() {
     }
 
     res.json({ success: true, message: 'تنظیمات با موفقیت ذخیره شد.', config: updated });
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: مدیریت رویدادها و ایونت‌های ویژه (Events & Missions)
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/events', (_req: Request, res: Response) => {
+    res.json({ success: true, events: dbService.getAllEvents() });
+  });
+
+  app.get('/api/events/active', (_req: Request, res: Response) => {
+    res.json({ success: true, events: dbService.getActiveEvents() });
+  });
+
+  app.get('/api/events/:id', (req: Request, res: Response): any => {
+    const event = dbService.getEventById(req.params.id);
+    if (!event) return res.status(404).json({ success: false, message: 'ایونت مورد نظر یافت نشد.' });
+    res.json({ success: true, event });
+  });
+
+  app.post('/api/events', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const {
+        title,
+        badgeText,
+        description,
+        imageUrl,
+        themeColor,
+        startDate,
+        startTimestamp,
+        endDate,
+        endTimestamp,
+        status,
+        targetType,
+        targetCount,
+        rewardType,
+        rewardCount,
+        rewardTitle,
+        rewardDescription,
+        publishToBale
+      } = req.body;
+
+      if (!title || !description) {
+        return res.status(400).json({ success: false, message: 'عنوان و توضیحات ایونت الزامی است.' });
+      }
+
+      const now = Date.now();
+      const sTimestamp = Number(startTimestamp) || now;
+      const eTimestamp = Number(endTimestamp) || (now + 14 * 24 * 60 * 60 * 1000);
+
+      const createdEvent = dbService.createEvent({
+        title: title.trim(),
+        badgeText: badgeText?.trim() || undefined,
+        description: description.trim(),
+        imageUrl: imageUrl?.trim() || undefined,
+        themeColor: themeColor || 'amber',
+        startDate: startDate || new Date(sTimestamp).toLocaleDateString('fa-IR'),
+        startTimestamp: sTimestamp,
+        endDate: endDate || new Date(eTimestamp).toLocaleDateString('fa-IR'),
+        endTimestamp: eTimestamp,
+        status: status || 'active',
+        targetType: targetType || 'add_books',
+        targetCount: Number(targetCount) || 8,
+        rewardType: rewardType || 'free_loans',
+        rewardCount: Number(rewardCount) || 2,
+        rewardTitle: rewardTitle?.trim() || `${rewardCount || 2} امانت کتاب کاملاً رایگان`,
+        rewardDescription: rewardDescription?.trim() || undefined,
+        publishToBale: Boolean(publishToBale)
+      });
+
+      if (publishToBale) {
+        try {
+          const config = dbService.getSystemConfig();
+          const siteUrl = config.websiteBaseUrl || req.headers.referer || '';
+          const publishResult = await publishEventToBaleChannel(createdEvent, siteUrl);
+          if (publishResult.ok && publishResult.messageId) {
+            dbService.updateEvent(createdEvent.id, {
+              baleMessageId: publishResult.messageId
+            });
+          }
+        } catch (baleErr) {
+          console.error('Failed to auto-publish new event to Bale:', baleErr);
+        }
+      }
+
+      return res.json({ success: true, message: 'ایونت با موفقیت ایجاد شد.', event: createdEvent });
+    } catch (err: any) {
+      console.error('Error creating event:', err);
+      return res.status(500).json({ success: false, message: 'خطا در ایجاد ایونت.' });
+    }
+  });
+
+  app.put('/api/events/:id', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { publishToBale, ...updates } = req.body;
+      const updated = dbService.updateEvent(req.params.id, updates);
+      if (!updated) {
+        return res.status(404).json({ success: false, message: 'ایونت مورد نظر یافت نشد.' });
+      }
+
+      if (publishToBale) {
+        try {
+          const config = dbService.getSystemConfig();
+          const siteUrl = config.websiteBaseUrl || req.headers.referer || '';
+          const publishResult = await publishEventToBaleChannel(updated, siteUrl);
+          if (publishResult.ok && publishResult.messageId) {
+            dbService.updateEvent(updated.id, {
+              baleMessageId: publishResult.messageId
+            });
+          }
+        } catch (baleErr) {
+          console.error('Failed to publish updated event to Bale:', baleErr);
+        }
+      }
+
+      return res.json({ success: true, message: 'ایونت با موفقیت ویرایش شد.', event: updated });
+    } catch (err: any) {
+      console.error('Error updating event:', err);
+      return res.status(500).json({ success: false, message: 'خطا در ویرایش ایونت.' });
+    }
+  });
+
+  app.delete('/api/events/:id', (req: Request, res: Response): any => {
+    const success = dbService.deleteEvent(req.params.id);
+    if (!success) {
+      return res.status(404).json({ success: false, message: 'ایونت یافت نشد.' });
+    }
+    return res.json({ success: true, message: 'ایونت با موفقیت حذف شد.' });
+  });
+
+  app.post('/api/events/:id/publish-bale', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const event = dbService.getEventById(req.params.id);
+      if (!event) return res.status(404).json({ success: false, message: 'ایونت یافت نشد.' });
+
+      const config = dbService.getSystemConfig();
+      const siteUrl = config.websiteBaseUrl || req.headers.referer || '';
+      const result = await publishEventToBaleChannel(event, siteUrl);
+
+      if (result.ok) {
+        if (result.messageId) {
+          dbService.updateEvent(event.id, { baleMessageId: result.messageId });
+        }
+        return res.json({ success: true, message: 'اعلامیه ایونت با موفقیت در کانال بله منتشر شد.', result });
+      } else {
+        return res.status(400).json({ success: false, message: result.error || 'خطا در انتشار ایونت در کانال بله.' });
+      }
+    } catch (err: any) {
+      console.error('Error broadcasting event to Bale:', err);
+      return res.status(500).json({ success: false, message: 'خطا در ارسال به بله: ' + err.message });
+    }
+  });
+
+  app.get('/api/events/:id/progress/:userId', (req: Request, res: Response): any => {
+    const progress = dbService.getUserEventProgress(req.params.userId, req.params.id);
+    if (!progress) {
+      return res.status(404).json({ success: false, message: 'پیشرفت ایونت برای این کاربر یافت نشد.' });
+    }
+    return res.json({ success: true, progress });
+  });
+
+  app.post('/api/events/:id/claim-reward', (req: Request, res: Response): any => {
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'شناسه کاربر الزامی است.' });
+    }
+
+    const result = dbService.claimEventReward(userId, req.params.id);
+    if (!result.success) {
+      return res.status(400).json(result);
+    }
+    return res.json(result);
   });
 
   /**
