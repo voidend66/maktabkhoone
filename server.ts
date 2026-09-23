@@ -63,7 +63,7 @@ const DEFAULT_WEBHOOK_URL =
   process.env.BALE_WEBHOOK_URL ||
   (process.env.APP_URL ? `${process.env.APP_URL.replace(/\/$/, '')}/api/bale-webhook` : 'https://maktabkhune.ir/api/bale-webhook');
 
-const SERVER_VERSION = '3.0.1';
+const SERVER_VERSION = '3.0.2';
 const BUILD_DATE = '2026-08-28';
 
 // Configurable Port (Environment variable PORT with default 8098)
@@ -2939,6 +2939,17 @@ async function startServer() {
 
       const created = dbService.createBook(newBook);
 
+      // Record interaction in analytics
+      analytics.recordEvent(
+        'add_book',
+        `اهدای کتاب جدید «${created.title}»`,
+        created.ownerId,
+        created.ownerName,
+        'student',
+        '/library',
+        { bookTitle: created.title, author: created.author }
+      );
+
       // Notify owner on Bale
       notifyUserOnBale(
         created.ownerId,
@@ -3092,7 +3103,8 @@ async function startServer() {
         });
       }
 
-      const reqId = `req_${Date.now()}`;
+      const now = Date.now();
+      const reqId = `req_${now}`;
       const newReq: LendingRequest = {
         id: reqId,
         bookId: book.id,
@@ -3107,6 +3119,7 @@ async function startServer() {
         borrowerPhone: borrower.phone,
         status: 'pending',
         createdAt: new Date().toLocaleDateString('fa-IR'),
+        createdAtTimestamp: now,
         feeAmount: finalFee,
         originalFeeAmount: defaultFee,
         isFreeEventLoan: isFreeLoan,
@@ -3118,11 +3131,22 @@ async function startServer() {
 
       const created = dbService.createRequest(newReq);
 
+      // Record interaction in analytics
+      analytics.recordEvent(
+        'borrow_request',
+        `درخواست امانت کتاب «${book.title}»`,
+        borrower.id,
+        borrower.name,
+        'student',
+        '/requests',
+        { bookTitle: book.title, ownerName: book.ownerName }
+      );
+
       // Create local user notification
       dbService.createNotification({
         userId: book.ownerId,
-        title: 'درخواست جدید امانت کتاب',
-        message: `همکلاسی شما ${borrower.name} درخواست امانت کتاب «${book.title}» را دارد.${isFreeLoan ? ' (استفاده از سهمیه رایگان ایونت)' : ''}`,
+        title: 'درخواست جدید امانت کتاب (مهلت پاسخ: ۴۸ ساعت)',
+        message: `همکلاسی شما ${borrower.name} درخواست امانت کتاب «${book.title}» را دارد.${isFreeLoan ? ' (استفاده از سهمیه رایگان ایونت)' : ''} لطفاً ظرف حداکثر ۴۸ ساعت نسبت به تایید یا رد آن اقدام فرمایید.`,
         type: 'loan_requested',
         linkTab: 'requests',
         relatedId: reqId
@@ -3135,6 +3159,7 @@ async function startServer() {
         `👤 <b>متقاضی:</b> ${borrower.name} (کلاس ${borrower.className})\n` +
         `📖 <b>کتاب:</b> «${book.title}»\n` +
         `📅 <b>تاریخ درخواست:</b> ${newReq.createdAt}\n` +
+        `⏳ <b>مهلت پاسخگویی:</b> حداکثر ۴۸ ساعت (در صورت عدم پاسخ، لغو خودکار سیستمی)\n` +
         `${isFreeLoan ? '🎁 <b>نوع امانت:</b> سهمیه رایگان ایونت (بدون هزینه)\n' : ''}\n` +
         `آیا با امانت دادن این کتاب موافقت می‌فرمایید؟`,
         {
@@ -3187,6 +3212,16 @@ async function startServer() {
     });
 
     if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    analytics.recordEvent(
+      'approve_request',
+      `تایید امانت کتاب «${updated.bookTitle}»`,
+      updated.ownerId,
+      updated.ownerName,
+      'student',
+      '/requests',
+      { bookTitle: updated.bookTitle, borrowerName: updated.borrowerName }
+    );
 
     // Create user notification
     dbService.createNotification({
@@ -3245,6 +3280,16 @@ async function startServer() {
       }
     });
     if (!updated) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });
+
+    analytics.recordEvent(
+      'payment_proof',
+      `ثبت فیش واریزی امانت «${updated.bookTitle}»`,
+      updated.borrowerId,
+      updated.borrowerName,
+      'student',
+      '/requests',
+      { bookTitle: updated.bookTitle, trackingCode }
+    );
 
     // Notify admins on Bale about payment proof
     notifyAdminsGeneralOnBale(
@@ -3705,7 +3750,7 @@ async function startServer() {
   // Lightweight Analytics & User Engagement Monitoring Endpoints
   // ============================================================================
   app.post('/api/analytics/heartbeat', (req: Request, res: Response) => {
-    const { sessionId, userId, userName, userRole, currentPath, seconds, userAgent, screenWidth } = req.body || {};
+    const { sessionId, userId, userName, userRole, currentPath, seconds, userAgent, screenWidth, interactionsCount } = req.body || {};
     if (!sessionId) {
       return res.status(400).json({ error: 'sessionId is required' });
     }
@@ -3717,13 +3762,14 @@ async function startServer() {
       currentPath: currentPath ? String(currentPath) : '/',
       userAgent: userAgent ? String(userAgent) : (req.headers['user-agent'] || ''),
       screenWidth: Number(screenWidth) || undefined,
-      seconds: Number(seconds) || 15
+      seconds: Number(seconds) || 15,
+      interactionsCount: Number(interactionsCount) || 0
     });
     res.json({ ok: true });
   });
 
   app.post('/api/analytics/event', (req: Request, res: Response) => {
-    const { type, label, userId, metadata } = req.body || {};
+    const { type, label, userId, userName, userRole, path, metadata } = req.body || {};
     if (!type) {
       return res.status(400).json({ error: 'type is required' });
     }
@@ -3731,6 +3777,9 @@ async function startServer() {
       String(type),
       label ? String(label) : '',
       userId ? String(userId) : undefined,
+      userName ? String(userName) : undefined,
+      userRole ? String(userRole) : undefined,
+      path ? String(path) : undefined,
       metadata
     );
     res.json({ ok: true });

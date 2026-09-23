@@ -565,6 +565,7 @@ export const dbService = {
       ? Number((reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length).toFixed(1))
       : 0;
 
+    const now = Date.now();
     const newBook: Book = {
       ...book,
       status: book.status || 'available',
@@ -572,6 +573,7 @@ export const dbService = {
       reviewsCount: reviews.length,
       reviews: reviews,
       addedDate: book.addedDate || new Date().toLocaleDateString('fa-IR'),
+      createdAtTimestamp: book.createdAtTimestamp || now,
       isDamaged: Boolean(book.isDamaged)
     };
 
@@ -693,7 +695,84 @@ export const dbService = {
   },
 
   // ---- LENDING REQUESTS ----
+  checkAndAutoRejectExpiredRequests(): number {
+    const now = Date.now();
+    const maxPendingDurationMs = 48 * 60 * 60 * 1000; // 48 hours in milliseconds
+    let rejectedCount = 0;
+
+    for (let i = 0; i < memoryDb.requests.length; i++) {
+      const req = memoryDb.requests[i];
+      if (req.status === 'pending') {
+        let reqTime = req.createdAtTimestamp;
+        if (!reqTime) {
+          const tsMatch = req.id.match(/\d{10,13}/);
+          if (tsMatch) {
+            reqTime = Number(tsMatch[0]);
+          } else {
+            reqTime = Date.now(); // Fallback if no timestamp
+          }
+        }
+
+        const elapsedMs = now - reqTime;
+        if (elapsedMs >= maxPendingDurationMs) {
+          // Auto reject after 48h
+          req.status = 'rejected';
+          req.rejectionReason = 'عدم پاسخگویی و تایید صاحب کتاب پس از ۴۸ ساعت (لغو خودکار سامانه)';
+          
+          // Re-open the book for other students
+          const book = memoryDb.books.find((b) => b.id === req.bookId);
+          if (book && book.status === 'requested') {
+            book.status = 'available';
+          }
+
+          // If this was a free event loan, refund the quota to the borrower
+          if (req.isFreeEventLoan) {
+            const borrower = memoryDb.users.find((u) => u.id === req.borrowerId);
+            if (borrower) {
+              borrower.freeLoanQuota = (borrower.freeLoanQuota || 0) + 1;
+            }
+          }
+
+          // Create notification for borrower
+          this.createNotification({
+            userId: req.borrowerId,
+            type: 'loan_rejected',
+            title: 'لغو خودکار درخواست امانت (انقضای ۴۸ ساعت)',
+            message: `درخواست امانت کتاب «${req.bookTitle}» به علت عدم پاسخگویی صاحب کتاب (${req.ownerName}) پس از ۴۸ ساعت، به صورت خودکار لغو شد و کتاب آزاد گردید.${req.isFreeEventLoan ? ' (سهمیه امانت رایگان به حساب شما بازگردانده شد)' : ''}`,
+            relatedId: req.id,
+            linkTab: 'requests'
+          });
+
+          // Create notification for owner
+          this.createNotification({
+            userId: req.ownerId,
+            type: 'loan_rejected',
+            title: 'انقضای مهلت پاسخ به درخواست امانت',
+            message: `مهلت ۴۸ ساعته شما جهت تعیین تکلیف درخواست امانت کتاب «${req.bookTitle}» از طرف ${req.borrowerName} به پایان رسید و این درخواست به طور خودکار لغو شد.`,
+            relatedId: req.id,
+            linkTab: 'requests'
+          });
+
+          this.addSystemLog(
+            'warn',
+            'لغو خودکار درخواست امانت (انقضای ۴۸ ساعته)',
+            `درخواست امانت کتاب «${req.bookTitle}» متقاضی ${req.borrowerName} از ${req.ownerName} به علت عدم پاسخگویی پس از ۴۸ ساعت به طور خودکار رد و کتاب آزاد شد.`
+          );
+
+          rejectedCount++;
+        }
+      }
+    }
+
+    if (rejectedCount > 0) {
+      saveToDisk();
+    }
+
+    return rejectedCount;
+  },
+
   getAllRequests(): LendingRequest[] {
+    this.checkAndAutoRejectExpiredRequests();
     return memoryDb.requests.map((r) => ({
       ...r,
       is12hGraceConfirmed: Boolean(r.is12hGraceConfirmed),
@@ -706,6 +785,7 @@ export const dbService = {
   },
 
   getRequestById(id: string): LendingRequest | null {
+    this.checkAndAutoRejectExpiredRequests();
     const req = memoryDb.requests.find((r) => r.id === id);
     if (!req) return null;
     return {
@@ -720,6 +800,7 @@ export const dbService = {
   },
 
   createRequest(req: LendingRequest): LendingRequest {
+    const now = Date.now();
     const newReq: LendingRequest = {
       ...req,
       status: req.status || 'pending',
@@ -728,6 +809,7 @@ export const dbService = {
       extensionStatus: req.extensionStatus || 'none',
       extensionCount: Number(req.extensionCount) || 0,
       createdAt: req.createdAt || new Date().toLocaleDateString('fa-IR'),
+      createdAtTimestamp: req.createdAtTimestamp || now,
       is12hGraceConfirmed: Boolean(req.is12hGraceConfirmed),
       ownerFeedbackGiven: Boolean(req.ownerFeedbackGiven),
       borrowerFeedbackGiven: Boolean(req.borrowerFeedbackGiven),
@@ -1506,22 +1588,27 @@ export const dbService = {
     let currentCount = 0;
     if (event.targetType === 'add_books') {
       const userBooks = memoryDb.books.filter((b) => b.ownerId === userId);
-      // Check books added during event or total books if within start timestamp
+      // Only count books added within the specific event's timeframe!
       const eligibleBooks = userBooks.filter((b) => {
-        // Try parsing timestamp from book ID (e.g. b_1727000000)
-        const tsMatch = b.id.match(/\d{10,13}/);
-        if (tsMatch) {
-          const bookTs = Number(tsMatch[0]);
-          return bookTs >= (event.startTimestamp - 60000); // 1 min margin
+        let bookTs = b.createdAtTimestamp;
+        if (!bookTs) {
+          const tsMatch = b.id.match(/\d{10,13}/);
+          if (tsMatch) {
+            bookTs = Number(tsMatch[0]);
+          }
         }
-        return true;
+        if (bookTs) {
+          const isAfterStart = bookTs >= (event.startTimestamp - 60000); // 1 min buffer
+          const isBeforeEnd = event.endTimestamp ? bookTs <= (event.endTimestamp + 60000) : true;
+          return isAfterStart && isBeforeEnd;
+        }
+        return false;
       });
-      // Fallback: at least number of eligible or user's total books contributed
-      currentCount = Math.min(userBooks.length, eligibleBooks.length > 0 ? eligibleBooks.length : user.booksContributedCount || 0);
+      currentCount = eligibleBooks.length;
     } else if (event.targetType === 'loan_books') {
       currentCount = user.booksReadCount || 0;
     } else {
-      currentCount = user.booksContributedCount || 0;
+      currentCount = 0;
     }
 
     const targetCount = event.targetCount || 1;

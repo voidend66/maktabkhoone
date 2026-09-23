@@ -29,7 +29,7 @@ import {
   Gift
 } from 'lucide-react';
 
-export const LendingRequests: React.FC = () => {
+export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }> = ({ initialTab }) => {
   const {
     currentUser,
     requests,
@@ -42,7 +42,13 @@ export const LendingRequests: React.FC = () => {
     submitPaymentProof
   } = useApp();
 
-  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>('incoming');
+  const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>(initialTab || 'incoming');
+
+  React.useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
   const [selectedRequestForFeedback, setSelectedRequestForFeedback] = useState<LendingRequest | null>(null);
 
   // Accept modal state
@@ -564,6 +570,37 @@ export const LendingRequests: React.FC = () => {
                     )}
                   </div>
                 </div>
+
+                {/* Pending 48h Countdown Banner */}
+                {req.status === 'pending' && (
+                  <div className="bg-amber-50/90 p-4 rounded-2xl border border-amber-200 text-xs space-y-2">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="flex items-center gap-1.5 font-black text-amber-950">
+                        <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                        <span>درخواست برای {req.ownerName} ارسال شده است</span>
+                      </span>
+                      <span className="text-[11px] bg-amber-200 text-amber-900 px-3 py-1 rounded-full font-black border border-amber-300">
+                        ⏳ مهلت پاسخ مالک: حداکثر ۴۸ ساعت
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-amber-800 leading-relaxed font-medium">
+                      صاحب کتاب حداکثر ۴۸ ساعت فرصت دارد درخواست شما را تایید کند. در صورت عدم پاسخ تا پایان این مهلت، سیستم به طور خودکار درخواست را لغو و کتاب را آزاد می‌نماید.
+                    </p>
+                  </div>
+                )}
+
+                {/* Rejected Status Box with Reason */}
+                {req.status === 'rejected' && (
+                  <div className="bg-rose-50 p-4 rounded-2xl border border-rose-200 text-xs space-y-1.5">
+                    <div className="flex items-center gap-2 font-black text-rose-950">
+                      <XCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>درخواست امانت لغو / رد شده است</span>
+                    </div>
+                    <p className="text-[11px] text-rose-800 font-medium leading-relaxed">
+                      <strong>علت:</strong> {req.rejectionReason || 'عدم تایید توسط مالک کتاب یا انقضای زمان ۴۸ ساعته پاسخگویی'}
+                    </p>
+                  </div>
+                )}
 
                 {/* Card to Card Payment Box & Proof Submission Form */}
                 {(req.status === 'payment_pending' || (req.status === 'accepted' && req.paymentStatus !== 'paid')) && (

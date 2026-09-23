@@ -5,13 +5,15 @@
  * - Actual device & browser information
  * - Page views & route changes
  * - User engagement duration (in seconds)
- * - Real interactions (search queries, borrow requests, book submissions, reviews)
+ * - Real interactions (search queries, borrow requests, book submissions, reviews, clicks)
  */
 
 class AnalyticsTracker {
   private sessionId: string;
   private intervalId: any = null;
   private currentPath: string = '/';
+  private pendingClicksInWindow: number = 0;
+  private clickListenerAttached: boolean = false;
   private currentUserInfo: {
     userId?: string;
     userName?: string;
@@ -20,6 +22,26 @@ class AnalyticsTracker {
 
   constructor() {
     this.sessionId = this.getOrCreateSessionId();
+    this.initInteractionListeners();
+  }
+
+  private initInteractionListeners() {
+    if (typeof window === 'undefined' || this.clickListenerAttached) return;
+    this.clickListenerAttached = true;
+
+    // Passive click listener on interactive DOM elements
+    window.addEventListener(
+      'click',
+      (e) => {
+        const target = e.target as HTMLElement | null;
+        if (!target) return;
+        const interactive = target.closest('button, a, input, select, textarea, [role="button"], [data-interactive]');
+        if (interactive) {
+          this.pendingClicksInWindow = Math.min(this.pendingClicksInWindow + 1, 50);
+        }
+      },
+      { passive: true }
+    );
   }
 
   private getOrCreateSessionId(): string {
@@ -86,6 +108,8 @@ class AnalyticsTracker {
     try {
       const userAgent = typeof navigator !== 'undefined' ? navigator.userAgent : '';
       const screenWidth = typeof window !== 'undefined' ? window.innerWidth : 1200;
+      const interactions = this.pendingClicksInWindow;
+      this.pendingClicksInWindow = 0;
 
       await fetch('/api/analytics/heartbeat', {
         method: 'POST',
@@ -100,7 +124,8 @@ class AnalyticsTracker {
           currentPath: this.currentPath,
           userAgent,
           screenWidth,
-          seconds
+          seconds,
+          interactionsCount: interactions
         }),
         keepalive: true
       });
@@ -120,6 +145,9 @@ class AnalyticsTracker {
           type,
           label,
           userId: this.currentUserInfo.userId,
+          userName: this.currentUserInfo.userName,
+          userRole: this.currentUserInfo.userRole,
+          path: this.currentPath,
           metadata
         })
       });
@@ -127,7 +155,32 @@ class AnalyticsTracker {
       // Non-blocking silent error
     }
   }
+
+  public trackBookView(bookTitle: string, metadata?: any) {
+    this.trackEvent('view_book', bookTitle, metadata);
+  }
+
+  public trackSearch(query: string) {
+    this.trackEvent('search_book', query);
+  }
+
+  public trackCategory(category: string) {
+    this.trackEvent('filter_category', category);
+  }
+
+  public trackGrade(grade: string) {
+    this.trackEvent('filter_grade', grade);
+  }
+
+  public trackLoan(bookTitle: string, ownerName?: string) {
+    this.trackEvent('borrow_request', `درخواست امانت: ${bookTitle}`, { bookTitle, ownerName });
+  }
+
+  public trackReview(bookTitle: string, rating?: number) {
+    this.trackEvent('review_book', `ثبت نظر برای «${bookTitle}»`, { rating });
+  }
 }
 
 export const analyticsTracker = new AnalyticsTracker();
+
 

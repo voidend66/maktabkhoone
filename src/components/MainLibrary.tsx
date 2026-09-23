@@ -66,6 +66,11 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
     return true;
   }, [announcement]);
 
+  const handleSelectBook = (book: Book) => {
+    analyticsTracker.trackBookView(book.title, { bookId: book.id, category: book.category, author: book.author });
+    onSelectBook(book);
+  };
+
   // Filtered & Sorted Books
   const filteredBooks = useMemo(() => {
     return books
@@ -278,7 +283,12 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           {CATEGORIES.map((cat) => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
+              onClick={() => {
+                setSelectedCategory(cat);
+                if (cat !== 'همه تصنیف‌ها') {
+                  analyticsTracker.trackCategory(cat);
+                }
+              }}
               className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition ${
                 selectedCategory === cat
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-200'
@@ -359,7 +369,7 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
             <BookCard
               key={book.id}
               book={book}
-              onSelect={onSelectBook}
+              onSelect={handleSelectBook}
               onRequestLoan={onRequestLoan}
             />
           ))}

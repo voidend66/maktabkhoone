@@ -65,6 +65,7 @@ export interface Book {
   reviewsCount: number;
   reviews: BookReview[];
   addedDate: string;
+  createdAtTimestamp?: number;
   estimatedReturnDate?: string;
   isDamaged?: boolean;
   damageDescription?: string;
@@ -117,7 +118,9 @@ export interface LendingRequest {
   handoverConfirmedByRole?: string;
   is12hGraceConfirmed?: boolean;
   createdAt: string;
+  createdAtTimestamp?: number;
   acceptedAt?: string;
+  rejectionReason?: string;
   ownerFeedbackGiven?: boolean;
   borrowerFeedbackGiven?: boolean;
   // Financial & Extension properties

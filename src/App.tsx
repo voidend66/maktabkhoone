@@ -15,7 +15,7 @@ import { SystemGuideModal } from './components/SystemGuideModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { NotFoundPage } from './components/NotFoundPage';
 import { Book } from './types';
-import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle, Send, Gift, Sparkles, X } from 'lucide-react';
 import { houseLogoImg } from './components/MaktabKhanehBranding';
 import { APP_VERSION, APP_BUILD_DATE } from './version';
 import { api } from './services/api';
@@ -216,6 +216,15 @@ function MainAppContent() {
 
   // Toast Notification
   const [toastMessage, setToastMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [lendingRequestsSubTab, setLendingRequestsSubTab] = useState<'incoming' | 'outgoing'>('incoming');
+  const [loanSuccessModal, setLoanSuccessModal] = useState<{
+    bookTitle: string;
+    bookCover: string;
+    ownerName: string;
+    ownerClass: string;
+    isFreeLoan?: boolean;
+    freeEventTitle?: string;
+  } | null>(null);
 
   const showToast = (text: string, type: 'success' | 'error' = 'success') => {
     setToastMessage({ type, text });
@@ -234,11 +243,25 @@ function MainAppContent() {
       return;
     }
 
+    const targetBook = books.find((b) => b.id === bookId);
     const res = await requestBookLoan(bookId, options);
     if (res.success) {
-      showToast(res.message, 'success');
       setSelectedBookForDetail(null);
-      setActiveTab('requests'); // Switch to requests tab so user sees their active request!
+      // Directly redirect specifically to "My Requested Books" (outgoing tab)
+      setLendingRequestsSubTab('outgoing');
+      setActiveTab('requests');
+
+      // Open the large, prominent success notification modal
+      setLoanSuccessModal({
+        bookTitle: targetBook?.title || 'کتاب درخواستی',
+        bookCover: targetBook?.coverImage || '',
+        ownerName: targetBook?.ownerName || 'همکلاسی',
+        ownerClass: targetBook?.ownerClass || '',
+        isFreeLoan: options?.useFreeLoan,
+        freeEventTitle: options?.freeEventTitle
+      });
+
+      showToast(res.message, 'success');
     } else {
       showToast(res.message, 'error');
       if (res.needBooks) {
@@ -428,7 +451,7 @@ function MainAppContent() {
           />
         )}
 
-        {activeTab === 'requests' && <LendingRequests />}
+        {activeTab === 'requests' && <LendingRequests initialTab={lendingRequestsSubTab} />}
 
         {activeTab === 'profile' && (
           <MyBooksAndProfile
@@ -439,6 +462,99 @@ function MainAppContent() {
 
         {activeTab === 'admin' && <AdminPanel />}
       </main>
+
+      {/* High-Visibility Loan Request Confirmation Modal */}
+      {loanSuccessModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border-4 border-cyan-400 relative space-y-6 animate-in zoom-in-95 duration-300">
+            {/* Close Button */}
+            <button
+              onClick={() => setLoanSuccessModal(null)}
+              className="absolute top-4 left-4 p-2 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {/* Header with animated icon */}
+            <div className="text-center space-y-3">
+              <div className="w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-tr from-cyan-600 via-teal-500 to-emerald-400 rounded-3xl mx-auto flex items-center justify-center text-white shadow-xl shadow-cyan-500/25 rotate-3">
+                <Send className="w-8 h-8 sm:w-10 sm:h-10 -mr-1" />
+              </div>
+              <h3 className="font-black text-slate-900 text-lg sm:text-xl">
+                درخواست امانت شما با موفقیت ارسال گردید! 🎉
+              </h3>
+              <p className="text-xs sm:text-sm text-cyan-800 font-bold bg-cyan-50 py-1.5 px-3 rounded-xl inline-block border border-cyan-200">
+                درخواست در بخش «کتاب‌های درخواستی من» ثبت شد
+              </p>
+            </div>
+
+            {/* Book & Target Details Card */}
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex items-center gap-4">
+              {loanSuccessModal.bookCover && (
+                <img
+                  src={loanSuccessModal.bookCover}
+                  alt={loanSuccessModal.bookTitle}
+                  className="w-14 h-20 object-cover rounded-xl shadow-md shrink-0 border border-slate-200"
+                />
+              )}
+              <div className="space-y-1 text-right">
+                <span className="text-[11px] font-black text-cyan-700 block">کتاب امانتی:</span>
+                <h4 className="font-black text-slate-900 text-base">{loanSuccessModal.bookTitle}</h4>
+                <p className="text-xs text-slate-600">
+                  ارسال‌شده برای همکلاسی: <strong className="text-slate-900 font-black">{loanSuccessModal.ownerName}</strong> ({loanSuccessModal.ownerClass})
+                </p>
+              </div>
+            </div>
+
+            {/* Status & Next Steps Timeline Box */}
+            <div className="bg-amber-50/90 rounded-2xl p-4 border border-amber-300 space-y-3 text-xs text-amber-950">
+              <div className="flex items-start gap-2.5">
+                <Clock className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                <div>
+                  <h5 className="font-black text-amber-900">⏳ مهلت ۴۸ ساعته پاسخگویی صاحب کتاب:</h5>
+                  <p className="text-[11px] text-amber-800 leading-relaxed font-medium mt-0.5">
+                    مالک کتاب حداکثر <strong>۴۸ ساعت</strong> فرصت دارد تا درخواست را تایید یا رد کند. در صورت عدم پاسخ پس از ۴۸ ساعت، سیستم به صورت خودکار درخواست را لغو و کتاب را آزاد می‌نماید.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5 pt-2 border-t border-amber-200/80">
+                {loanSuccessModal.isFreeLoan ? (
+                  <>
+                    <Gift className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="font-black text-emerald-900">🎁 سهمیه امانت رایگان ایونت اعمال شد:</h5>
+                      <p className="text-[11px] text-emerald-800 font-medium mt-0.5">
+                        این امانت به عنوان جایزه ایونت {loanSuccessModal.freeEventTitle || 'مکتب‌خانه'} کاملاً رایگان است و نیازی به پرداخت هزینه ۱۰,۰۰۰ تومانی نیست.
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <ShieldCheck className="w-5 h-5 text-cyan-600 shrink-0 mt-0.5" />
+                    <div>
+                      <h5 className="font-black text-cyan-900">💳 مرحله بعد (پس از تایید):</h5>
+                      <p className="text-[11px] text-slate-700 font-medium mt-0.5">
+                        به محض اینکه {loanSuccessModal.ownerName} درخواست را تایید کند، بخش پرداخت ۱۰,۰۰۰ تومان کارت‌به‌کارت در تب کتاب‌های درخواستی شما فعال خواهد شد.
+                      </p>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="pt-2">
+              <button
+                onClick={() => setLoanSuccessModal(null)}
+                className="w-full py-3.5 bg-gradient-to-r from-cyan-600 via-teal-600 to-emerald-600 hover:from-cyan-700 hover:to-emerald-700 text-white font-black text-sm rounded-2xl shadow-xl shadow-cyan-600/30 transition transform active:scale-98 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <span>مشاهده کتاب‌های درخواستی من ➜</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Book Detail Modal */}
       {selectedBookForDetail && (
