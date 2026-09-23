@@ -102,6 +102,7 @@ interface DatabaseSchema {
   systemLogs?: SystemLog[];
   notifications?: AppNotification[];
   events?: SystemEvent[];
+  analytics?: any;
 }
 
 // In-memory data store with disk persistence
@@ -115,7 +116,8 @@ let memoryDb: DatabaseSchema = {
   customAvatars: [],
   systemLogs: [],
   notifications: [],
-  events: []
+  events: [],
+  analytics: null
 };
 
 /**
@@ -200,7 +202,8 @@ function loadFromDisk(): boolean {
           customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
-          events: Array.isArray(parsed.events) ? parsed.events : []
+          events: Array.isArray(parsed.events) ? parsed.events : [],
+          analytics: parsed.analytics || null
         };
         return true;
       }
@@ -221,7 +224,8 @@ function loadFromDisk(): boolean {
           customAvatars: Array.isArray(parsed.customAvatars) ? parsed.customAvatars : [],
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
-          events: Array.isArray(parsed.events) ? parsed.events : []
+          events: Array.isArray(parsed.events) ? parsed.events : [],
+          analytics: parsed.analytics || null
         };
         return true;
       }
@@ -1198,7 +1202,7 @@ export const dbService = {
     const events = this.getAllEvents();
 
     return {
-      version: '2.5.0',
+      version: '3.0.2',
       exportedAt: new Date().toISOString(),
       exportedAtFa: new Date().toLocaleDateString('fa-IR'),
       metadata: {
@@ -1209,7 +1213,8 @@ export const dbService = {
         totalFeedbacks: feedbacks.length,
         totalCustomAvatars: customAvatars.length,
         totalSystemLogs: systemLogs.length,
-        totalEvents: events.length
+        totalEvents: events.length,
+        hasAnalytics: Boolean(memoryDb.analytics)
       },
       users,
       books,
@@ -1221,7 +1226,8 @@ export const dbService = {
       customAvatars,
       systemLogs,
       events,
-      settings: memoryDb.settings || {}
+      settings: memoryDb.settings || {},
+      analytics: memoryDb.analytics || null
     };
   },
 
@@ -1268,11 +1274,23 @@ export const dbService = {
       settings: settingsObj,
       customAvatars: Array.isArray(rawJson.customAvatars) ? rawJson.customAvatars : [],
       systemLogs: Array.isArray(rawJson.systemLogs) ? rawJson.systemLogs : [],
-      events: Array.isArray(rawJson.events) ? rawJson.events : []
+      notifications: Array.isArray(rawJson.notifications) ? rawJson.notifications : [],
+      events: Array.isArray(rawJson.events) ? rawJson.events : [],
+      analytics: rawJson.analytics || rawJson.analyticsData || null
     };
 
     saveToDisk();
     return true;
+  },
+
+  // ---- ANALYTICS & MONITORING PERSISTENCE ----
+  getAnalyticsData(): any {
+    return memoryDb.analytics || null;
+  },
+
+  saveAnalyticsData(analyticsData: any): void {
+    memoryDb.analytics = analyticsData;
+    saveToDisk();
   },
 
   // ---- NOTIFICATIONS ----

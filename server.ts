@@ -3992,11 +3992,16 @@ async function startServer() {
 
       const activePath = typeof dbService.getDbPath === 'function' ? dbService.getDbPath() : DB_PATH;
       dbService.restoreDatabase(rawJson);
+      
+      // Reload analytics telemetry immediately from restored database
+      if (typeof analytics?.reloadFromDatabase === 'function') {
+        analytics.reloadFromDatabase();
+      }
 
       dbService.addSystemLog(
         'db',
         'بازیابی موفقیت‌آمیز کل اطلاعات دیتابیس',
-        `داده‌های فایل پشتیبان با موفقیت بر روی فایل اصلی هارد (${activePath}) بازنویسی و ذخیره گردید. (کاربران: ${rawJson.users?.length || 0}، کتب: ${rawJson.books?.length || 0})`
+        `داده‌های فایل پشتیبان با موفقیت بر روی فایل اصلی هارد (${activePath}) بازنویسی و ذخیره گردید. (کاربران: ${rawJson.users?.length || 0}، کتب: ${rawJson.books?.length || 0}، آمار مانیتورینگ: ${rawJson.analytics ? 'با موفقیت بازیابی شد ✅' : 'موجود نبود'})`
       );
 
       return res.json({
