@@ -33,7 +33,11 @@ import {
   Calendar,
   SlidersHorizontal,
   Flame,
-  UserCheck
+  UserCheck,
+  RotateCcw,
+  Trash2,
+  AlertTriangle,
+  X
 } from 'lucide-react';
 
 interface RealLibraryMetrics {
@@ -147,6 +151,11 @@ export const AnalyticsDashboard: React.FC = () => {
   const [interactionCategoryFilter, setInteractionCategoryFilter] = useState<string>('all');
   const [interactionSearchQuery, setInteractionSearchQuery] = useState<string>('');
 
+  // Reset Monitoring States
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [isResetting, setIsResetting] = useState<boolean>(false);
+  const [resetFeedback, setResetFeedback] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+
   const fetchAnalytics = async (selectedDays: number) => {
     setIsLoading(true);
     setError('');
@@ -161,6 +170,34 @@ export const AnalyticsDashboard: React.FC = () => {
       setError(err.message || 'خطا در ارتباط با سرور');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResetMonitoring = async () => {
+    setIsResetting(true);
+    try {
+      const res = await fetch('/api/admin/analytics/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.message || 'خطا در بازنشانی مانیتورینگ');
+      }
+      setResetFeedback({
+        type: 'success',
+        message: 'کلیه داده‌های مانیتورینگ با موفقیت صفر شدند و سنجش از هم‌اکنون به صورت دقیق آغاز شد.'
+      });
+      setShowResetModal(false);
+      await fetchAnalytics(days);
+      setTimeout(() => setResetFeedback(null), 6000);
+    } catch (err: any) {
+      setResetFeedback({
+        type: 'error',
+        message: err.message || 'خطا در برقراری ارتباط با سرور'
+      });
+    } finally {
+      setIsResetting(false);
     }
   };
 
@@ -294,6 +331,17 @@ export const AnalyticsDashboard: React.FC = () => {
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* Reset Monitoring Button */}
+            <button
+              type="button"
+              onClick={() => setShowResetModal(true)}
+              className="px-3 py-2 rounded-2xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 hover:text-rose-100 border border-rose-500/40 transition flex items-center gap-1.5 text-xs font-bold shrink-0 shadow-sm active:scale-95"
+              title="صفر کردن و بازنشانی آمار مانیتورینگ برای سنجش دقیق از الان"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+              <span>ریست مانیتورینگ</span>
+            </button>
           </div>
         </div>
 
@@ -355,6 +403,32 @@ export const AnalyticsDashboard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {resetFeedback && (
+        <div
+          className={`p-4 rounded-2xl border text-xs sm:text-sm font-bold flex items-center justify-between gap-3 animate-fade-in shadow-sm ${
+            resetFeedback.type === 'success'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+              : 'bg-rose-50 text-rose-800 border-rose-200'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {resetFeedback.type === 'success' ? (
+              <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-5 h-5 text-rose-600 shrink-0" />
+            )}
+            <span>{resetFeedback.message}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setResetFeedback(null)}
+            className="text-slate-400 hover:text-slate-700 transition p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold rounded-2xl">
@@ -1398,6 +1472,72 @@ export const AnalyticsDashboard: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {/* Reset Confirmation Modal */}
+      {showResetModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 text-slate-800 relative">
+            <button
+              type="button"
+              onClick={() => !isResetting && setShowResetModal(false)}
+              disabled={isResetting}
+              className="absolute top-5 left-5 p-1.5 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition"
+              title="بستن"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="w-13 h-13 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mb-4 border border-rose-100">
+              <RotateCcw className="w-6 h-6" />
+            </div>
+
+            <h4 className="text-lg font-black text-slate-900 mb-2">
+              بازنشانی و صفر کردن آمار مانیتورینگ
+            </h4>
+
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
+              آیا مطمئن هستید که می‌خواهید کلیه آمارهای مانیتورینگ، تعداد بازدیدها، مدت زمان‌های حضور، نمودار روزانه و جریان تعاملات ثبت‌شده را صفر نمایید؟
+            </p>
+
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 leading-relaxed mb-6 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <strong>تضمین سلامت داده‌ها:</strong> این عملیات تنها داده‌های رفتاری و ترافیک مانیتورینگ را ریست می‌کند تا بتوانید از همین لحظه دقیق بسنجید. کتاب‌ها، کاربران، امانات، پسوردها و ساختار دیتابیس هیچ تغییری نخواهند کرد.
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setShowResetModal(false)}
+                disabled={isResetting}
+                className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-100 transition"
+              >
+                انصراف
+              </button>
+
+              <button
+                type="button"
+                onClick={handleResetMonitoring}
+                disabled={isResetting}
+                className="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-black shadow-lg shadow-rose-600/30 flex items-center gap-2 transition disabled:opacity-50"
+              >
+                {isResetting ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                    <span>در حال صفر کردن...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>تأیید و بازنشانی آمار</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

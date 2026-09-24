@@ -853,6 +853,35 @@ class LightweightAnalyticsManager {
     this.recentInteractions = [];
     this.loadFromStorage();
   }
+
+  public resetAnalytics() {
+    if (this.saveTimeout) {
+      clearTimeout(this.saveTimeout);
+      this.saveTimeout = null;
+    }
+    this.dailyData.clear();
+    this.recentInteractions = [];
+    this.activeSessions.clear();
+
+    const emptyRaw: Record<string, any> = {
+      _dailyData: {},
+      _recentInteractions: [],
+      _lastSaved: new Date().toISOString(),
+      _resetAt: new Date().toISOString()
+    };
+
+    if (typeof dbService.saveAnalyticsData === 'function') {
+      dbService.saveAnalyticsData(emptyRaw);
+    }
+
+    try {
+      fs.writeFileSync(this.filePath, JSON.stringify(emptyRaw, null, 2), 'utf-8');
+    } catch (err) {
+      console.error('[Analytics] Failed to write cleared cache:', err);
+    }
+
+    console.log('🧹 [Analytics] All telemetry and monitoring stats have been completely reset.');
+  }
 }
 
 export const analytics = new LightweightAnalyticsManager();

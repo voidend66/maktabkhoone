@@ -3875,6 +3875,26 @@ async function startServer() {
     });
   });
 
+  app.post('/api/admin/analytics/reset', (_req: Request, res: Response): any => {
+    try {
+      analytics.resetAnalytics();
+      dbService.addSystemLog(
+        'info',
+        'کلیه داده‌های مانیتورینگ، آمار بازدید، تعاملات و نشست‌های تحلیلی توسط مدیر سیستم صفر و بازنشانی گردید.'
+      );
+      return res.json({
+        success: true,
+        message: 'آمار و مانیتورینگ سیستم با موفقیت بازنشانی و صفر شد. از هم‌اکنون آمار جدید به صورت کاملاً دقیق ثبت و محاسبه می‌گردد.'
+      });
+    } catch (err: any) {
+      console.error('[Analytics] Error resetting analytics:', err);
+      return res.status(500).json({
+        success: false,
+        message: 'خطا در بازنشانی آمار مانیتورینگ: ' + (err.message || 'خطای ناشناخته')
+      });
+    }
+  });
+
   /**
    * --------------------------------------------------------------------------
    * API: پشتیبان‌گیری و بازیابی کل اطلاعات دیتابیس (Backup & Restore System)
