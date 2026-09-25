@@ -208,6 +208,14 @@ export const api = {
     return await res.json();
   },
 
+  async revertBookCover(id: string) {
+    const res = await fetch(`${API_BASE}/books/${id}/revert-cover`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+  },
+
   async deleteBook(id: string) {
     const res = await fetch(`${API_BASE}/books/${id}`, { method: 'DELETE' });
     return await res.json();

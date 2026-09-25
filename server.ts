@@ -3095,9 +3095,54 @@ async function startServer() {
   });
 
   app.put('/api/books/:id', (req: Request, res: Response): any => {
-    const updated = dbService.updateBook(req.params.id, req.body);
+    const existing = dbService.getBookById(req.params.id);
+    const updates = { ...req.body };
+
+    // If new coverImage is being set via CamScanner and originalCoverImage isn't set yet, backup the current cover
+    if (updates.isCoverScanned && updates.coverImage && existing && !existing.originalCoverImage) {
+      updates.originalCoverImage = updates.originalCoverImage || existing.coverImage;
+    }
+
+    const updated = dbService.updateBook(req.params.id, updates);
     if (!updated) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+
+    if (updates.isCoverScanned) {
+      dbService.addSystemLog(
+        'info',
+        'اصلاح جلد کتاب با کم‌اسکنر',
+        `جلد کتاب «${updated.title}» (مالک: ${updated.ownerName}) با برش پرسپکتیو و فیلتر اسکنر توسط مدیر اصلاح شد.`
+      );
+    }
+
     res.json({ success: true, book: updated });
+  });
+
+  app.post('/api/books/:id/revert-cover', (req: Request, res: Response): any => {
+    try {
+      const book = dbService.getBookById(req.params.id);
+      if (!book) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+
+      if (!book.originalCoverImage) {
+        return res.status(400).json({ success: false, message: 'عکس اولیه پشتیبان برای این کتاب یافت نشد.' });
+      }
+
+      const updated = dbService.updateBook(req.params.id, {
+        coverImage: book.originalCoverImage,
+        originalCoverImage: undefined,
+        isCoverScanned: false
+      });
+
+      dbService.addSystemLog(
+        'info',
+        'بازنشانی جلد کتاب به عکس اولیه',
+        `جلد کتاب «${book.title}» توسط مدیر به عکس اولیه بدون اسکن دانش‌آموز بازگردانده شد.`
+      );
+
+      res.json({ success: true, message: 'جلد کتاب به عکس اولیه بازگردانده شد.', book: updated });
+    } catch (err: any) {
+      console.error('Revert book cover error:', err);
+      res.status(500).json({ success: false, message: 'خطا در بازنشانی جلد کتاب.' });
+    }
   });
 
   app.delete('/api/books/:id', async (req: Request, res: Response): Promise<any> => {

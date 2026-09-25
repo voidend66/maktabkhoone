@@ -78,6 +78,8 @@ interface AppContextType {
     coverImage: string;
     description: string;
   }) => Promise<Book>;
+  updateBook: (id: string, data: Partial<Book>) => Promise<{ success: boolean; book?: Book; message?: string }>;
+  revertBookCover: (id: string) => Promise<{ success: boolean; book?: Book; message?: string }>;
   deleteBook: (bookId: string) => void;
   acceptLoanRequest: (
     requestId: string,
@@ -674,6 +676,34 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     return newBook;
+  };
+
+  // Update a book
+  const updateBook = async (id: string, data: Partial<Book>) => {
+    try {
+      const res = await api.updateBook(id, data);
+      if (res && res.success && res.book) {
+        setBooks((prev) => prev.map((b) => (b.id === id ? res.book! : b)));
+        return { success: true, book: res.book };
+      }
+      return { success: false, message: 'خطا در ویرایش کتاب' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ویرایش کتاب' };
+    }
+  };
+
+  // Revert book cover to raw original photo
+  const revertBookCover = async (id: string) => {
+    try {
+      const res = await api.revertBookCover(id);
+      if (res && res.success && res.book) {
+        setBooks((prev) => prev.map((b) => (b.id === id ? res.book! : b)));
+        return { success: true, book: res.book };
+      }
+      return { success: false, message: res?.message || 'خطا در بازنشانی جلد کتاب' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در بازنشانی جلد کتاب' };
+    }
   };
 
   // Request Book Loan
@@ -1511,7 +1541,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         getEventProgress,
         claimEventReward,
         grantFreeLoans,
-        acknowledgeFreeLoanReward
+        acknowledgeFreeLoanReward,
+        updateBook,
+        revertBookCover
       }}
     >
       {children}

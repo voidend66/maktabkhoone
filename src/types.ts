@@ -77,6 +77,8 @@ export interface Book {
   isDamaged?: boolean;
   damageDescription?: string;
   baleChannelMessageId?: number; // Message ID of the book in Bale channel for auto-deletion
+  originalCoverImage?: string; // Backup of the student's raw upload before CamScanner correction
+  isCoverScanned?: boolean; // Flag indicating the cover was professionally corrected with CamScanner
 }
 
 export interface BankCardInfo {

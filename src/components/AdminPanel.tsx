@@ -5,6 +5,9 @@ import { api } from '../services/api';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
 import { AdminEventsManager } from './AdminEventsManager';
+import { CamScannerModal } from './CamScannerModal';
+import { CAMSCANNER_DEMO_SAMPLES } from '../utils/camScannerDemoSamples';
+import { Book } from '../types';
 import {
   Activity,
   ShieldAlert,
@@ -63,7 +66,9 @@ import {
   HardDrive,
   Folder,
   FolderUp,
-  Gift
+  Gift,
+  Crop,
+  Undo2
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -100,8 +105,14 @@ export const AdminPanel: React.FC = () => {
     sendBaleMessageToStudent,
     refreshData,
     events,
-    grantFreeLoans
+    grantFreeLoans,
+    updateBook,
+    revertBookCover
   } = useApp();
+
+  // CamScanner state
+  const [scannerBook, setScannerBook] = useState<Book | null>(null);
+  const [showDemoScanner, setShowDemoScanner] = useState<boolean>(false);
 
   // Manual Free Loan Grant State
   const [selectedStudentForFreeLoan, setSelectedStudentForFreeLoan] = useState<any | null>(null);
@@ -3561,6 +3572,35 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
+          {/* CamScanner Showcase & Demo Mode Card */}
+          <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 border-2 border-amber-300/80 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5">
+              <div className="p-3 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-2xl shadow-md shrink-0">
+                <Crop className="w-6 h-6 text-amber-200" />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
+                  <span>اسکنر هوشمند جلد کتاب (کم‌اسکنر / CamScanner)</span>
+                  <span className="text-[10px] font-black bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
+                    ویژه مدیریت 🛡️
+                  </span>
+                </h4>
+                <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
+                  دانش‌آموزان به دلیل سن کم اغلب عکس‌ها را با زاویه کج و به همراه فرش، موکت و زمینه اطراف ثبت می‌کنند. با این ابزار می‌توانید عکس هر کتاب را با برش پرسپکتیو ۴ نقطه‌ای و فیلترهای جادویی کم‌اسکنر تمیز و اسکن کنید. در هر زمان نیز با یک کلیک امکان بازگشت به عکس اولیه وجود دارد.
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDemoScanner(true)}
+              className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-700 hover:to-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-200" />
+              <span>🚀 ورود به حالت دمو (تست با نمونه‌های فرش/زمین)</span>
+            </button>
+          </div>
+
           {/* Auto Bale Cleanup Banner */}
           <div className="p-3 bg-sky-50/80 border border-sky-200 rounded-2xl flex items-center justify-between flex-wrap gap-2 text-xs">
             <div className="flex items-center gap-2 text-sky-900 font-bold">
@@ -3591,7 +3631,7 @@ export const AdminPanel: React.FC = () => {
                   <th className="p-3">کلاس</th>
                   <th className="p-3">وضعیت امانت</th>
                   <th className="p-3">وضعیت کانال بله</th>
-                  <th className="p-3 text-center">انتشار بله / حذف</th>
+                  <th className="p-3 text-center">اسکنر / انتشار / حذف</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -3606,12 +3646,29 @@ export const AdminPanel: React.FC = () => {
                   .map((book) => (
                     <tr key={book.id} className="hover:bg-slate-50 transition">
                       <td className="p-3 font-bold text-slate-900 flex items-center gap-2">
-                        <img
-                          src={book.coverImage}
-                          alt={book.title}
-                          className="w-8 h-10 object-cover rounded-md shadow-2xs shrink-0"
-                        />
-                        <span>{book.title}</span>
+                        <div className="relative shrink-0">
+                          <img
+                            src={book.coverImage}
+                            alt={book.title}
+                            className="w-8 h-10 object-cover rounded-md shadow-2xs"
+                          />
+                          {book.isCoverScanned && (
+                            <span
+                              className="absolute -top-1.5 -right-1.5 w-4 h-4 bg-amber-400 text-slate-950 rounded-full flex items-center justify-center text-[9px] font-black shadow-xs ring-1 ring-white"
+                              title="جلد کتاب با کم‌اسکنر اصلاح شده است"
+                            >
+                              ✨
+                            </span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate">{book.title}</div>
+                          {book.isCoverScanned && (
+                            <span className="text-[10px] text-emerald-700 font-bold block">
+                              ✓ اسکن‌شده با کم‌اسکنر
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-3 text-slate-600">{book.author}</td>
                       <td className="p-3 text-slate-600">{book.category}</td>
@@ -3645,6 +3702,37 @@ export const AdminPanel: React.FC = () => {
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
+                          {/* CamScanner Button */}
+                          <button
+                            onClick={() => setScannerBook(book)}
+                            className="p-1.5 rounded-lg border bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 transition cursor-pointer"
+                            title="اصلاح حرفه‌ای عکس با کم‌اسکنر (برش ۴ نقطه‌ای و حذف فرش/زمینه)"
+                          >
+                            <Crop className="w-3.5 h-3.5 text-amber-700" />
+                          </button>
+
+                          {/* Revert Cover Button (if already scanned) */}
+                          {book.originalCoverImage && (
+                            <button
+                              onClick={async () => {
+                                if (
+                                  confirm(
+                                    `آیا مایل هستید جلد کتاب «${book.title}» را به عکس خام اولیه دانش‌آموز برگردانید؟`
+                                  )
+                                ) {
+                                  const res = await revertBookCover(book.id);
+                                  if (res && res.success) {
+                                    alert('جلد کتاب با موفقیت به عکس اولیه بازگردانده شد.');
+                                  }
+                                }
+                              }}
+                              className="p-1.5 rounded-lg border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 transition cursor-pointer"
+                              title="بازگشت به عکس خام اولیه دانش‌آموز (قبل از اسکن)"
+                            >
+                              <Undo2 className="w-3.5 h-3.5 text-rose-600" />
+                            </button>
+                          )}
+
                           <button
                             onClick={() => handlePublishSingleBook(book.id, book.title)}
                             disabled={publishingBookId === book.id}
@@ -5090,6 +5178,41 @@ export const AdminPanel: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+
+      {/* CamScanner Modal */}
+      {(scannerBook || showDemoScanner) && (
+        <CamScannerModal
+          initialImageUrl={scannerBook ? scannerBook.coverImage : CAMSCANNER_DEMO_SAMPLES[0].getImageDataUrl()}
+          bookTitle={scannerBook ? scannerBook.title : 'نمونه آزمایشی دمو (کتاب روی فرش)'}
+          originalCoverImage={scannerBook?.originalCoverImage}
+          onClose={() => {
+            setScannerBook(null);
+            setShowDemoScanner(false);
+          }}
+          onSave={async (scannedImageDataUrl, originalBackupUrl) => {
+            if (scannerBook) {
+              const res = await updateBook(scannerBook.id, {
+                coverImage: scannedImageDataUrl,
+                originalCoverImage: originalBackupUrl,
+                isCoverScanned: true
+              });
+              if (!res.success) {
+                throw new Error(res.message || 'خطا در ذخیره جلد کتاب');
+              }
+            } else {
+              // Demo mode save notice
+              alert('در حالت دمو، تغییرات به صورت آزمایشی بررسی شدند و روی دیتابیس کتاب‌های واقعی ذخیره نمی‌گردند.');
+            }
+          }}
+          onRevertToOriginal={
+            scannerBook?.originalCoverImage
+              ? async () => {
+                  await revertBookCover(scannerBook.id);
+                }
+              : undefined
+          }
+        />
       )}
     </div>
   );

@@ -17,8 +17,11 @@ import {
   Trash2,
   Check,
   Gift,
-  Sparkles
+  Sparkles,
+  Crop,
+  Undo2
 } from 'lucide-react';
+import { CamScannerModal } from './CamScannerModal';
 
 interface BookDetailModalProps {
   book: Book | null;
@@ -31,7 +34,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onClose,
   onRequestLoan
 }) => {
-  const { currentUser, addBookReview, deleteBookReview, users, activeEvents } = useApp();
+  const { currentUser, addBookReview, deleteBookReview, users, activeEvents, updateBook, revertBookCover } = useApp();
   
   const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
 
@@ -41,6 +44,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [reviewSuccessMessage, setReviewSuccessMessage] = useState('');
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [useFreeLoanQuota, setUseFreeLoanQuota] = useState(false);
+  const [showCamScanner, setShowCamScanner] = useState(false);
 
   const hasFreeQuota = (currentUser?.freeLoanQuota || 0) > 0;
   const activeEvent = activeEvents[0];
@@ -133,6 +137,57 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 وضعیت: {book.condition}
               </span>
             </div>
+
+            {/* Admin CamScanner Action Button */}
+            {currentUser?.role === 'admin' && (
+              <div className="sm:col-span-3 -mt-2 mb-2 p-3 bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-300/80 rounded-2xl flex flex-wrap items-center justify-between gap-2.5">
+                <div className="flex items-center gap-2 text-xs">
+                  <span className="p-1.5 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-lg">
+                    <Crop className="w-3.5 h-3.5" />
+                  </span>
+                  <div>
+                    <span className="font-black text-slate-900">اسکنر کم‌اسکنر (مدیریت): </span>
+                    <span className="text-slate-600 text-[11px]">
+                      {book.isCoverScanned
+                        ? 'این جلد قبلاً با کم‌اسکنر اصلاح شده است ✨'
+                        : 'می‌توانید زاویه کج و زمینه فرش/زمین این عکس را برش زده و صاف کنید.'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setShowCamScanner(true)}
+                    className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Crop className="w-3.5 h-3.5 text-amber-100" />
+                    <span>اصلاح جلد با کم‌اسکنر</span>
+                  </button>
+
+                  {book.originalCoverImage && (
+                    <button
+                      onClick={async () => {
+                        if (
+                          confirm(
+                            `آیا مایل هستید جلد کتاب «${book.title}» را به عکس اولیه دانش‌آموز برگردانید؟`
+                          )
+                        ) {
+                          const res = await revertBookCover(book.id);
+                          if (res && res.success) {
+                            alert('جلد کتاب با موفقیت به عکس اولیه بازگردانده شد.');
+                          }
+                        }
+                      }}
+                      className="px-3 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs rounded-xl transition flex items-center gap-1 cursor-pointer"
+                      title="بازگشت به عکس خام اولیه دانش‌آموز"
+                    >
+                      <Undo2 className="w-3.5 h-3.5 text-rose-600" />
+                      <span>بازگشت به عکس اولیه</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Book Details Column */}
             <div className="sm:col-span-2 flex flex-col justify-between">
@@ -446,6 +501,33 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* CamScanner Modal for Admin */}
+      {showCamScanner && (
+        <CamScannerModal
+          initialImageUrl={book.coverImage}
+          bookTitle={book.title}
+          originalCoverImage={book.originalCoverImage}
+          onClose={() => setShowCamScanner(false)}
+          onSave={async (scannedImageDataUrl, originalBackupUrl) => {
+            const res = await updateBook(book.id, {
+              coverImage: scannedImageDataUrl,
+              originalCoverImage: originalBackupUrl,
+              isCoverScanned: true
+            });
+            if (!res.success) {
+              throw new Error(res.message || 'خطا در ذخیره جلد کتاب');
+            }
+          }}
+          onRevertToOriginal={
+            book.originalCoverImage
+              ? async () => {
+                  await revertBookCover(book.id);
+                }
+              : undefined
+          }
+        />
+      )}
     </div>
   );
 };
