@@ -6,51 +6,62 @@ export { houseLogoImg };
 
 interface LogoProps {
   className?: string;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
   showSlogan?: boolean;
+  hideSubtitleOnMobile?: boolean;
 }
 
 export const MaktabKhanehLogo: React.FC<LogoProps> = ({
   className = '',
   size = 'lg',
-  showSlogan = true
+  showSlogan = true,
+  hideSubtitleOnMobile = false
 }) => {
   const sizeMap = {
-    sm: 'w-12 h-12 sm:w-14 sm:h-14',
-    md: 'w-14 h-14 sm:w-16 sm:h-16',
+    xs: 'w-9 h-9 sm:w-11 sm:h-11',
+    sm: 'w-10 h-10 sm:w-14 sm:h-14',
+    md: 'w-12 h-12 sm:w-16 sm:h-16',
     lg: 'w-14 h-14 sm:w-20 sm:h-20',
     xl: 'w-20 h-20 sm:w-32 sm:h-32'
   };
 
+  const titleSizeMap = {
+    xs: 'text-xl sm:text-2xl',
+    sm: 'text-2xl sm:text-3xl',
+    md: 'text-2xl sm:text-4xl',
+    lg: 'text-3xl sm:text-4xl',
+    xl: 'text-4xl sm:text-5xl'
+  };
+
   return (
-    <div className={`flex items-center gap-2.5 sm:gap-4 ${className}`}>
+    <div className={`flex items-center gap-2 sm:gap-3 ${className}`}>
       {/* Featured House Logo Image with generous sizing on mobile */}
       <div className={`relative ${sizeMap[size]} shrink-0 transition-all duration-300 hover:scale-105 group`}>
-        <div className="w-full h-full rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-600 to-amber-400 p-1 shadow-md shadow-cyan-900/20 ring-2 sm:ring-4 ring-cyan-500/20 overflow-hidden">
+        <div className="w-full h-full rounded-xl sm:rounded-2xl bg-gradient-to-br from-cyan-500 via-sky-600 to-amber-400 p-0.5 sm:p-1 shadow-md shadow-cyan-900/20 ring-1 sm:ring-4 ring-cyan-500/20 overflow-hidden">
           <img
             src={houseLogoImg}
             alt="لوگوی مکتب خونه"
-            className="w-full h-full object-cover rounded-xl bg-white transition-transform duration-300 group-hover:scale-110"
+            className="w-full h-full object-cover rounded-lg sm:rounded-xl bg-white transition-transform duration-300 group-hover:scale-110"
           />
         </div>
       </div>
 
       {/* Brand Title with Beautiful Persian Calligraphy & Subtitle */}
-      <div className="flex flex-col justify-center select-none">
-        <h1 className="text-2xl sm:text-4xl font-['Lalezar',cursive] tracking-wide flex items-center leading-none">
+      <div className="flex flex-col justify-center select-none min-w-0">
+        <h1 className={`${titleSizeMap[size]} font-['Lalezar',cursive] tracking-wide flex items-center leading-none whitespace-nowrap`}>
           <span className="text-cyan-800 drop-shadow-xs">مَکـتَب‌</span>
           <span className="text-amber-500 drop-shadow-xs">خـونـه</span>
         </h1>
 
-        {/* Replaced 'امانت کتاب' badge with simple, clear subtitle */}
-        <div className="flex items-center gap-2 mt-0.5 sm:mt-1">
-          <p className="text-[11px] sm:text-xs font-black text-slate-600 flex items-center gap-1 leading-tight">
+        {/* Subtitle */}
+        <div className={`items-center gap-1.5 mt-0.5 sm:mt-1 ${hideSubtitleOnMobile ? 'hidden sm:flex' : 'flex'}`}>
+          <p className="text-[10px] sm:text-xs font-black text-slate-600 flex items-center gap-1 leading-tight whitespace-nowrap">
             <span>سامانه آنلاین تبادل و امانت کتاب</span>
           </p>
         </div>
 
         {showSlogan && (
-          <p className="hidden md:flex text-[11px] font-bold text-slate-400 items-center gap-1 mt-0.5">
+          <p className="hidden md:flex text-[11px] font-bold text-slate-400 items-center gap-1 mt-0.5 whitespace-nowrap">
             <span className="text-cyan-600">•</span> هر کتاب، یک سفر
             <span className="text-orange-500">•</span> هر امانت، یک اعتماد
           </p>
