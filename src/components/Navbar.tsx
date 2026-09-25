@@ -18,8 +18,14 @@ import {
   ShieldCheck,
   Plus,
   HelpCircle,
-  Send
+  Send,
+  Gift
 } from 'lucide-react';
+
+const toFarsiNumber = (n: number | string) => {
+  const farsiDigits = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+  return n.toString().replace(/\d/g, (x) => farsiDigits[parseInt(x)]);
+};
 
 interface NavbarProps {
   activeTab: string;
@@ -209,6 +215,18 @@ export const Navbar: React.FC<NavbarProps> = ({
 
             {currentUser ? (
               <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Free Loan Quota Top Indicator */}
+                {(currentUser.freeLoanQuota || 0) > 0 && (
+                  <button
+                    onClick={() => setActiveTab('library')}
+                    title={`شما دارای ${toFarsiNumber(currentUser.freeLoanQuota || 0)} سهمیه امانت رایگان فعال هستید (برای مشاهده طاقچه و امانت کلیک کنید)`}
+                    className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-xl font-black text-[11px] sm:text-xs bg-gradient-to-r from-amber-500 via-emerald-500 to-teal-500 text-white shadow-xs shadow-amber-500/30 hover:shadow-md hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0 animate-pulse border border-white/20 whitespace-nowrap"
+                  >
+                    <Gift className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-100" />
+                    <span>{toFarsiNumber(currentUser.freeLoanQuota || 0)} تا رایگان</span>
+                  </button>
+                )}
+
                 {/* Notification Bell Button */}
                 <button
                   onClick={() => onOpenNotifications?.()}

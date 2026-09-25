@@ -30,6 +30,13 @@ export interface User {
   baleChatId?: number | string;
   freeLoanQuota?: number; // Active free loan quotas won from events
   claimedEventRewards?: string[]; // Array of event IDs user has claimed rewards for
+  pendingFreeLoanReward?: {
+    count: number;
+    source: 'event' | 'manual';
+    reason?: string;
+    eventTitle?: string;
+    grantedAt: number;
+  };
 }
 
 export interface BookReview {

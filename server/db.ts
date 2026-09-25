@@ -734,6 +734,11 @@ export const dbService = {
             const borrower = memoryDb.users.find((u) => u.id === req.borrowerId);
             if (borrower) {
               borrower.freeLoanQuota = (borrower.freeLoanQuota || 0) + 1;
+              this.addSystemLog(
+                'info',
+                'بازگشت سهمیه امانت رایگان (انقضای ۴۸ ساعته)',
+                `سهمیه امانت رایگان کاربر ${borrower.name} (${borrower.className}) به علت انقضای ۴۸ ساعته درخواست کتاب «${req.bookTitle}» بازگردانده شد. موجودی جدید: ${borrower.freeLoanQuota} سهمیه.`
+              );
             }
           }
 
@@ -1687,29 +1692,38 @@ export const dbService = {
     if (!user.claimedEventRewards) user.claimedEventRewards = [];
     user.claimedEventRewards.push(eventId);
 
-    if (event.rewardType === 'free_loans') {
-      const addedQuota = event.rewardCount || 2;
+    let addedQuota = 0;
+    if (event.rewardType === 'free_loans' || event.rewardType === 'free_loan') {
+      addedQuota = event.freeLoanCount || event.rewardCount || 2;
       user.freeLoanQuota = (user.freeLoanQuota || 0) + addedQuota;
+      user.pendingFreeLoanReward = {
+        count: addedQuota,
+        source: 'event',
+        reason: `تکمیل و برنده شدن در ایونت «${event.title}»`,
+        eventTitle: event.title,
+        grantedAt: Date.now()
+      };
     }
 
     this.updateUser(user.id, {
       claimedEventRewards: user.claimedEventRewards,
-      freeLoanQuota: user.freeLoanQuota
+      freeLoanQuota: user.freeLoanQuota,
+      pendingFreeLoanReward: user.pendingFreeLoanReward
     });
 
     // Notify user
     this.createNotification({
       userId: user.id,
       title: '🎉 دریافت جایزه ایونت کتابخانه!',
-      message: `تبریک! پاداش ایونت «${event.title}» (${event.rewardTitle}) به حساب شما واریز شد و می‌توانید کتاب‌های دلخواهتان را بدون پرداخت هزینه امانت بگیرید.`,
+      message: `تبریک! پاداش ایونت «${event.title}» (${addedQuota > 0 ? `${addedQuota} سهمیه امانت رایگان` : event.rewardTitle}) به حساب شما واریز شد و می‌توانید کتاب‌های دلخواهتان را بدون پرداخت هزینه امانت بگیرید.`,
       type: 'system',
       linkTab: 'library'
     });
 
     this.addSystemLog(
       'info',
-      `دریافت جایزه ایونت توسط ${user.name}`,
-      `کاربر ${user.name} (${user.className}) جایزه ایونت «${event.title}» (${event.rewardTitle}) را با موفقیت دریافت کرد.`
+      'اعطای سهمیه امانت رایگان (ایونت)',
+      `کاربر ${user.name} (${user.className}) جایزه ایونت «${event.title}» (${addedQuota > 0 ? `${addedQuota} سهمیه امانت رایگان` : event.rewardTitle}) را دریافت کرد. موجودی کل سهمیه رایگان: ${user.freeLoanQuota}`
     );
 
     const updatedUser = this.getUserById(userId);
@@ -1717,9 +1731,36 @@ export const dbService = {
 
     return {
       success: true,
-      message: `🎉 تبریک! پاداش «${event.rewardTitle}» با موفقیت فعال شد.`,
+      message: `🎉 تبریک! پاداش «${event.rewardTitle || `${addedQuota} سهمیه امانت رایگان`}» با موفقیت فعال شد.`,
       user: updatedUser,
       progress: updatedProgress || undefined
+    };
+  },
+
+  checkAndAutoClaimEventRewards(userId: string): { claimedCount: number; user?: User; events: string[] } {
+    const user = this.getUserById(userId);
+    if (!user) return { claimedCount: 0, events: [] };
+
+    const active = this.getActiveEvents();
+    const claimedEventTitles: string[] = [];
+
+    for (const ev of active) {
+      if (ev.targetType === 'add_books') {
+        const prog = this.getUserEventProgress(userId, ev.id);
+        if (prog && prog.isCompleted && !prog.isRewardClaimed) {
+          const claimRes = this.claimEventReward(userId, ev.id);
+          if (claimRes.success) {
+            claimedEventTitles.push(ev.title);
+          }
+        }
+      }
+    }
+
+    const updatedUser = this.getUserById(userId);
+    return {
+      claimedCount: claimedEventTitles.length,
+      user: updatedUser,
+      events: claimedEventTitles
     };
   }
 };

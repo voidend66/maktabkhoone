@@ -132,6 +132,8 @@ interface AppContextType {
   publishEventToBale: (id: string) => Promise<{ success: boolean; message: string }>;
   getEventProgress: (eventId: string, userId?: string) => Promise<UserEventProgress | null>;
   claimEventReward: (eventId: string) => Promise<{ success: boolean; message: string; user?: User; progress?: UserEventProgress }>;
+  grantFreeLoans: (userId: string, count: number, reason?: string) => Promise<{ success: boolean; message: string; user?: User }>;
+  acknowledgeFreeLoanReward: () => Promise<void>;
   requestBookLoan: (
     bookId: string,
     options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
@@ -321,9 +323,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             fresh.avatar !== currentUser.avatar ||
             fresh.className !== currentUser.className ||
             fresh.suspensionReason !== currentUser.suspensionReason ||
-            fresh.rejectionReason !== currentUser.rejectionReason
+            fresh.rejectionReason !== currentUser.rejectionReason ||
+            fresh.freeLoanQuota !== currentUser.freeLoanQuota ||
+            fresh.pendingFreeLoanReward?.grantedAt !== currentUser.pendingFreeLoanReward?.grantedAt
           ) {
             setCurrentUser(fresh);
+            localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(fresh));
           }
         } else {
           // Current user from localStorage is not in active database users list (e.g. version change, wiped database)!
@@ -657,7 +662,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
 
     try {
-      await api.createBook(newBook);
+      const createRes = await api.createBook(newBook);
+      if (createRes && (createRes as any).user) {
+        const updatedU = (createRes as any).user as User;
+        setCurrentUser(updatedU);
+        localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(updatedU));
+      }
       await refreshData();
     } catch (e) {
       console.error('Error adding book to SQLite:', e);
@@ -1396,12 +1406,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (res.success) {
         if (res.user) {
           setCurrentUser(res.user);
+          localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
         }
         await refreshData();
       }
       return res;
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در دریافت پاداش ایونت' };
+    }
+  };
+
+  // Grant Free Loans (Admin)
+  const grantFreeLoans = async (userId: string, count: number, reason?: string) => {
+    try {
+      const res = await api.grantFreeLoans(userId, count, reason);
+      if (res.success && res.user) {
+        setUsers((prev) => prev.map((u) => (u.id === userId ? res.user! : u)));
+        if (currentUser?.id === userId) {
+          setCurrentUser(res.user);
+          localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
+        }
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در اعطای سهمیه رایگان' };
+    }
+  };
+
+  // Acknowledge Free Loan Reward (User Celebration)
+  const acknowledgeFreeLoanReward = async () => {
+    if (!currentUser?.id) return;
+    const updated: User = { ...currentUser, pendingFreeLoanReward: undefined };
+    setCurrentUser(updated);
+    localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(updated));
+    setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? updated : u)));
+    try {
+      await api.acknowledgeFreeLoanReward(currentUser.id);
+    } catch (e) {
+      console.error('Error acknowledging free loan reward:', e);
     }
   };
 
@@ -1467,7 +1509,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         deleteEvent,
         publishEventToBale,
         getEventProgress,
-        claimEventReward
+        claimEventReward,
+        grantFreeLoans,
+        acknowledgeFreeLoanReward
       }}
     >
       {children}

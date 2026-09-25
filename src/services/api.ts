@@ -720,5 +720,30 @@ export const api = {
     } catch (err: any) {
       return { success: false, message: err.message || 'خطا در دریافت پاداش ایونت' };
     }
+  },
+
+  async grantFreeLoans(userId: string, count: number, reason?: string): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/users/${userId}/grant-free-loans`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ count, reason })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در اعطای سهمیه امانت رایگان' };
+    }
+  },
+
+  async acknowledgeFreeLoanReward(userId: string): Promise<{ success: boolean; user?: User }> {
+    try {
+      const res = await fetch(`${API_BASE}/users/${userId}/acknowledge-free-loan-reward`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false };
+    }
   }
 };

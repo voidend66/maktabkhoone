@@ -99,8 +99,52 @@ export const AdminPanel: React.FC = () => {
     unsuspendUser,
     sendBaleMessageToStudent,
     refreshData,
-    events
+    events,
+    grantFreeLoans
   } = useApp();
+
+  // Manual Free Loan Grant State
+  const [selectedStudentForFreeLoan, setSelectedStudentForFreeLoan] = useState<any | null>(null);
+  const [freeLoanCountToGrant, setFreeLoanCountToGrant] = useState<number>(1);
+  const [freeLoanReason, setFreeLoanReason] = useState<string>('هدیه تشویقی مدیریت کتابخانه');
+  const [isGrantingFreeLoan, setIsGrantingFreeLoan] = useState<boolean>(false);
+  const [freeLoanSuccessMsg, setFreeLoanSuccessMsg] = useState<string | null>(null);
+  const [freeLoanErrorMsg, setFreeLoanErrorMsg] = useState<string | null>(null);
+  const [freeLoanSelectedUserId, setFreeLoanSelectedUserId] = useState<string>('');
+  const [freeLoanSearchUser, setFreeLoanSearchUser] = useState<string>('');
+
+  const handleGrantFreeLoanSubmit = async (e?: React.FormEvent, targetUserOverride?: any) => {
+    if (e) e.preventDefault();
+    const target = targetUserOverride || selectedStudentForFreeLoan || users.find(u => u.id === freeLoanSelectedUserId);
+    if (!target) {
+      setFreeLoanErrorMsg('لطفاً یک کاربر را جهت اعطای سهمیه انتخاب فرمایید.');
+      return;
+    }
+    const count = Math.max(1, Math.round(Number(freeLoanCountToGrant) || 1));
+
+    setIsGrantingFreeLoan(true);
+    setFreeLoanSuccessMsg(null);
+    setFreeLoanErrorMsg(null);
+
+    try {
+      const res = await grantFreeLoans(target.id, count, freeLoanReason.trim());
+      if (res.success) {
+        setFreeLoanSuccessMsg(`✓ تعداد ${count} سهمیه امانت رایگان با موفقیت به «${target.name}» اهدا شد. پیام تبریک به بله ارسال و در لاگ سیستم ثبت گردید.`);
+        setFreeLoanReason('هدیه تشویقی مدیریت کتابخانه');
+        setFreeLoanCountToGrant(1);
+        setTimeout(() => {
+          setFreeLoanSuccessMsg(null);
+          setSelectedStudentForFreeLoan(null);
+        }, 4000);
+      } else {
+        setFreeLoanErrorMsg(res.message || 'خطا در اعطای سهمیه رایگان');
+      }
+    } catch (err: any) {
+      setFreeLoanErrorMsg(err.message || 'خطا در برقراری ارتباط');
+    } finally {
+      setIsGrantingFreeLoan(false);
+    }
+  };
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
@@ -486,7 +530,7 @@ export const AdminPanel: React.FC = () => {
   // System Logs State
   const [systemLogs, setSystemLogs] = useState<any[]>([]);
   const [logSearch, setLogSearch] = useState('');
-  const [logLevelFilter, setLogLevelFilter] = useState<'all' | 'error' | 'warn' | 'info' | 'db'>('all');
+  const [logLevelFilter, setLogLevelFilter] = useState<'all' | 'error' | 'warn' | 'info' | 'db' | 'free_loans'>('all');
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
 
@@ -3646,6 +3690,182 @@ export const AdminPanel: React.FC = () => {
       {/* Tab 4: All Students and Admins List */}
       {activeTab === 'all_users' && (
         <div className="space-y-6">
+          {/* Section 0: Dedicated Manual Free Loan Allocation Card */}
+          <div className="bg-gradient-to-br from-amber-50 via-white to-emerald-50/40 rounded-3xl p-6 border-2 border-amber-200/90 shadow-sm space-y-5">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-amber-200/70 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-2xl shadow-sm">
+                  <Gift className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base sm:text-lg flex items-center gap-2">
+                    <span>اعطای دستی سهمیه امانت رایگان به کاربران</span>
+                    <span className="text-[11px] font-black bg-amber-100 text-amber-900 border border-amber-300 px-2 py-0.5 rounded-full">
+                      هدیه و پاداش 🎁
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-0.5">
+                    به هر یک از کاربران سامانه به تعداد دلخواه سهمیه امانت رایگان اهدا کنید. با ثبت سهمیه، بلافاصله لاگ سیستم ثبت شده، نوتیفیکیشن در بله ارسال شده و صفحه تبریک در سایت برای کاربر نمایش داده می‌شود.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <form onSubmit={handleGrantFreeLoanSubmit} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-start">
+                {/* User Selector */}
+                <div className="sm:col-span-5 space-y-1.5">
+                  <label className="text-xs font-black text-slate-700 flex items-center justify-between">
+                    <span>انتخاب دانش‌آموز / کاربر مقصد *</span>
+                    <span className="text-[10px] text-slate-400 font-normal">
+                      ({approvedStudents.length} کاربر فعال)
+                    </span>
+                  </label>
+                  <select
+                    value={freeLoanSelectedUserId}
+                    onChange={(e) => setFreeLoanSelectedUserId(e.target.value)}
+                    required
+                    className="w-full text-xs sm:text-sm p-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-bold text-slate-800 shadow-2xs"
+                  >
+                    <option value="">-- لطفاً یک کاربر را انتخاب کنید --</option>
+                    {approvedStudents.map((st) => (
+                      <option key={st.id} value={st.id}>
+                        {st.name} (کلاس {st.className}) - موجودی فعلی: {(st.freeLoanQuota || 0)} سهمیه رایگان
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Quota Count Input & Presets */}
+                <div className="sm:col-span-3 space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">تعداد سهمیه امانت رایگان *</label>
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      type="number"
+                      min="1"
+                      max="50"
+                      required
+                      value={freeLoanCountToGrant}
+                      onChange={(e) => setFreeLoanCountToGrant(Math.max(1, parseInt(e.target.value) || 1))}
+                      className="w-20 text-center text-sm p-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-black text-slate-800 shadow-2xs"
+                    />
+                    <div className="flex items-center gap-1">
+                      {[1, 2, 3, 5].map((preset) => (
+                        <button
+                          key={preset}
+                          type="button"
+                          onClick={() => setFreeLoanCountToGrant(preset)}
+                          className={`px-2 py-2 text-xs font-black rounded-xl border transition cursor-pointer ${
+                            freeLoanCountToGrant === preset
+                              ? 'bg-amber-500 text-white border-amber-500'
+                              : 'bg-white text-slate-700 border-slate-200 hover:bg-amber-50'
+                          }`}
+                        >
+                          +{preset}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Reason Input */}
+                <div className="sm:col-span-4 space-y-1.5">
+                  <label className="text-xs font-black text-slate-700">علت یا مناسبت هدیه (اختیاری)</label>
+                  <input
+                    type="text"
+                    placeholder="مثال: هدیه تشویقی مسابقه کتابخوانی"
+                    value={freeLoanReason}
+                    onChange={(e) => setFreeLoanReason(e.target.value)}
+                    className="w-full text-xs sm:text-sm p-3 bg-white border border-slate-200 rounded-2xl focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 font-bold text-slate-800 shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Quick reason suggestions */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                <span className="text-[11px] font-bold text-slate-400">نمونه مناسبت‌ها:</span>
+                {[
+                  'هدیه تشویقی مدیریت کتابخانه',
+                  'برنده چالش هفتگی کتابخوانی 🏆',
+                  'جایزه فعالیت پرشور در طاقچه 📚',
+                  'هدیه مناسبتی و عیدی مدرسه 🌸'
+                ].map((reasonChip) => (
+                  <button
+                    key={reasonChip}
+                    type="button"
+                    onClick={() => setFreeLoanReason(reasonChip)}
+                    className="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-white hover:bg-amber-50 text-slate-600 border border-slate-200 hover:border-amber-300 transition cursor-pointer"
+                  >
+                    {reasonChip}
+                  </button>
+                ))}
+              </div>
+
+              {/* Selected User Preview (if any selected) */}
+              {freeLoanSelectedUserId && (() => {
+                const targetU = approvedStudents.find(u => u.id === freeLoanSelectedUserId);
+                if (!targetU) return null;
+                const currentQ = targetU.freeLoanQuota || 0;
+                const newQ = currentQ + (Number(freeLoanCountToGrant) || 1);
+                return (
+                  <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-2xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2.5">
+                      <img src={targetU.avatar} alt={targetU.name} className="w-9 h-9 rounded-full object-cover ring-2 ring-amber-400" />
+                      <div>
+                        <span className="font-black text-slate-900">{targetU.name}</span>
+                        <span className="text-slate-500 mr-2">کلاس {targetU.className}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <div>
+                        <span className="text-slate-500">موجودی فعلی: </span>
+                        <strong className="text-slate-800 font-black">{currentQ} سهمیه</strong>
+                      </div>
+                      <div className="text-emerald-700 font-black">
+                        ➔ موجودی جدید: <strong className="text-emerald-800 text-sm">{newQ} سهمیه رایگان</strong>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
+                <div className="flex-1">
+                  {freeLoanSuccessMsg && (
+                    <span className="text-xs font-black text-emerald-700 bg-emerald-50 px-3.5 py-2 rounded-xl border border-emerald-200 flex items-center gap-1.5">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>{freeLoanSuccessMsg}</span>
+                    </span>
+                  )}
+                  {freeLoanErrorMsg && (
+                    <span className="text-xs font-black text-rose-700 bg-rose-50 px-3.5 py-2 rounded-xl border border-rose-200 flex items-center gap-1.5">
+                      <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                      <span>{freeLoanErrorMsg}</span>
+                    </span>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isGrantingFreeLoan || !freeLoanSelectedUserId}
+                  className="w-full sm:w-auto bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-700 hover:to-emerald-700 active:scale-95 disabled:opacity-50 text-white font-black text-xs sm:text-sm px-6 py-3 rounded-2xl shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isGrantingFreeLoan ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>در حال ثبت و ارسال نوتیفیکیشن...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gift className="w-4 h-4 text-amber-200" />
+                      <span>ثبت و اعطای سهمیه امانت رایگان</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
           {/* Section 1: Add New Admin Form */}
           <div className="bg-gradient-to-br from-indigo-50 via-white to-slate-50 rounded-3xl p-6 border border-indigo-100 shadow-sm space-y-4">
             <div className="flex items-center gap-2.5 border-b border-indigo-100 pb-3">
@@ -3862,13 +4082,33 @@ export const AdminPanel: React.FC = () => {
                             <div className="text-xs text-slate-500 truncate mt-0.5">
                               کلاس {st.className} • ⭐ {st.rating}
                             </div>
-                            <div className="text-[11px] text-emerald-700 font-semibold mt-1">
-                              {st.booksContributedCount} کتاب • {st.booksReadCount} خوانده
+                            <div className="text-[11px] text-emerald-700 font-semibold mt-1 flex flex-wrap items-center gap-1.5">
+                              <span>{st.booksContributedCount} کتاب • {st.booksReadCount} خوانده</span>
+                              {(st.freeLoanQuota || 0) > 0 && (
+                                <span className="inline-flex items-center gap-1 text-[10px] font-black bg-gradient-to-r from-amber-500 to-emerald-500 text-white px-2 py-0.5 rounded-full shadow-2xs" title={`${st.freeLoanQuota} سهمیه امانت رایگان فعال دارد`}>
+                                  <Gift className="w-2.5 h-2.5 text-white" />
+                                  <span>{st.freeLoanQuota} رایگان</span>
+                                </span>
+                              )}
                             </div>
                           </div>
                         </div>
 
                         <div className="flex items-center gap-1 shrink-0">
+                          {/* Quick Free Loan Grant Action Button */}
+                          <button
+                            onClick={() => {
+                              setSelectedStudentForFreeLoan(st);
+                              setFreeLoanCountToGrant(1);
+                              setFreeLoanReason('هدیه تشویقی مدیریت کتابخانه');
+                              setFreeLoanSuccessMsg(null);
+                              setFreeLoanErrorMsg(null);
+                            }}
+                            title={`اعطای دستی سهمیه امانت رایگان به ${st.name}`}
+                            className="p-2 text-amber-600 hover:text-amber-800 hover:bg-amber-100/80 rounded-xl transition cursor-pointer"
+                          >
+                            <Gift className="w-4 h-4 text-amber-600" />
+                          </button>
                           <button
                             onClick={async () => {
                               if (
@@ -4179,7 +4419,7 @@ export const AdminPanel: React.FC = () => {
             </div>
 
             <div className="flex items-center gap-1.5 overflow-x-auto w-full sm:w-auto">
-              {(['all', 'error', 'warn', 'info', 'db'] as const).map((lvl) => (
+              {(['all', 'error', 'warn', 'info', 'db', 'free_loans'] as const).map((lvl) => (
                 <button
                   key={lvl}
                   onClick={() => setLogLevelFilter(lvl)}
@@ -4194,6 +4434,7 @@ export const AdminPanel: React.FC = () => {
                   {lvl === 'warn' && '⚠️ هشدارها'}
                   {lvl === 'info' && 'ℹ️ عمومی'}
                   {lvl === 'db' && '🗄️ دیتابیس'}
+                  {lvl === 'free_loans' && '🎁 امانت رایگان'}
                 </button>
               ))}
             </div>
@@ -4221,7 +4462,14 @@ export const AdminPanel: React.FC = () => {
                   <tbody className="divide-y divide-slate-100">
                     {systemLogs
                       .filter((l) => {
-                        if (logLevelFilter !== 'all' && l.level !== logLevelFilter) return false;
+                        if (logLevelFilter === 'free_loans') {
+                          const isFreeLoanLog =
+                            (l.message && (l.message.includes('رایگان') || l.message.includes('سهمیه'))) ||
+                            (l.details && (l.details.includes('رایگان') || l.details.includes('سهمیه')));
+                          if (!isFreeLoanLog) return false;
+                        } else if (logLevelFilter !== 'all' && l.level !== logLevelFilter) {
+                          return false;
+                        }
                         if (logSearch) {
                           const q = logSearch.toLowerCase();
                           return (
@@ -4702,6 +4950,144 @@ export const AdminPanel: React.FC = () => {
                 )}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Modal: Grant Free Loans to Student */}
+      {selectedStudentForFreeLoan && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 z-55 overflow-y-auto">
+          <div className="bg-white rounded-3xl w-full max-w-md overflow-hidden border border-amber-200 shadow-2xl flex flex-col my-8 animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-gradient-to-r from-amber-500 via-amber-600 to-emerald-600 text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Gift className="w-5 h-5 text-amber-200" />
+                <h3 className="font-black text-sm">اعطای سهمیه امانت رایگان</h3>
+              </div>
+              <button
+                onClick={() => setSelectedStudentForFreeLoan(null)}
+                className="p-1 hover:bg-white/20 rounded-xl transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => handleGrantFreeLoanSubmit(e, selectedStudentForFreeLoan)}
+              className="p-6 space-y-4"
+            >
+              <div className="flex items-center gap-3 p-3 bg-amber-50 border border-amber-200 rounded-2xl">
+                <img
+                  src={selectedStudentForFreeLoan.avatar}
+                  alt={selectedStudentForFreeLoan.name}
+                  className="w-12 h-12 rounded-full object-cover ring-2 ring-amber-400"
+                />
+                <div>
+                  <h4 className="font-black text-slate-900 text-sm">{selectedStudentForFreeLoan.name}</h4>
+                  <div className="text-xs text-slate-500">کلاس {selectedStudentForFreeLoan.className}</div>
+                  <div className="text-[11px] text-emerald-700 font-bold mt-0.5">
+                    موجودی فعلی: {selectedStudentForFreeLoan.freeLoanQuota || 0} سهمیه رایگان
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">
+                  تعداد سهمیه امانت رایگان اهدایی:
+                </label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    required
+                    value={freeLoanCountToGrant}
+                    onChange={(e) => setFreeLoanCountToGrant(Math.max(1, parseInt(e.target.value) || 1))}
+                    className="w-24 text-center px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-black text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none transition"
+                  />
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 5].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setFreeLoanCountToGrant(preset)}
+                        className={`px-2.5 py-1.5 text-xs font-bold rounded-xl border transition cursor-pointer ${
+                          freeLoanCountToGrant === preset
+                            ? 'bg-amber-500 text-white border-amber-500'
+                            : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-amber-50'
+                        }`}
+                      >
+                        +{preset}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-700 mb-1.5">
+                  علت یا مناسبت هدیه:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={freeLoanReason}
+                  onChange={(e) => setFreeLoanReason(e.target.value)}
+                  placeholder="مثال: هدیه تشویقی مسابقه کتابخوانی"
+                  className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-bold text-slate-800 focus:bg-white focus:ring-2 focus:ring-amber-500 outline-none transition"
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-2xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+                <div className="flex items-center justify-between font-bold">
+                  <span>موجودی پس از اعطا:</span>
+                  <span className="text-emerald-700 font-black text-xs">
+                    {(selectedStudentForFreeLoan.freeLoanQuota || 0) + (Number(freeLoanCountToGrant) || 1)} سهمیه امانت رایگان
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  ✓ در لاگ‌های سیستم ثبت شده و نوتیف بات بله و صفحه تبریک سایت برای کاربر ارسال می‌گردد.
+                </p>
+              </div>
+
+              {freeLoanSuccessMsg && (
+                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-700">
+                  {freeLoanSuccessMsg}
+                </div>
+              )}
+
+              {freeLoanErrorMsg && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl text-xs font-bold text-rose-700">
+                  {freeLoanErrorMsg}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2.5 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentForFreeLoan(null)}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer"
+                >
+                  انصراف
+                </button>
+                <button
+                  type="submit"
+                  disabled={isGrantingFreeLoan}
+                  className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  {isGrantingFreeLoan ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>در حال ثبت...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Gift className="w-4 h-4" />
+                      <span>اعطای سهمیه</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

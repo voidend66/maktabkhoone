@@ -13,6 +13,7 @@ import { BaleOtpModal } from './components/BaleOtpModal';
 import { CompleteProfileModal } from './components/CompleteProfileModal';
 import { SystemGuideModal } from './components/SystemGuideModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
+import { FreeLoanCelebrationModal } from './components/FreeLoanCelebrationModal';
 import { NotFoundPage } from './components/NotFoundPage';
 import { Book } from './types';
 import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle, Send, Gift, Sparkles, X } from 'lucide-react';
@@ -587,6 +588,13 @@ function MainAppContent() {
             setActiveTab(tab);
             setShowNotifications(false);
           }}
+        />
+      )}
+
+      {/* Joyful Celebration Modal for Free Loan Reward */}
+      {currentUser?.pendingFreeLoanReward && (
+        <FreeLoanCelebrationModal
+          onNavigateToLibrary={() => setActiveTab('library')}
         />
       )}
 

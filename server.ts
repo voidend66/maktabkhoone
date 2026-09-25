@@ -1535,6 +1535,20 @@ export async function handleIncomingBaleCallbackQuery(callbackQuery: any) {
       dbService.updateBook(reqItem.bookId, { status: 'available' });
       const updated = dbService.updateRequest(reqId, { status: 'rejected' });
 
+      // If free loan was used, refund quota to borrower and log
+      if (reqItem.isFreeEventLoan) {
+        const borrower = dbService.getUserById(reqItem.borrowerId);
+        if (borrower) {
+          const refundedQuota = (borrower.freeLoanQuota || 0) + 1;
+          dbService.updateUser(borrower.id, { freeLoanQuota: refundedQuota });
+          dbService.addSystemLog(
+            'info',
+            'بازگشت سهمیه امانت رایگان (رد درخواست در بله)',
+            `سهمیه امانت رایگان کاربر ${borrower.name} (${borrower.className}) به علت عدم تایید درخواست کتاب «${reqItem.bookTitle}» توسط مالک در بله، بازگردانده شد. موجودی جدید: ${refundedQuota} سهمیه.`
+          );
+        }
+      }
+
       await callBaleApi('answerCallbackQuery', {
         callback_query_id: queryId,
         text: `❌ درخواست امانت کتاب «${reqItem.bookTitle}» رد شد.`,
@@ -2668,6 +2682,91 @@ async function startServer() {
     res.json({ success: true, user });
   });
 
+  /**
+   * API: اعطای دستی سهمیه امانت رایگان به کاربر توسط مدیر
+   */
+  app.post('/api/admin/users/:id/grant-free-loans', (req: Request, res: Response): any => {
+    try {
+      const { count, reason } = req.body || {};
+      const numCount = Math.max(1, Math.round(Number(count) || 1));
+      const user = dbService.getUserById(req.params.id);
+
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'کاربر مورد نظر یافت نشد.' });
+      }
+
+      const prevQuota = user.freeLoanQuota || 0;
+      const newQuota = prevQuota + numCount;
+      const reasonText = (reason && String(reason).trim()) ? String(reason).trim() : 'هدیه تشویقی مدیریت کتابخانه مدرسه';
+
+      const updatedUser = dbService.updateUser(user.id, {
+        freeLoanQuota: newQuota,
+        pendingFreeLoanReward: {
+          count: numCount,
+          source: 'manual',
+          reason: reasonText,
+          grantedAt: Date.now()
+        }
+      });
+
+      // System Log
+      dbService.addSystemLog(
+        'info',
+        'اعطای دستی سهمیه امانت رایگان',
+        `مدیر سامانه تعداد ${numCount} سهمیه امانت رایگان به ${user.name} (${user.className}) اهدا کرد. علت: ${reasonText}. موجودی کل سهمیه: ${newQuota}`
+      );
+
+      // In-app Notification
+      dbService.createNotification({
+        userId: user.id,
+        title: '🎁 دریافت سهمیه امانت رایگان!',
+        message: `مدیریت کتابخانه تعداد ${numCount} سهمیه امانت رایگان به شما اهدا کرد (${reasonText}). هم‌اکنون می‌توانید بدون هزینه کارمزد کتاب امانت بگیرید!`,
+        type: 'system',
+        linkTab: 'library'
+      });
+
+      // Bale bot notification
+      notifyUserOnBale(
+        user.id,
+        `🎁 <b>تبریک ${user.name} عزیز! سهمیه امانت رایگان دریافت کردید</b>\n\n` +
+        `🎉 <b>تعداد سهمیه اهدایی:</b> ${numCount} عدد\n` +
+        `📌 <b>مناسبت / علت:</b> ${reasonText}\n` +
+        `📚 <b>موجودی کل سهمیه‌های شما:</b> ${newQuota} امانت رایگان\n\n` +
+        `✨ هم‌اکنون وارد سایت مکتب‌خانه شوید و کتاب‌های مورد علاقه خود را بدون پرداخت کارمزد امانت بگیرید!`
+      );
+
+      res.json({
+        success: true,
+        message: `تعداد ${numCount} سهمیه امانت رایگان با موفقیت به ${user.name} اهدا شد.`,
+        user: updatedUser
+      });
+    } catch (err: any) {
+      console.error('Grant free loan error:', err);
+      res.status(500).json({ success: false, message: 'خطا در اعطای سهمیه امانت رایگان.' });
+    }
+  });
+
+  /**
+   * API: تایید و مشاهده صفحه تبریک سهمیه رایگان توسط کاربر
+   */
+  app.post('/api/users/:id/acknowledge-free-loan-reward', (req: Request, res: Response): any => {
+    try {
+      const user = dbService.getUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+      }
+
+      const updatedUser = dbService.updateUser(user.id, {
+        pendingFreeLoanReward: undefined
+      });
+
+      res.json({ success: true, user: updatedUser });
+    } catch (err: any) {
+      console.error('Acknowledge reward error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ثبت تایید جایزه.' });
+    }
+  });
+
   app.post('/api/users/:id/unsuspend', (req: Request, res: Response): any => {
     const user = dbService.updateUser(req.params.id, {
       status: 'approved',
@@ -2975,7 +3074,20 @@ async function startServer() {
         });
       }
 
-      res.json({ success: true, book: created });
+      // Check if adding this book completed any active event goals for the user!
+      const autoClaim = dbService.checkAndAutoClaimEventRewards(created.ownerId);
+      if (autoClaim.claimedCount > 0 && autoClaim.user) {
+        // Send celebratory notification on Bale
+        notifyUserOnBale(
+          created.ownerId,
+          `🎉 <b>تبریک فوق‌العاده ${created.ownerName} عزیز! پاداش ایونت برای شما فعال شد!</b>\n\n` +
+          `شما با ثبت کتاب «${created.title}»، هدف ایونت کتابخانه را تکمیل کردید و سهمیه امانت رایگان دریافت نمودید! 🎁\n` +
+          `📚 موجودی کل سهمیه‌های امانت رایگان شما: <b>${autoClaim.user.freeLoanQuota || 0} عدد</b>\n\n` +
+          `✨ هم‌اکنون وارد سایت مکتب‌خانه شوید و کتاب‌های دلخواهتان را بدون پرداخت هزینه امانت بگیرید!`
+        );
+      }
+
+      res.json({ success: true, book: created, user: autoClaim.user || user });
     } catch (err: any) {
       console.error('Create Book Error:', err);
       res.status(500).json({ success: false, message: 'خطا در ثبت کتاب.' });
@@ -3098,9 +3210,17 @@ async function startServer() {
         finalFee = 0;
         isFreeLoan = true;
         // Deduct 1 quota from borrower
+        const newQuota = Math.max(0, borrower.freeLoanQuota - 1);
         dbService.updateUser(borrower.id, {
-          freeLoanQuota: Math.max(0, borrower.freeLoanQuota - 1)
+          freeLoanQuota: newQuota
         });
+
+        // Record in system logs as requested
+        dbService.addSystemLog(
+          'info',
+          'استفاده از سهمیه امانت رایگان',
+          `کاربر ${borrower.name} (${borrower.className}) برای درخواست امانت کتاب «${book.title}» (مالک: ${book.ownerName}) از ۱ سهمیه امانت رایگان خود استفاده کرد. موجودی باقیمانده: ${newQuota} سهمیه.`
+        );
       }
 
       const now = Date.now();
@@ -3254,6 +3374,20 @@ async function startServer() {
     const reqItem = dbService.getRequestById(req.params.id);
     if (reqItem) {
       dbService.updateBook(reqItem.bookId, { status: 'available' });
+
+      // If free loan was used, refund quota to borrower and log
+      if (reqItem.isFreeEventLoan) {
+        const borrower = dbService.getUserById(reqItem.borrowerId);
+        if (borrower) {
+          const refundedQuota = (borrower.freeLoanQuota || 0) + 1;
+          dbService.updateUser(borrower.id, { freeLoanQuota: refundedQuota });
+          dbService.addSystemLog(
+            'info',
+            'بازگشت سهمیه امانت رایگان (رد درخواست)',
+            `سهمیه امانت رایگان کاربر ${borrower.name} (${borrower.className}) به علت عدم تایید درخواست کتاب «${reqItem.bookTitle}» توسط مالک، به حساب کاربر بازگردانده شد. موجودی جدید: ${refundedQuota} سهمیه.`
+          );
+        }
+      }
     }
     const updated = dbService.updateRequest(req.params.id, { status: 'rejected' });
 
@@ -4666,6 +4800,18 @@ async function startServer() {
     if (!result.success) {
       return res.status(400).json(result);
     }
+
+    if (result.user) {
+      const event = dbService.getEventById(req.params.id);
+      const freeQuotaText = result.user.freeLoanQuota ? `\n🎁 موجودی کل سهمیه‌های امانت رایگان: ${result.user.freeLoanQuota} عدد` : '';
+      notifyUserOnBale(
+        result.user.id,
+        `🎉 <b>تبریک ${result.user.name} عزیز! دریافت جایزه ایونت</b>\n\n` +
+        `🏆 پاداش ایونت «${event?.title || 'کتابخانه'}» با موفقیت برای شما فعال شد.${freeQuotaText}\n\n` +
+        `📚 هم‌اکنون وارد سایت مکتب‌خانه شوید و کتاب‌های دلخواهتان را بدون پرداخت هزینه امانت بگیرید!`
+      );
+    }
+
     return res.json(result);
   });
 

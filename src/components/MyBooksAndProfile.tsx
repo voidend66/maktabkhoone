@@ -18,7 +18,8 @@ import {
   Edit3,
   LogOut,
   Library,
-  Star
+  Star,
+  Gift
 } from 'lucide-react';
 
 interface MyBooksAndProfileProps {
@@ -360,6 +361,28 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
             <span>{currentUser.baleChatId ? '🔄 به‌روزرسانی اتصال بله' : '📲 اتصال به ربات بله'}</span>
           </a>
         </div>
+
+        {/* Free Loan Quota Banner (if user has active free loans) */}
+        {(currentUser.freeLoanQuota || 0) > 0 && (
+          <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-teal-500/15 border-2 border-amber-300/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2.5 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-xl shadow-xs shrink-0">
+                <Gift className="w-5 h-5" />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm">
+                  شما دارای {currentUser.freeLoanQuota} سهمیه امانت رایگان فعال هستید 🎁
+                </h4>
+                <p className="text-slate-600 text-[11px] mt-0.5">
+                  می‌توانید کتاب‌های همکلاسی‌های خود را بدون پرداخت کارمزد ۱۰,۰۰۰ تومانی امانت بگیرید.
+                </p>
+              </div>
+            </div>
+            <div className="text-[11px] font-black text-emerald-800 bg-emerald-100/90 border border-emerald-300 px-3 py-1.5 rounded-xl whitespace-nowrap">
+              ✓ فعال و آماده استفاده
+            </div>
+          </div>
+        )}
 
         {/* Compact Stats and Medals Summary (Clean & Minimalist) */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
