@@ -357,6 +357,163 @@ function seedInitialDataIfEmpty() {
     } catch {}
   }
 
+  // Seed initial real books and student contributors if empty
+  if (!memoryDb.books || memoryDb.books.length === 0) {
+    const student1Id = 'u_student_ali';
+    const student2Id = 'u_student_sara';
+    const student3Id = 'u_student_amir';
+
+    if (!memoryDb.users.some((u) => u.id === student1Id)) {
+      memoryDb.users.push({
+        id: student1Id,
+        name: 'علی رضایی',
+        className: 'کلاس ۶/۱',
+        phone: '09121110001',
+        avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'student',
+        rating: 4.9,
+        ratingsCount: 8,
+        booksContributedCount: 3,
+        booksReadCount: 6,
+        medals: [],
+        joinedDate: '1403/07/01',
+        activeLoanCount: 0,
+        freeLoanQuota: 1
+      });
+    }
+
+    if (!memoryDb.users.some((u) => u.id === student2Id)) {
+      memoryDb.users.push({
+        id: student2Id,
+        name: 'سارا احمدی',
+        className: 'کلاس ۵/۱',
+        phone: '09121110002',
+        avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'student',
+        rating: 5.0,
+        ratingsCount: 12,
+        booksContributedCount: 4,
+        booksReadCount: 9,
+        medals: [],
+        joinedDate: '1403/07/05',
+        activeLoanCount: 0,
+        freeLoanQuota: 2
+      });
+    }
+
+    if (!memoryDb.users.some((u) => u.id === student3Id)) {
+      memoryDb.users.push({
+        id: student3Id,
+        name: 'امیرحسین محمدی',
+        className: 'کلاس ۴/۱',
+        phone: '09121110003',
+        avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'student',
+        rating: 4.8,
+        ratingsCount: 5,
+        booksContributedCount: 2,
+        booksReadCount: 4,
+        medals: [],
+        joinedDate: '1403/07/10',
+        activeLoanCount: 0
+      });
+    }
+
+    memoryDb.books = [
+      {
+        id: 'book_real_1',
+        title: 'شازده کوچولو',
+        author: 'آنتوان دو سنت اگزوپری',
+        ownerId: student1Id,
+        ownerName: 'علی رضایی',
+        ownerClass: 'کلاس ۶/۱',
+        ownerAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=200',
+        coverImage: 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=800',
+        category: 'داستان و رمان نوجوان',
+        condition: 'عالی (نو)',
+        description: 'یکی از زیباترین و پرخواننده‌ترین شاهکارهای ادبیات جهان، ماجرای مسافر کوچک سیاره ب-۶۱۲ و روباه اهلی شده.',
+        status: 'available',
+        rating: 5.0,
+        reviewsCount: 3,
+        reviews: [
+          {
+            id: 'rev_1',
+            userId: student2Id,
+            userName: 'سارا احمدی',
+            userAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200',
+            userClass: 'کلاس ۵/۱',
+            rating: 5,
+            comment: 'فوق‌العاده بود، مخصوصاً فصل گفتگوی روباه با شازده کوچولو!',
+            date: '1403/07/15'
+          }
+        ],
+        addedDate: '1403/07/02',
+        createdAtTimestamp: Date.now() - 10 * 86400000
+      },
+      {
+        id: 'book_real_2',
+        title: 'قصه‌های مجید',
+        author: 'هوشنگ مرادی کرمانی',
+        ownerId: student2Id,
+        ownerName: 'سارا احمدی',
+        ownerClass: 'کلاس ۵/۱',
+        ownerAvatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=200',
+        coverImage: 'https://images.unsplash.com/photo-1512820790803-83ca734da794?auto=format&fit=crop&q=80&w=800',
+        category: 'ادبیات کهن و معاصر ایران',
+        condition: 'خوب',
+        description: 'روایت‌های شیرین و پر از خنده و عبرت پسربچه‌ای نوجوان به نام مجید همراه بی‌بی در اصفهان.',
+        status: 'available',
+        rating: 4.8,
+        reviewsCount: 2,
+        reviews: [],
+        addedDate: '1403/07/06',
+        createdAtTimestamp: Date.now() - 8 * 86400000
+      },
+      {
+        id: 'book_real_3',
+        title: 'شاهنامه فردوسی (داستان رستم و سهراب)',
+        author: 'ابوالقاسم فردوسی (بازنویسی کودک و نوجوان)',
+        ownerId: student3Id,
+        ownerName: 'امیرحسین محمدی',
+        ownerClass: 'کلاس ۴/۱',
+        ownerAvatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        coverImage: 'https://images.unsplash.com/photo-1543002588-bfa74002ed7e?auto=format&fit=crop&q=80&w=800',
+        category: 'اساطیر و تاریخ ایران',
+        condition: 'عالی (نو)',
+        description: 'داستان حماسی و ماندگار رویارویی پهلوان رستم و پسرش سهراب با نثری روان و جذاب مخصوص رده سنی دانش‌آموزان.',
+        status: 'available',
+        rating: 4.9,
+        reviewsCount: 1,
+        reviews: [],
+        addedDate: '1403/07/11',
+        createdAtTimestamp: Date.now() - 5 * 86400000
+      },
+      {
+        id: 'book_real_4',
+        title: 'سفر به اعماق زمین',
+        author: 'ژول ورن',
+        ownerId: student1Id,
+        ownerName: 'علی رضایی',
+        ownerClass: 'کلاس ۶/۱',
+        ownerAvatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&q=80&w=200',
+        coverImage: 'https://images.unsplash.com/photo-1589829085413-56de8ae18c73?auto=format&fit=crop&q=80&w=800',
+        category: 'علمی تخیلی و ماجراجویی',
+        condition: 'خوب',
+        description: 'ماجراجویی پروفسور لیدن‌براک و برادرزاده‌اش برای ورود به دنیای زیرین زمین از دهانه آتشفشان خاموش.',
+        status: 'available',
+        rating: 4.7,
+        reviewsCount: 0,
+        reviews: [],
+        addedDate: '1403/07/14',
+        createdAtTimestamp: Date.now() - 3 * 86400000
+      }
+    ];
+    hasChanges = true;
+  }
+
   // Seed default initial event if empty
   if (!memoryDb.events || memoryDb.events.length === 0) {
     const now = Date.now();

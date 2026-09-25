@@ -3145,6 +3145,103 @@ async function startServer() {
     }
   });
 
+  // AI-Powered Document Corner Detection for CamScanner
+  app.post('/api/scanner/detect-corners', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { image } = req.body;
+      if (!image || typeof image !== 'string') {
+        return res.status(400).json({ success: false, message: 'تصویر معتبر ارسال نشده است.' });
+      }
+
+      if (!process.env.GEMINI_API_KEY) {
+        return res.status(503).json({ success: false, message: 'کلید سرویس هوش مصنوعی تنظیم نشده است.' });
+      }
+
+      let mimeType = 'image/jpeg';
+      let base64Data = '';
+
+      if (image.startsWith('data:')) {
+        const matches = image.match(/^data:([a-zA-Z0-9/.-]+);base64,(.+)$/);
+        if (matches) {
+          mimeType = matches[1];
+          base64Data = matches[2];
+        } else {
+          base64Data = image.split(',')[1] || image;
+        }
+      } else if (image.startsWith('http')) {
+        const fetchRes = await fetch(image);
+        if (!fetchRes.ok) {
+          return res.status(400).json({ success: false, message: 'امکان دانلود تصویر وجود ندارد.' });
+        }
+        const arrayBuf = await fetchRes.arrayBuffer();
+        base64Data = Buffer.from(arrayBuf).toString('base64');
+        mimeType = fetchRes.headers.get('content-type') || 'image/jpeg';
+      } else {
+        base64Data = image;
+      }
+
+      const { GoogleGenAI } = await import('@google/genai');
+      const ai = new GoogleGenAI();
+      const prompt = `You are an expert document scanner & computer vision engine.
+The user provided a photo of a physical book lying on a surface (which may be a Persian carpet with floral patterns, rug, parquet/tile floor, or desk).
+Your job is to identify the EXACT 4 corner vertices of the front book cover rectangle:
+- topLeft (x, y)
+- topRight (x, y)
+- bottomRight (x, y)
+- bottomLeft (x, y)
+
+Ignore any surrounding carpet, floor, pens, fingers, shadows, or background elements.
+Each coordinate must be a number representing the percentage (0.0 to 100.0) within the full image (where 0,0 is the top-left corner of the image and 100,100 is bottom-right).
+Return ONLY a valid JSON object in this format:
+{
+  "topLeft": { "x": number, "y": number },
+  "topRight": { "x": number, "y": number },
+  "bottomRight": { "x": number, "y": number },
+  "bottomLeft": { "x": number, "y": number }
+}`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.8-flash',
+        contents: [
+          {
+            inlineData: {
+              mimeType,
+              data: base64Data
+            }
+          },
+          prompt
+        ],
+        config: {
+          responseMimeType: 'application/json'
+        }
+      });
+
+      const text = response.text?.trim() || '{}';
+      const parsed = JSON.parse(text);
+
+      if (parsed.topLeft && parsed.topRight && parsed.bottomRight && parsed.bottomLeft) {
+        const clamp = (val: any) => Math.max(0, Math.min(100, parseFloat(Number(val).toFixed(2)) || 0));
+        return res.json({
+          success: true,
+          corners: {
+            topLeft: { x: clamp(parsed.topLeft.x), y: clamp(parsed.topLeft.y) },
+            topRight: { x: clamp(parsed.topRight.x), y: clamp(parsed.topRight.y) },
+            bottomRight: { x: clamp(parsed.bottomRight.x), y: clamp(parsed.bottomRight.y) },
+            bottomLeft: { x: clamp(parsed.bottomLeft.x), y: clamp(parsed.bottomLeft.y) }
+          }
+        });
+      }
+
+      return res.status(422).json({ success: false, message: 'امکان تشخیص گوشه‌ها با هوش مصنوعی فراهم نشد.' });
+    } catch (err: any) {
+      console.warn('AI corner detector error:', err?.message);
+      return res.status(500).json({
+        success: false,
+        message: err?.message || 'خطا در پردازش تصویر با هوش مصنوعی'
+      });
+    }
+  });
+
   app.delete('/api/books/:id', async (req: Request, res: Response): Promise<any> => {
     try {
       const book = dbService.getBookById(req.params.id);

@@ -6,7 +6,6 @@ import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
 import { AdminEventsManager } from './AdminEventsManager';
 import { CamScannerModal } from './CamScannerModal';
-import { CAMSCANNER_DEMO_SAMPLES } from '../utils/camScannerDemoSamples';
 import { Book } from '../types';
 import {
   Activity,
@@ -3572,7 +3571,7 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
-          {/* CamScanner Showcase & Demo Mode Card */}
+          {/* CamScanner Showcase Card */}
           <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 border-2 border-amber-300/80 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="p-3 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-2xl shadow-md shrink-0">
@@ -3586,19 +3585,27 @@ export const AdminPanel: React.FC = () => {
                   </span>
                 </h4>
                 <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                  دانش‌آموزان به دلیل سن کم اغلب عکس‌ها را با زاویه کج و به همراه فرش، موکت و زمینه اطراف ثبت می‌کنند. با این ابزار می‌توانید عکس هر کتاب را با برش پرسپکتیو ۴ نقطه‌ای و فیلترهای جادویی کم‌اسکنر تمیز و اسکن کنید. در هر زمان نیز با یک کلیک امکان بازگشت به عکس اولیه وجود دارد.
+                  کتاب‌های ثبت‌شده دانش‌آموزان را با برش پرسپکتیو ۴ نقطه‌ای، شناسایی دقیق کادر با کتابخانه اسکنر (Scanic WASM) و هوش مصنوعی اصلاح کنید تا فرش، موکت و زمینه زائد حذف شوند.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setShowDemoScanner(true)}
-              className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-700 hover:to-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-amber-200" />
-              <span>🚀 ورود به حالت دمو (تست با نمونه‌های فرش/زمین)</span>
-            </button>
+            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+              <button
+                type="button"
+                onClick={() => {
+                  if (books.length > 0) {
+                    setScannerBook(books[0]);
+                  } else {
+                    setShowDemoScanner(true);
+                  }
+                }}
+                className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-700 hover:to-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+              >
+                <Crop className="w-4 h-4 text-amber-200" />
+                <span>📷 باز کردن کم‌اسکنر و تست با عکس واقعی</span>
+              </button>
+            </div>
           </div>
 
           {/* Auto Bale Cleanup Banner */}
@@ -5183,16 +5190,22 @@ export const AdminPanel: React.FC = () => {
       {/* CamScanner Modal */}
       {(scannerBook || showDemoScanner) && (
         <CamScannerModal
-          initialImageUrl={scannerBook ? scannerBook.coverImage : CAMSCANNER_DEMO_SAMPLES[0].getImageDataUrl()}
-          bookTitle={scannerBook ? scannerBook.title : 'نمونه آزمایشی دمو (کتاب روی فرش)'}
+          initialImageUrl={
+            scannerBook
+              ? scannerBook.coverImage
+              : books[0]?.coverImage ||
+                'https://images.unsplash.com/photo-1544947950-fa07a98d237f?auto=format&fit=crop&q=80&w=800'
+          }
+          bookTitle={scannerBook ? scannerBook.title : books[0]?.title || 'کتاب واقعی سامانه'}
           originalCoverImage={scannerBook?.originalCoverImage}
           onClose={() => {
             setScannerBook(null);
             setShowDemoScanner(false);
           }}
           onSave={async (scannedImageDataUrl, originalBackupUrl) => {
-            if (scannerBook) {
-              const res = await updateBook(scannerBook.id, {
+            const targetBook = scannerBook || books[0];
+            if (targetBook) {
+              const res = await updateBook(targetBook.id, {
                 coverImage: scannedImageDataUrl,
                 originalCoverImage: originalBackupUrl,
                 isCoverScanned: true
@@ -5200,15 +5213,13 @@ export const AdminPanel: React.FC = () => {
               if (!res.success) {
                 throw new Error(res.message || 'خطا در ذخیره جلد کتاب');
               }
-            } else {
-              // Demo mode save notice
-              alert('در حالت دمو، تغییرات به صورت آزمایشی بررسی شدند و روی دیتابیس کتاب‌های واقعی ذخیره نمی‌گردند.');
             }
           }}
           onRevertToOriginal={
-            scannerBook?.originalCoverImage
+            (scannerBook || books[0])?.originalCoverImage
               ? async () => {
-                  await revertBookCover(scannerBook.id);
+                  const targetId = (scannerBook || books[0]).id;
+                  await revertBookCover(targetId);
                 }
               : undefined
           }

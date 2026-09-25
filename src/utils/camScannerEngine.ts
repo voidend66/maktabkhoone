@@ -290,19 +290,275 @@ export function rotateCanvas(canvas: HTMLCanvasElement): HTMLCanvasElement {
 }
 
 /**
- * Smart Auto-Detect book quadrilateral corners
- * Analyzes contrast between background (carpet, floor) and central book rectangle
+ * Detect corners using Scanic document scanner library (WASM & Canny detection)
  */
-export function autoDetectBookCorners(
+export async function detectCornersWithScanic(
+  imageElement: HTMLImageElement | HTMLCanvasElement
+): Promise<{ success: boolean; corners?: [Point, Point, Point, Point]; message?: string }> {
+  try {
+    const { scanDocument } = await import('scanic');
+    const result = await scanDocument(imageElement, {
+      mode: 'detect',
+      detector: 'classical',
+      minDetectionConfidence: 0.12,
+      lowThreshold: 25,
+      highThreshold: 110,
+      minArea: 800
+    });
+
+    if (result.success && result.corners) {
+      const w = (imageElement as HTMLImageElement).naturalWidth || imageElement.width || 1;
+      const h = (imageElement as HTMLImageElement).naturalHeight || imageElement.height || 1;
+
+      const corners: [Point, Point, Point, Point] = [
+        {
+          x: Math.max(0, Math.min(100, parseFloat(((result.corners.topLeft.x / w) * 100).toFixed(2)))),
+          y: Math.max(0, Math.min(100, parseFloat(((result.corners.topLeft.y / h) * 100).toFixed(2))))
+        },
+        {
+          x: Math.max(0, Math.min(100, parseFloat(((result.corners.topRight.x / w) * 100).toFixed(2)))),
+          y: Math.max(0, Math.min(100, parseFloat(((result.corners.topRight.y / h) * 100).toFixed(2))))
+        },
+        {
+          x: Math.max(0, Math.min(100, parseFloat(((result.corners.bottomRight.x / w) * 100).toFixed(2)))),
+          y: Math.max(0, Math.min(100, parseFloat(((result.corners.bottomRight.y / h) * 100).toFixed(2))))
+        },
+        {
+          x: Math.max(0, Math.min(100, parseFloat(((result.corners.bottomLeft.x / w) * 100).toFixed(2)))),
+          y: Math.max(0, Math.min(100, parseFloat(((result.corners.bottomLeft.y / h) * 100).toFixed(2))))
+        }
+      ];
+
+      return { success: true, corners };
+    }
+    return { success: false, message: result.message || 'سند در تصویر شناسایی نشد.' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'خطا در کتابخانه Scanic' };
+  }
+}
+
+/**
+ * Detect corners using server-side Gemini AI Vision
+ */
+export async function detectCornersWithAI(
+  imageSource: string
+): Promise<{ success: boolean; corners?: [Point, Point, Point, Point]; message?: string }> {
+  try {
+    const res = await fetch('/api/scanner/detect-corners', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: imageSource })
+    });
+    const data = await res.json();
+    if (data.success && data.corners) {
+      const c = data.corners;
+      const corners: [Point, Point, Point, Point] = [
+        { x: c.topLeft.x, y: c.topLeft.y },
+        { x: c.topRight.x, y: c.topRight.y },
+        { x: c.bottomRight.x, y: c.bottomRight.y },
+        { x: c.bottomLeft.x, y: c.bottomLeft.y }
+      ];
+      return { success: true, corners };
+    }
+    return { success: false, message: data.message || 'هوش مصنوعی موفق به تشخیص گوشه‌ها نشد.' };
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'خطا در ارتباط با سرور هوش مصنوعی' };
+  }
+}
+
+/**
+ * Detect corners using client-side HTML5 Canvas background subtraction and edge bounding
+ */
+export function detectCornersWithCV(
   sourceImg: CanvasImageSource,
-  width: number,
-  height: number
-): [Point, Point, Point, Point] {
-  // Safe default: 12% margin inward (standard 3:4 book crop)
-  return [
-    { x: 12, y: 10 }, // Top-Left
-    { x: 88, y: 10 }, // Top-Right
-    { x: 88, y: 90 }, // Bottom-Right
-    { x: 12, y: 90 }  // Bottom-Left
-  ];
+  sourceWidth: number,
+  sourceHeight: number
+): { success: boolean; corners: [Point, Point, Point, Point]; confidence: number } {
+  try {
+    const W = 320;
+    const H = Math.round((sourceHeight / sourceWidth) * 320) || 420;
+    const canvas = document.createElement('canvas');
+    canvas.width = W;
+    canvas.height = H;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) throw new Error('No 2d context');
+
+    ctx.drawImage(sourceImg, 0, 0, W, H);
+    const imgData = ctx.getImageData(0, 0, W, H);
+    const data = imgData.data;
+
+    // Average border color (carpet, rug, or table background around edges)
+    let bgR = 0, bgG = 0, bgB = 0, borderCount = 0;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0; x < W; x++) {
+        if (x < 12 || x >= W - 12 || y < 12 || y >= H - 12) {
+          const idx = (y * W + x) * 4;
+          bgR += data[idx];
+          bgG += data[idx + 1];
+          bgB += data[idx + 2];
+          borderCount++;
+        }
+      }
+    }
+    bgR /= borderCount || 1;
+    bgG /= borderCount || 1;
+    bgB /= borderCount || 1;
+
+    let minX = W, maxX = 0, minY = H, maxY = 0;
+    let fgCount = 0;
+    const candidatePoints: { x: number; y: number }[] = [];
+
+    for (let y = 8; y < H - 8; y += 2) {
+      let rowFirstX = -1;
+      let rowLastX = -1;
+      for (let x = 8; x < W - 8; x += 2) {
+        const idx = (y * W + x) * 4;
+        const diff = Math.sqrt(
+          (data[idx] - bgR) ** 2 +
+          (data[idx + 1] - bgG) ** 2 +
+          (data[idx + 2] - bgB) ** 2
+        );
+
+        if (diff > 30) {
+          fgCount++;
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+
+          if (rowFirstX === -1) rowFirstX = x;
+          rowLastX = x;
+        }
+      }
+
+      if (rowFirstX !== -1) {
+        candidatePoints.push({ x: rowFirstX, y }, { x: rowLastX, y });
+      }
+    }
+
+    const fgRatio = (fgCount * 4) / (W * H);
+    if (fgRatio < 0.08 || minX >= maxX || minY >= maxY) {
+      return {
+        success: false,
+        corners: [
+          { x: 12, y: 10 },
+          { x: 88, y: 10 },
+          { x: 88, y: 90 },
+          { x: 12, y: 90 }
+        ],
+        confidence: 0.2
+      };
+    }
+
+    // Extremes: TL, TR, BR, BL
+    let tl = { x: minX, y: minY }, minSum = 999999;
+    let br = { x: maxX, y: maxY }, maxSum = -999999;
+    let tr = { x: maxX, y: minY }, maxDiff = -999999;
+    let bl = { x: minX, y: maxY }, minDiff = 999999;
+
+    for (const p of candidatePoints) {
+      const sum = p.x + p.y;
+      const diff = p.x - p.y;
+      if (sum < minSum) { minSum = sum; tl = p; }
+      if (sum > maxSum) { maxSum = sum; br = p; }
+      if (diff > maxDiff) { maxDiff = diff; tr = p; }
+      if (diff < minDiff) { minDiff = diff; bl = p; }
+    }
+
+    const corners: [Point, Point, Point, Point] = [
+      { x: Math.max(0, Math.min(100, parseFloat(((tl.x / W) * 100).toFixed(1)))), y: Math.max(0, Math.min(100, parseFloat(((tl.y / H) * 100).toFixed(1)))) },
+      { x: Math.max(0, Math.min(100, parseFloat(((tr.x / W) * 100).toFixed(1)))), y: Math.max(0, Math.min(100, parseFloat(((tr.y / H) * 100).toFixed(1)))) },
+      { x: Math.max(0, Math.min(100, parseFloat(((br.x / W) * 100).toFixed(1)))), y: Math.max(0, Math.min(100, parseFloat(((br.y / H) * 100).toFixed(1)))) },
+      { x: Math.max(0, Math.min(100, parseFloat(((bl.x / W) * 100).toFixed(1)))), y: Math.max(0, Math.min(100, parseFloat(((bl.y / H) * 100).toFixed(1)))) }
+    ];
+
+    return { success: true, corners, confidence: 0.78 };
+  } catch {
+    return {
+      success: false,
+      corners: [
+        { x: 12, y: 10 },
+        { x: 88, y: 10 },
+        { x: 88, y: 90 },
+        { x: 12, y: 90 }
+      ],
+      confidence: 0.1
+    };
+  }
+}
+
+/**
+ * Unified Smart Corner Detector:
+ * Coordinates Scanic, AI Vision, and Computer Vision boundary fitting
+ */
+export async function smartDetectBookCorners(
+  imageElement: HTMLImageElement,
+  imageSrc?: string,
+  preferredMethod: 'auto' | 'scanic' | 'ai' | 'cv' = 'auto'
+): Promise<{
+  success: boolean;
+  corners: [Point, Point, Point, Point];
+  method: 'scanic' | 'ai' | 'cv' | 'fallback';
+  message: string;
+}> {
+  // If user explicitly chose AI
+  if (preferredMethod === 'ai' && imageSrc) {
+    const aiRes = await detectCornersWithAI(imageSrc);
+    if (aiRes.success && aiRes.corners) {
+      return {
+        success: true,
+        corners: aiRes.corners,
+        method: 'ai',
+        message: 'تشخیص کادر کتاب با هوش مصنوعی (AI Vision) انجام شد.'
+      };
+    }
+  }
+
+  // Scanic Document Scanner (WASM/Canny)
+  if (preferredMethod === 'scanic' || preferredMethod === 'auto') {
+    const scanicRes = await detectCornersWithScanic(imageElement);
+    if (scanicRes.success && scanicRes.corners) {
+      return {
+        success: true,
+        corners: scanicRes.corners,
+        method: 'scanic',
+        message: 'کادر کتاب با کتابخانه اسکنر (Scanic WASM) با موفقیت شناسایی شد.'
+      };
+    }
+  }
+
+  // In auto mode, if Scanic didn't find clear quad, try AI Vision
+  if (preferredMethod === 'auto' && imageSrc) {
+    const aiRes = await detectCornersWithAI(imageSrc);
+    if (aiRes.success && aiRes.corners) {
+      return {
+        success: true,
+        corners: aiRes.corners,
+        method: 'ai',
+        message: 'تشخیص کادر کتاب با هوش مصنوعی (AI Vision) انجام شد.'
+      };
+    }
+  }
+
+  // Client-side Computer Vision fallback
+  const cvRes = detectCornersWithCV(
+    imageElement,
+    imageElement.naturalWidth || 800,
+    imageElement.naturalHeight || 1000
+  );
+  if (cvRes.success) {
+    return {
+      success: true,
+      corners: cvRes.corners,
+      method: 'cv',
+      message: 'کادر کتاب بر اساس تفکیک پس‌زمینه فرش/زمین شناسایی شد.'
+    };
+  }
+
+  return {
+    success: false,
+    corners: cvRes.corners,
+    method: 'fallback',
+    message: 'کادر پیشنهادی تنظیم شد. می‌توانید ۴ گوشه را به دلخواه جابجا کنید.'
+  };
 }

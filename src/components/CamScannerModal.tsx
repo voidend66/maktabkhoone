@@ -12,20 +12,24 @@ import {
   Undo2,
   Sliders,
   Eye,
-  Layers,
   HelpCircle,
   ShieldCheck,
   CheckCircle2,
-  Image as ImageIcon
+  Upload,
+  BookOpen,
+  Bot,
+  AlertCircle
 } from 'lucide-react';
 import {
   Point,
   CamScannerFilterType,
   warpPerspectiveCanvas,
   applyCamScannerFilter,
-  rotateCanvas
+  rotateCanvas,
+  smartDetectBookCorners
 } from '../utils/camScannerEngine';
-import { CAMSCANNER_DEMO_SAMPLES, DemoSample } from '../utils/camScannerDemoSamples';
+import { useApp } from '../context/AppContext';
+import { Book } from '../types';
 
 interface CamScannerModalProps {
   initialImageUrl: string;
@@ -44,21 +48,31 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
   onSave,
   onRevertToOriginal
 }) => {
-  // Active step: 'crop' (4-corner perspective) | 'filter' (CamScanner magic filters) | 'review' (Before / After)
+  const { books } = useApp();
+
+  // Active step: 'crop' | 'filter' | 'review'
   const [step, setStep] = useState<'crop' | 'filter' | 'review'>('crop');
 
-  // Active image source (supports switching to demo samples)
+  // Active image source
   const [activeImageSrc, setActiveImageSrc] = useState<string>(initialImageUrl);
-  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
-  const [activeDemoSample, setActiveDemoSample] = useState<DemoSample | null>(null);
+  const [currentBookTitle, setCurrentBookTitle] = useState<string>(bookTitle);
+  const [isCustomUpload, setIsCustomUpload] = useState<boolean>(false);
+  const [uploadFileName, setUploadFileName] = useState<string | null>(null);
 
-  // 4 corners in percentage [0..100]
+  // 4 corners in percentage [0..100] - [TL, TR, BR, BL]
   const [corners, setCorners] = useState<[Point, Point, Point, Point]>([
-    { x: 15, y: 15 }, // TL
-    { x: 85, y: 15 }, // TR
-    { x: 85, y: 85 }, // BR
-    { x: 15, y: 85 }  // BL
+    { x: 14, y: 12 }, // TL
+    { x: 86, y: 12 }, // TR
+    { x: 84, y: 88 }, // BR
+    { x: 16, y: 88 }  // BL
   ]);
+
+  // Corner detection status
+  const [isDetecting, setIsDetecting] = useState<boolean>(false);
+  const [detectionNotice, setDetectionNotice] = useState<{
+    type: 'success' | 'info' | 'error';
+    message: string;
+  } | null>(null);
 
   // Dragging state
   const [draggedCornerIdx, setDraggedCornerIdx] = useState<number | null>(null);
@@ -66,7 +80,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
 
   // Filter state
   const [selectedFilter, setSelectedFilter] = useState<CamScannerFilterType>('magic_color');
-  const [rotationAngle, setRotationAngle] = useState<number>(0); // 0, 90, 180, 270
+  const [rotationAngle, setRotationAngle] = useState<number>(0);
 
   // Result canvases
   const [warpedCanvas, setWarpedCanvas] = useState<HTMLCanvasElement | null>(null);
@@ -81,80 +95,117 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState<string | null>(null);
 
+  // Selector dropdown toggle
+  const [showBookSelector, setShowBookSelector] = useState<boolean>(false);
+
   // Refs
   const imageRef = useRef<HTMLImageElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const loupeCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
-  // Initialize demo or original image
+  // Execute smart detection on an image element
+  const runDetection = useCallback(
+    async (method: 'auto' | 'scanic' | 'ai' = 'auto', customSrc?: string) => {
+      const img = imageRef.current;
+      if (!img) return;
+
+      setIsDetecting(true);
+      setDetectionNotice({
+        type: 'info',
+        message:
+          method === 'ai'
+            ? 'در حال پردازش و شناسایی کادر با هوش مصنوعی (AI Vision)...'
+            : method === 'scanic'
+            ? 'در حال اسکن لبه‌های سند با کتابخانه Scanic (WASM)...'
+            : 'در حال تحلیل تصویر و تشخیص هوشمند ۴ گوشه جلد کتاب...'
+      });
+
+      try {
+        const src = customSrc || activeImageSrc;
+        const res = await smartDetectBookCorners(img, src, method);
+
+        if (res.corners) {
+          setCorners([...res.corners]);
+          setDetectionNotice({
+            type: res.success ? 'success' : 'info',
+            message: res.message
+          });
+        }
+      } catch (err: any) {
+        setDetectionNotice({
+          type: 'error',
+          message: 'خطا در تحلیل تصویر: ' + (err.message || 'نامشخص')
+        });
+      } finally {
+        setIsDetecting(false);
+      }
+    },
+    [activeImageSrc]
+  );
+
+  // Initial load
   useEffect(() => {
     setActiveImageSrc(initialImageUrl);
-  }, [initialImageUrl]);
+    setCurrentBookTitle(bookTitle);
+  }, [initialImageUrl, bookTitle]);
 
-  // Load image and set default corners
+  // Handle image load
   const handleImageLoaded = () => {
-    if (activeDemoSample) {
-      setCorners([...activeDemoSample.defaultCorners]);
-    } else {
-      // Default inset for real photos
-      setCorners([
-        { x: 14, y: 12 },
-        { x: 86, y: 12 },
-        { x: 84, y: 88 },
-        { x: 16, y: 88 }
-      ]);
+    // Automatically run smart detection when a real image finishes loading
+    runDetection('auto');
+  };
+
+  // Handle user uploading custom real photo
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      alert('لطفاً یک فایل تصویری معتبر انتخاب کنید.');
+      return;
     }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        setIsCustomUpload(true);
+        setUploadFileName(file.name);
+        setCurrentBookTitle(`عکس آپلودشده: ${file.name}`);
+        setActiveImageSrc(dataUrl);
+        setStep('crop');
+      }
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
   };
 
-  // Switch to a demo sample
-  const handleSelectDemoSample = (sample: DemoSample) => {
-    setIsDemoMode(true);
-    setActiveDemoSample(sample);
-    const dataUrl = sample.getImageDataUrl();
-    setActiveImageSrc(dataUrl);
-    setCorners([...sample.defaultCorners]);
+  // Handle selecting a real book from the library
+  const handleSelectBook = (book: Book) => {
+    setIsCustomUpload(false);
+    setUploadFileName(null);
+    setCurrentBookTitle(book.title);
+    setActiveImageSrc(book.coverImage);
+    setShowBookSelector(false);
     setStep('crop');
   };
 
-  // Switch back to actual book photo
-  const handleSelectActualBook = () => {
-    setIsDemoMode(false);
-    setActiveDemoSample(null);
-    setActiveImageSrc(initialImageUrl);
-    setCorners([
-      { x: 14, y: 12 },
-      { x: 86, y: 12 },
-      { x: 84, y: 88 },
-      { x: 16, y: 88 }
-    ]);
-    setStep('crop');
-  };
-
-  // Reset corners to full frame
+  // Reset to full frame
   const handleResetFullFrame = () => {
     setCorners([
-      { x: 4, y: 4 },
-      { x: 96, y: 4 },
-      { x: 96, y: 96 },
-      { x: 4, y: 96 }
+      { x: 3, y: 3 },
+      { x: 97, y: 3 },
+      { x: 97, y: 97 },
+      { x: 3, y: 97 }
     ]);
+    setDetectionNotice({
+      type: 'info',
+      message: 'کادر روی کل ابعاد تصویر تنظیم شد.'
+    });
   };
 
-  // Smart edge detect (reset to default book quad)
-  const handleAutoDetect = () => {
-    if (activeDemoSample) {
-      setCorners([...activeDemoSample.defaultCorners]);
-    } else {
-      setCorners([
-        { x: 16, y: 14 },
-        { x: 84, y: 16 },
-        { x: 82, y: 86 },
-        { x: 18, y: 84 }
-      ]);
-    }
-  };
-
-  // Handle Corner Dragging (Mouse & Touch)
+  // Handle Corner Dragging (Pointer & Touch)
   const handlePointerDown = (index: number, e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -225,7 +276,6 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
 
     ctx.clearRect(0, 0, loupeW, loupeH);
 
-    // Draw zoomed area from image
     ctx.drawImage(
       img,
       sourceX - cropW / 2,
@@ -238,14 +288,12 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
       loupeH
     );
 
-    // Draw precision crosshairs
+    // Crosshairs
     ctx.strokeStyle = '#ef4444';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
-    // Horizontal
     ctx.moveTo(0, loupeH / 2);
     ctx.lineTo(loupeW, loupeH / 2);
-    // Vertical
     ctx.moveTo(loupeW / 2, 0);
     ctx.lineTo(loupeW / 2, loupeH);
     ctx.stroke();
@@ -256,12 +304,11 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
     ctx.stroke();
   }, [corners, draggedCornerIdx]);
 
-  // Process Perspective Warp -> Go to Filter Step
+  // Perspective Warp -> Filter Step
   const handleProceedToFilters = async () => {
     if (!imageRef.current) return;
     setIsProcessing(true);
 
-    // Use requestAnimationFrame to let UI render loading spinner
     requestAnimationFrame(() => {
       try {
         const img = imageRef.current!;
@@ -271,11 +318,10 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
           img.naturalHeight,
           corners,
           750,
-          1000 // Standard 3:4 book aspect ratio
+          1000
         );
         setWarpedCanvas(warped);
 
-        // Apply initial filter (Magic Color)
         const filtered = applyCamScannerFilter(warped, selectedFilter);
         setFinalFilteredDataUrl(filtered.toDataURL('image/jpeg', 0.94));
         setStep('filter');
@@ -288,12 +334,11 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
     });
   };
 
-  // Apply Filter to Warped Canvas
+  // Filter Selection
   const handleSelectFilter = (filterType: CamScannerFilterType) => {
     setSelectedFilter(filterType);
     if (!warpedCanvas) return;
 
-    // Create a clone canvas so we don't destructively overwrite the base warped canvas
     const clone = document.createElement('canvas');
     clone.width = warpedCanvas.width;
     clone.height = warpedCanvas.height;
@@ -315,13 +360,12 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
     setFinalFilteredDataUrl(filtered.toDataURL('image/jpeg', 0.94));
   };
 
-  // Handle Save
+  // Final Save
   const handleFinalSave = async () => {
     if (!finalFilteredDataUrl) return;
     setIsSaving(true);
     setSaveSuccessMsg(null);
     try {
-      // The originalBackup is the original unedited image
       const originalBackup = originalCoverImage || initialImageUrl;
       await onSave(finalFilteredDataUrl, originalBackup);
       setSaveSuccessMsg('✓ جلد کتاب با موفقیت اسکن، اصلاح و ذخیره شد!');
@@ -335,7 +379,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
     }
   };
 
-  // Handle Revert to Original
+  // Revert to Original
   const handleRevert = async () => {
     if (!onRevertToOriginal) return;
     if (confirm('آیا مطمئن هستید که می‌خواهید جلد این کتاب را به عکس اولیه و بدون اصلاح دانش‌آموز برگردانید؟')) {
@@ -351,14 +395,19 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
     }
   };
 
-  // Polygon SVG points string: "x1,y1 x2,y2 x3,y3 x4,y4"
   const polygonPoints = corners.map((p) => `${p.x},${p.y}`).join(' ');
-
-  // Corner labels
   const cornerLabels = ['بالا راست', 'بالا چپ', 'پایین چپ', 'پایین راست'];
 
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto animate-in fade-in duration-200">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileUpload}
+        className="hidden"
+      />
+
       <div className="relative w-full max-w-4xl bg-slate-900 border border-slate-700/80 rounded-3xl shadow-2xl text-white flex flex-col my-auto max-h-[96vh] overflow-hidden">
         {/* Top Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border-b border-slate-800 flex items-center justify-between gap-3 shrink-0">
@@ -378,7 +427,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                 </h3>
               </div>
               <p className="text-[11px] text-slate-400 mt-0.5 truncate max-w-xs sm:max-w-md">
-                برش پرسپکتیو ۴ نقطه‌ای و حذف فرش، کفپوش و حواشی نامناسب • کتاب: «{bookTitle}»
+                برش پرسپکتیو ۴ نقطه‌ای و حذف فرش، کفپوش و حواشی نامناسب • {currentBookTitle}
               </p>
             </div>
           </div>
@@ -405,8 +454,8 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
           </div>
         </div>
 
-        {/* Step Indicator & Demo Switcher Bar */}
-        <div className="bg-slate-950/70 border-b border-slate-800/80 px-4 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs shrink-0">
+        {/* Real Testing & Photo Source Bar */}
+        <div className="bg-slate-950/90 border-b border-slate-800 px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5 text-xs shrink-0">
           {/* Stepper Tabs */}
           <div className="flex items-center gap-1 sm:gap-2">
             <button
@@ -460,77 +509,111 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
             </button>
           </div>
 
-          {/* Demo Samples Switcher (Explicitly requested by user) */}
-          <div className="flex items-center gap-1.5 overflow-x-auto py-0.5">
-            <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1 shrink-0">
-              <Sparkles className="w-3 h-3 text-amber-400" />
-              <span>تست نمونه‌های دمو:</span>
-            </span>
-
+          {/* Real Photo Actions: Upload Any Real Photo OR Select Library Book */}
+          <div className="flex items-center gap-2">
+            {/* Upload Real Photo */}
             <button
-              onClick={handleSelectActualBook}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
-                !isDemoMode
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-              }`}
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="px-3 py-1.5 rounded-xl font-black text-[11px] bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-700 hover:to-violet-700 text-white shadow-xs transition flex items-center gap-1.5 cursor-pointer"
+              title="آپلود هر عکسی از گوشی یا کامپیوتر (مثلاً کتاب روی فرش خانه) برای تست"
             >
-              📖 کتاب واقعی سیستم
+              <Upload className="w-3.5 h-3.5 text-indigo-200" />
+              <span>📷 آپلود عکس واقعی (گوشی/سیستم)</span>
             </button>
 
-            {CAMSCANNER_DEMO_SAMPLES.map((sample) => (
-              <button
-                key={sample.id}
-                onClick={() => handleSelectDemoSample(sample)}
-                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition whitespace-nowrap cursor-pointer ${
-                  activeDemoSample?.id === sample.id
-                    ? 'bg-amber-500 text-slate-950 shadow-xs'
-                    : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
-                }`}
-                title={sample.description}
-              >
-                {sample.id === 'sample_carpet' && '🛋️ کتاب روی فرش'}
-                {sample.id === 'sample_floor' && '🪵 کتاب روی پارکت'}
-                {sample.id === 'sample_desk' && '📝 کتاب روی میز'}
-              </button>
-            ))}
+            {/* Select from Real Books in System */}
+            {books && books.length > 0 && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => setShowBookSelector(!showBookSelector)}
+                  className="px-3 py-1.5 rounded-xl font-black text-[11px] bg-slate-800 hover:bg-slate-750 text-slate-200 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <BookOpen className="w-3.5 h-3.5 text-amber-400" />
+                  <span>انتخاب از کتاب‌های واقعی سامانه</span>
+                  <span className="px-1.5 py-0.2 bg-slate-700 text-amber-300 rounded-md text-[10px]">
+                    {books.length}
+                  </span>
+                </button>
+
+                {showBookSelector && (
+                  <div className="absolute left-0 sm:right-0 sm:left-auto top-full mt-2 w-72 max-h-64 overflow-y-auto bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-2 z-50 divide-y divide-slate-800">
+                    <div className="text-[11px] font-black text-slate-400 p-1.5">
+                      انتخاب جلد کتاب واقعی دانش‌آموزان:
+                    </div>
+                    {books.map((b) => (
+                      <button
+                        key={b.id}
+                        type="button"
+                        onClick={() => handleSelectBook(b)}
+                        className="w-full text-right p-2 hover:bg-slate-800 rounded-xl transition flex items-center gap-2.5 cursor-pointer group"
+                      >
+                        <img
+                          src={b.coverImage}
+                          alt={b.title}
+                          className="w-8 h-10 object-cover rounded shadow-xs shrink-0"
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-200 group-hover:text-amber-400 truncate text-xs">
+                            {b.title}
+                          </div>
+                          <div className="text-[10px] text-slate-500 truncate">
+                            {b.author} • {b.ownerName}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Modal Body */}
-        <div className="flex-1 p-4 sm:p-6 overflow-y-auto min-h-[380px] flex flex-col items-center justify-center">
+        <div className="flex-1 p-3 sm:p-5 overflow-y-auto min-h-[380px] flex flex-col items-center justify-center">
           {/* STEP 1: 4-Corner Interactive Perspective Crop */}
           {step === 'crop' && (
-            <div className="w-full flex flex-col items-center space-y-4">
-              {/* Guidance text */}
-              <div className="w-full max-w-xl text-center text-xs text-slate-300 bg-slate-800/60 p-2.5 rounded-2xl border border-slate-700/60 flex items-center justify-between gap-2">
-                <span className="flex items-center gap-1.5 text-amber-300 font-bold">
-                  <HelpCircle className="w-4 h-4 shrink-0" />
-                  <span>راهنما:</span>
-                </span>
-                <span className="text-[11px] sm:text-xs">
-                  ۴ دایره گوشه را بکشید و دقیقاً روی ۴ راس جلد کتاب قرار دهید تا فرش و زمینه برش داده شوند.
-                </span>
-                <button
-                  onClick={handleAutoDetect}
-                  className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 text-[11px] font-black rounded-lg border border-amber-500/40 transition shrink-0 cursor-pointer"
+            <div className="w-full flex flex-col items-center space-y-3">
+              {/* Detection Notification Banner */}
+              {detectionNotice && (
+                <div
+                  className={`w-full max-w-xl text-xs p-2.5 rounded-2xl border flex items-center justify-between gap-2 animate-in fade-in duration-150 ${
+                    detectionNotice.type === 'success'
+                      ? 'bg-emerald-950/70 border-emerald-700 text-emerald-200'
+                      : detectionNotice.type === 'error'
+                      ? 'bg-rose-950/70 border-rose-700 text-rose-200'
+                      : 'bg-slate-800/80 border-slate-700 text-slate-300'
+                  }`}
                 >
-                  تشخیص هوشمند
-                </button>
-              </div>
+                  <div className="flex items-center gap-2">
+                    {detectionNotice.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : detectionNotice.type === 'error' ? (
+                      <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                    ) : (
+                      <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                    )}
+                    <span className="font-bold">{detectionNotice.message}</span>
+                  </div>
+
+                  {isDetecting && <RefreshCw className="w-4 h-4 animate-spin text-amber-400 shrink-0" />}
+                </div>
+              )}
 
               {/* Interactive Image Container with Corner Pins & Polygon Overlay */}
               <div
                 ref={containerRef}
                 className="relative select-none touch-none rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 max-w-lg w-full bg-slate-950 flex items-center justify-center"
-                style={{ maxHeight: '55vh' }}
+                style={{ maxHeight: '52vh' }}
               >
                 <img
                   ref={imageRef}
                   src={activeImageSrc}
                   alt="Original"
                   onLoad={handleImageLoaded}
-                  className="w-full h-auto max-h-[55vh] object-contain block pointer-events-none"
+                  className="w-full h-auto max-h-[52vh] object-contain block pointer-events-none"
                   crossOrigin="anonymous"
                 />
 
@@ -542,9 +625,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                 >
                   <defs>
                     <mask id="carpetMask">
-                      {/* White reveals everything */}
                       <rect width="100" height="100" fill="white" />
-                      {/* Black cuts out the book quad */}
                       <polygon points={polygonPoints} fill="black" />
                     </mask>
                   </defs>
@@ -596,9 +677,8 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                       top: `${corner.y}%`,
                       transform: 'translate(-50%, -50%)'
                     }}
-                    className={`absolute z-30 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center cursor-move touch-none group`}
+                    className="absolute z-30 w-9 h-9 sm:w-10 sm:h-10 flex items-center justify-center cursor-move touch-none group"
                   >
-                    {/* Pulsing ring on active */}
                     <div
                       className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full border-2 transition-all flex items-center justify-center shadow-lg ${
                         draggedCornerIdx === idx
@@ -609,14 +689,13 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                       <div className="w-1.5 h-1.5 bg-slate-950 rounded-full" />
                     </div>
 
-                    {/* Corner index badge */}
                     <span className="absolute -bottom-4 text-[9px] font-black bg-slate-950/90 text-slate-300 px-1.5 py-0.5 rounded-md border border-slate-700 whitespace-nowrap pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
                       {cornerLabels[idx]}
                     </span>
                   </div>
                 ))}
 
-                {/* Floating Precision Magnifier Loupe */}
+                {/* Precision Magnifier Loupe */}
                 {draggedCornerIdx !== null && mousePos && (
                   <div
                     style={{
@@ -642,24 +721,41 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                 )}
               </div>
 
-              {/* Crop Toolbar */}
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-1 text-xs">
+              {/* Crop Detection Control Buttons */}
+              <div className="w-full max-w-xl flex flex-wrap items-center justify-center gap-2 pt-1 text-xs">
+                {/* Scanic WASM Button */}
                 <button
                   type="button"
-                  onClick={handleAutoDetect}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                  onClick={() => runDetection('scanic')}
+                  disabled={isDetecting}
+                  className="px-3.5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="تشخیص لبه‌ها با کتابخانه قدرتمند پردازش تصویر Scanic"
                 >
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                  <span>تنظیم خودکار لبه‌ها</span>
+                  <Crop className="w-3.5 h-3.5 text-emerald-200" />
+                  <span>اسکن با کتابخانه Scanic (WASM)</span>
                 </button>
 
+                {/* AI Vision Button */}
+                <button
+                  type="button"
+                  onClick={() => runDetection('ai')}
+                  disabled={isDetecting}
+                  className="px-3.5 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white font-black rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  title="تشخیص موقعیت جلد کتاب با هوش مصنوعی و بینایی ماشین پیشرفته"
+                >
+                  <Bot className="w-3.5 h-3.5 text-purple-200" />
+                  <span>تشخیص با هوش مصنوعی (AI)</span>
+                </button>
+
+                {/* Full Frame Reset */}
                 <button
                   type="button"
                   onClick={handleResetFullFrame}
-                  className="px-3.5 py-2 bg-slate-800 hover:bg-slate-750 text-slate-200 font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-2 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                  title="ریست کردن کادر به کل تصویر"
                 >
                   <Maximize2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>انتخاب کل تصویر</span>
+                  <span>کل کادر</span>
                 </button>
               </div>
             </div>
@@ -667,14 +763,13 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
 
           {/* STEP 2: Scanner Filters & Adjustments */}
           {step === 'filter' && (
-            <div className="w-full max-w-xl flex flex-col items-center space-y-5">
-              {/* Preview of unskewed flat rectangular book cover */}
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/70 max-h-[50vh] bg-slate-950 flex items-center justify-center">
+            <div className="w-full max-w-xl flex flex-col items-center space-y-4">
+              <div className="relative rounded-2xl overflow-hidden shadow-2xl border-2 border-emerald-500/70 max-h-[48vh] bg-slate-950 flex items-center justify-center">
                 {finalFilteredDataUrl ? (
                   <img
                     src={finalFilteredDataUrl}
                     alt="Scanned Preview"
-                    className="max-h-[50vh] w-auto object-contain block shadow-inner"
+                    className="max-h-[48vh] w-auto object-contain block shadow-inner"
                   />
                 ) : (
                   <div className="p-12 text-center text-slate-400 text-xs">در حال پردازش اسکن...</div>
@@ -725,54 +820,54 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                     onClick={() => handleSelectFilter('clear_document')}
                     className={`p-3 rounded-2xl border text-right transition flex flex-col gap-1 cursor-pointer ${
                       selectedFilter === 'clear_document'
-                        ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-emerald-400 text-white shadow-md ring-2 ring-emerald-400/30'
+                        ? 'bg-gradient-to-br from-cyan-500/20 to-blue-500/20 border-cyan-400 text-white shadow-md ring-2 ring-cyan-400/30'
                         : 'bg-slate-850 hover:bg-slate-800 border-slate-700 text-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black">📄 سند روشن</span>
-                      {selectedFilter === 'clear_document' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
+                      <span className="text-xs font-black">📄 سند شفاف</span>
+                      {selectedFilter === 'clear_document' && <Check className="w-3.5 h-3.5 text-cyan-400" />}
                     </div>
                     <span className="text-[10px] text-slate-400 leading-tight">
-                      سفیدسازی کامل سایه دست و کاغذ
+                      حذف سایه‌ها و لکه‌های تیره کاغذ
                     </span>
                   </button>
 
-                  {/* High-Contrast B&W */}
+                  {/* High Contrast B&W */}
                   <button
                     type="button"
                     onClick={() => handleSelectFilter('high_contrast_bw')}
                     className={`p-3 rounded-2xl border text-right transition flex flex-col gap-1 cursor-pointer ${
                       selectedFilter === 'high_contrast_bw'
-                        ? 'bg-gradient-to-br from-slate-700 to-slate-800 border-slate-300 text-white shadow-md ring-2 ring-white/30'
+                        ? 'bg-gradient-to-br from-slate-500/20 to-slate-400/20 border-slate-300 text-white shadow-md ring-2 ring-slate-400/30'
                         : 'bg-slate-850 hover:bg-slate-800 border-slate-700 text-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black">⚫ سیاه و سفید</span>
+                      <span className="text-xs font-black">🖤 سیاه و سفید</span>
                       {selectedFilter === 'high_contrast_bw' && <Check className="w-3.5 h-3.5 text-white" />}
                     </div>
                     <span className="text-[10px] text-slate-400 leading-tight">
-                      کنتراست بالا برای کتب متنی
+                      متن‌های پررنگ و کنتراست اسنادی
                     </span>
                   </button>
 
-                  {/* Original Enhanced */}
+                  {/* Original */}
                   <button
                     type="button"
                     onClick={() => handleSelectFilter('original')}
                     className={`p-3 rounded-2xl border text-right transition flex flex-col gap-1 cursor-pointer ${
                       selectedFilter === 'original'
-                        ? 'bg-gradient-to-br from-indigo-500/20 to-cyan-500/20 border-cyan-400 text-white shadow-md ring-2 ring-cyan-400/30'
+                        ? 'bg-gradient-to-br from-emerald-500/20 to-teal-500/20 border-emerald-400 text-white shadow-md ring-2 ring-emerald-400/30'
                         : 'bg-slate-850 hover:bg-slate-800 border-slate-700 text-slate-300'
                     }`}
                   >
                     <div className="flex items-center justify-between">
-                      <span className="text-xs font-black">🖼️ رنگ طبیعی</span>
-                      {selectedFilter === 'original' && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                      <span className="text-xs font-black">🎨 رنگ اصلی</span>
+                      {selectedFilter === 'original' && <Check className="w-3.5 h-3.5 text-emerald-400" />}
                     </div>
                     <span className="text-[10px] text-slate-400 leading-tight">
-                      بدون تغییر رنگ (فقط برش زاویه)
+                      فقط برش کادر بدون تغییر رنگ
                     </span>
                   </button>
                 </div>
@@ -780,22 +875,17 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
             </div>
           )}
 
-          {/* STEP 3: Review & Before/After Comparison Split Slider */}
+          {/* STEP 3: Before & After Split Review */}
           {step === 'review' && (
             <div className="w-full max-w-xl flex flex-col items-center space-y-4">
-              <div className="text-center space-y-1">
-                <h4 className="text-sm font-black text-amber-300 flex items-center justify-center gap-1.5">
-                  <Eye className="w-4 h-4" />
-                  <span>مقایسه تعاملی قبل و بعد (Before / After)</span>
-                </h4>
-                <p className="text-[11px] text-slate-400">
-                  اسلایدر وسط تصویر را به چپ و راست بکشید تا تفاوت عکس اولیه با نتیجه اسکن را مشاهده کنید.
-                </p>
+              <div className="text-xs text-slate-300 font-bold flex items-center gap-1.5">
+                <Sliders className="w-4 h-4 text-cyan-400" />
+                <span>خط وسط را به چپ و راست بکشید تا تغییر عکس قبل و بعد را مقایسه کنید:</span>
               </div>
 
-              {/* Split Comparison Slider Container */}
+              {/* Interactive Split Comparison */}
               <div
-                className="relative select-none rounded-2xl overflow-hidden shadow-2xl border-2 border-slate-700 max-h-[50vh] w-full max-w-md bg-slate-950 flex items-center justify-center cursor-ew-resize"
+                className="relative select-none touch-none rounded-2xl overflow-hidden shadow-2xl border-2 border-cyan-500/70 max-h-[48vh] bg-slate-950 flex items-center justify-center cursor-ew-resize max-w-md w-full"
                 onPointerDown={() => setIsDraggingSlider(true)}
                 onPointerUp={() => setIsDraggingSlider(false)}
                 onPointerMove={(e) => {
@@ -810,7 +900,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                 <img
                   src={finalFilteredDataUrl}
                   alt="After CamScanner"
-                  className="w-full h-auto max-h-[50vh] object-contain block"
+                  className="w-full h-auto max-h-[48vh] object-contain block"
                 />
 
                 {/* BEFORE Image (Clipped overlay) */}
@@ -827,13 +917,11 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
                       maxWidth: 'none'
                     }}
                   />
-                  {/* Before label */}
                   <span className="absolute top-3 left-3 bg-black/80 text-rose-300 border border-rose-500/50 text-[10px] font-black px-2 py-0.5 rounded-lg shadow-sm">
-                    قبل (عکس اولیه با فرش)
+                    قبل (عکس اولیه با زمینه)
                   </span>
                 </div>
 
-                {/* After label */}
                 <span className="absolute top-3 right-3 bg-black/80 text-emerald-300 border border-emerald-500/50 text-[10px] font-black px-2 py-0.5 rounded-lg shadow-sm pointer-events-none">
                   بعد (اسکن شده ✨)
                 </span>
@@ -853,7 +941,7 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
               <div className="p-3 bg-emerald-950/50 border border-emerald-800/80 rounded-2xl text-[11px] text-emerald-200 flex items-center gap-2 max-w-md w-full">
                 <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0" />
                 <span>
-                  <strong>سیستم ایمنی:</strong> عکس اولیه دانش‌آموز در سرور به عنوان نسخه پشتیبان ذخیره می‌شود و هر زمان مایل باشید با دکمه بازگشت قابل بازیابی است.
+                  <strong>سیستم ایمنی:</strong> عکس اولیه در سرور به عنوان نسخه پشتیبان ذخیره می‌شود و هر زمان مایل باشید با دکمه بازگشت قابل بازیابی است.
                 </span>
               </div>
             </div>
@@ -862,7 +950,6 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
 
         {/* Bottom Footer Actions */}
         <div className="p-4 sm:p-5 bg-slate-950 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
-          {/* Left: Secondary navigation */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {step === 'crop' && (
               <button
@@ -897,7 +984,6 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
             )}
           </div>
 
-          {/* Center Feedback */}
           {saveSuccessMsg && (
             <div className="text-xs font-black text-emerald-400 flex items-center gap-1.5">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
@@ -905,7 +991,6 @@ export const CamScannerModal: React.FC<CamScannerModalProps> = ({
             </div>
           )}
 
-          {/* Right: Primary Next/Save Action */}
           <div className="flex items-center gap-2 w-full sm:w-auto">
             {step === 'crop' && (
               <button
