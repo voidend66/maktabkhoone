@@ -3145,99 +3145,321 @@ async function startServer() {
     }
   });
 
-  // AI-Powered Document Corner Detection for CamScanner
-  app.post('/api/scanner/detect-corners', async (req: Request, res: Response): Promise<any> => {
+  // Helper to safely cache external book cover to local uploads directory
+  async function cacheExternalCoverImage(imageUrl: string, isbn: string): Promise<string> {
+    if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl;
     try {
-      const { image } = req.body;
-      if (!image || typeof image !== 'string') {
-        return res.status(400).json({ success: false, message: 'تصویر معتبر ارسال نشده است.' });
-      }
-
-      if (!process.env.GEMINI_API_KEY) {
-        return res.status(503).json({ success: false, message: 'کلید سرویس هوش مصنوعی تنظیم نشده است.' });
-      }
-
-      let mimeType = 'image/jpeg';
-      let base64Data = '';
-
-      if (image.startsWith('data:')) {
-        const matches = image.match(/^data:([a-zA-Z0-9/.-]+);base64,(.+)$/);
-        if (matches) {
-          mimeType = matches[1];
-          base64Data = matches[2];
-        } else {
-          base64Data = image.split(',')[1] || image;
+      const safeUrl = imageUrl.replace(/^http:\/\//i, 'https://');
+      const fetchRes = await fetch(safeUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8'
         }
-      } else if (image.startsWith('http')) {
-        const fetchRes = await fetch(image);
-        if (!fetchRes.ok) {
-          return res.status(400).json({ success: false, message: 'امکان دانلود تصویر وجود ندارد.' });
-        }
-        const arrayBuf = await fetchRes.arrayBuffer();
-        base64Data = Buffer.from(arrayBuf).toString('base64');
-        mimeType = fetchRes.headers.get('content-type') || 'image/jpeg';
-      } else {
-        base64Data = image;
-      }
+      });
+      if (!fetchRes.ok) return imageUrl;
 
-      const { GoogleGenAI } = await import('@google/genai');
-      const ai = new GoogleGenAI();
-      const prompt = `You are an expert document scanner & computer vision engine.
-The user provided a photo of a physical book lying on a surface (which may be a Persian carpet with floral patterns, rug, parquet/tile floor, or desk).
-Your job is to identify the EXACT 4 corner vertices of the front book cover rectangle:
-- topLeft (x, y)
-- topRight (x, y)
-- bottomRight (x, y)
-- bottomLeft (x, y)
+      const buffer = Buffer.from(await fetchRes.arrayBuffer());
+      if (buffer.length < 500) return imageUrl; // Too small / invalid
 
-Ignore any surrounding carpet, floor, pens, fingers, shadows, or background elements.
-Each coordinate must be a number representing the percentage (0.0 to 100.0) within the full image (where 0,0 is the top-left corner of the image and 100,100 is bottom-right).
-Return ONLY a valid JSON object in this format:
-{
-  "topLeft": { "x": number, "y": number },
-  "topRight": { "x": number, "y": number },
-  "bottomRight": { "x": number, "y": number },
-  "bottomLeft": { "x": number, "y": number }
-}`;
+      const ext = imageUrl.includes('.png') ? 'png' : imageUrl.includes('.webp') ? 'webp' : 'jpg';
+      const filename = `isbn_${isbn.replace(/[^a-zA-Z0-9]/g, '')}_${Date.now()}.${ext}`;
+      const localFilePath = path.join(getUploadsDir(), filename);
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3.8-flash',
-        contents: [
-          {
-            inlineData: {
-              mimeType,
-              data: base64Data
-            }
-          },
-          prompt
-        ],
-        config: {
-          responseMimeType: 'application/json'
+      fs.writeFileSync(localFilePath, buffer);
+      return `/uploads/${filename}`;
+    } catch (err: any) {
+      console.warn('Failed to cache external cover locally, using original URL:', err?.message);
+      return imageUrl;
+    }
+  }
+
+  // Helper to decode Persian HTML entities
+  function cleanHtmlText(text: string): string {
+    if (!text) return '';
+    return text
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&laquo;/gi, '«')
+      .replace(/&raquo;/gi, '»')
+      .replace(/&zwnj;/gi, '‌')
+      .replace(/&#xD;&#xA;/g, '\n')
+      .replace(/&quot;/gi, '"')
+      .replace(/&#39;/gi, "'")
+      .replace(/&amp;/gi, '&')
+      .replace(/&nbsp;/gi, ' ')
+      .trim();
+  }
+
+  // Scraper specifically for IranKetab (iranketab.ir)
+  async function lookupIranKetab(query: string): Promise<{
+    title: string;
+    author: string;
+    publisher: string;
+    category: string;
+    description: string;
+    coverImage: string;
+    source: string;
+    url?: string;
+  } | null> {
+    try {
+      const cleanQuery = query.trim().replace(/[\s]/g, '');
+      const searchUrl = `https://www.iranketab.ir/result/${encodeURIComponent(cleanQuery)}`;
+      console.log(`[IranKetab Scraper] Querying ${searchUrl}...`);
+
+      const searchRes = await fetch(searchUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'fa-IR,fa;q=0.9,en;q=0.8'
         }
       });
 
-      const text = response.text?.trim() || '{}';
-      const parsed = JSON.parse(text);
+      if (!searchRes.ok) return null;
+      const searchHtml = await searchRes.text();
 
-      if (parsed.topLeft && parsed.topRight && parsed.bottomRight && parsed.bottomLeft) {
-        const clamp = (val: any) => Math.max(0, Math.min(100, parseFloat(Number(val).toFixed(2)) || 0));
-        return res.json({
-          success: true,
-          corners: {
-            topLeft: { x: clamp(parsed.topLeft.x), y: clamp(parsed.topLeft.y) },
-            topRight: { x: clamp(parsed.topRight.x), y: clamp(parsed.topRight.y) },
-            bottomRight: { x: clamp(parsed.bottomRight.x), y: clamp(parsed.bottomRight.y) },
-            bottomLeft: { x: clamp(parsed.bottomLeft.x), y: clamp(parsed.bottomLeft.y) }
+      // Find first book link on search result
+      const bookLinkMatch = searchHtml.match(/href=\"(\/book\/[^\"]+)\"/);
+      if (!bookLinkMatch) {
+        console.log(`[IranKetab Scraper] No book link found on search page for: ${query}`);
+        return null;
+      }
+
+      const bookPath = bookLinkMatch[1];
+      const bookUrl = `https://www.iranketab.ir${bookPath}`;
+
+      // Extract initial fallback info from search card
+      let searchTitle = '';
+      let searchAuthor = '';
+      let searchImg = '';
+
+      const titleMatch = searchHtml.match(/class=\"truncate text-primary\"[^>]*>(?:<i[^>]*><\/i>)?\s*([^<]+)/i);
+      if (titleMatch) searchTitle = cleanHtmlText(titleMatch[1]);
+
+      const authorMatch = searchHtml.match(/class=\"text-sm text-default truncate\"[^>]*>([^<]+)/i);
+      if (authorMatch) searchAuthor = cleanHtmlText(authorMatch[1]);
+
+      const imgMatch = searchHtml.match(/src=\"(https:\/\/img\.iranketab\.ir\/img\/[^\"]+)\"/i);
+      if (imgMatch) searchImg = imgMatch[1].trim();
+
+      // Now fetch the book detail page for high-res cover, publisher, and full description
+      let title = searchTitle;
+      let author = searchAuthor;
+      let publisher = '';
+      let category = 'داستان و رمان';
+      let description = '';
+      let coverImage = searchImg;
+
+      const bookRes = await fetch(bookUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'Accept-Language': 'fa-IR,fa;q=0.9,en;q=0.8'
+        }
+      });
+
+      if (bookRes.ok) {
+        const bookHtml = await bookRes.text();
+
+        // 1. JSON-LD structured data (Product & Breadcrumb)
+        const jsonLdMatches = [...bookHtml.matchAll(/<script[^>]*type=\"application\/ld\+json\"[^>]*>([\s\S]*?)<\/script>/gi)];
+        for (const m of jsonLdMatches) {
+          try {
+            const d = JSON.parse(m[1].trim());
+            if (d['@type'] === 'Product') {
+              if (d.name) title = cleanHtmlText(d.name);
+              if (d.brand?.name) publisher = cleanHtmlText(d.brand.name);
+              if (d.image) coverImage = d.image;
+            }
+            if (d['@type'] === 'BreadcrumbList' && Array.isArray(d.itemListElement)) {
+              for (const item of d.itemListElement) {
+                const name = item?.name || '';
+                if (name.includes('کودک') || name.includes('نوجوان')) category = 'کودک و نوجوان';
+                else if (name.includes('شعر')) category = 'شعر و ادبیات';
+                else if (name.includes('مذهب') || name.includes('دین')) category = 'مذهبی و قرآنی';
+                else if (name.includes('علم') || name.includes('آموزش')) category = 'علمی و آموزشی';
+                else if (name.includes('روان')) category = 'روانشناسی و مهارت';
+                else if (name.includes('تاریخ')) category = 'تاریخی';
+              }
+            }
+          } catch {}
+        }
+
+        // 2. Author from detail page
+        const authorDetailMatch = bookHtml.match(/itemprop=\"author\"[\s\S]*?<span itemprop=\"name\">([^<]+)<\/span>/i) ||
+                                  bookHtml.match(/itemprop=\"author\"[^>]*>([^<]+)/i);
+        if (authorDetailMatch && authorDetailMatch[1]?.trim()) {
+          author = cleanHtmlText(authorDetailMatch[1]);
+        }
+
+        // 3. Detailed book introduction or summary
+        const introMatch = bookHtml.match(/class=\"text-sm text-justify mb-3 leading-6\"[^>]*>([\s\S]*?)<\/div>/i) ||
+                           bookHtml.match(/class=\"[^\"]*leading-6[^\"]*\"[^>]*>([\s\S]*?)<\/div>/i);
+        if (introMatch) {
+          description = cleanHtmlText(introMatch[1]);
+        } else {
+          const metaDesc = bookHtml.match(/<meta\s+name=\"description\"\s+content=\"([^\"]*)\"/i);
+          if (metaDesc) {
+            description = cleanHtmlText(metaDesc[1]);
           }
+        }
+      }
+
+      // If description is super long, truncate gently at 600 chars
+      if (description.length > 600) {
+        description = description.slice(0, 597) + '...';
+      }
+
+      return {
+        title: title || searchTitle,
+        author: author || searchAuthor || 'نامشخص',
+        publisher: publisher || '',
+        category,
+        description,
+        coverImage,
+        source: 'ایران کتاب (iranketab.ir)',
+        url: bookUrl
+      };
+    } catch (err: any) {
+      console.warn('[IranKetab Scraper] Error:', err?.message);
+      return null;
+    }
+  }
+
+  // Helper to convert between ISBN-10 and ISBN-13 for broader IranKetab hit rate
+  function normalizeIsbnVariants(rawIsbn: string): string[] {
+    const clean = rawIsbn.replace(/[^0-9X]/gi, '').trim();
+    const variants: string[] = [clean];
+
+    if (clean.length === 10) {
+      const core = '978' + clean.slice(0, 9);
+      let sum = 0;
+      for (let i = 0; i < 12; i++) {
+        sum += parseInt(core[i]) * (i % 2 === 0 ? 1 : 3);
+      }
+      const check = (10 - (sum % 10)) % 10;
+      variants.push(core + check);
+    } else if (clean.length === 13 && clean.startsWith('978')) {
+      const core = clean.slice(3, 12);
+      let sum = 0;
+      for (let i = 0; i < 9; i++) {
+        sum += parseInt(core[i]) * (10 - i);
+      }
+      const checkMod = (11 - (sum % 11)) % 11;
+      const checkChar = checkMod === 10 ? 'X' : checkMod.toString();
+      variants.push(core + checkChar);
+    }
+
+    return Array.from(new Set(variants));
+  }
+
+  // Lookup book metadata by ISBN (100% direct from IranKetab iranketab.ir)
+  app.post('/api/scanner/lookup-isbn', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { isbn } = req.body;
+      if (!isbn || typeof isbn !== 'string') {
+        return res.status(400).json({ success: false, message: 'شابک نامعتبر است.' });
+      }
+
+      const cleanIsbn = isbn.replace(/[^0-9X]/gi, '').trim();
+      if (cleanIsbn.length < 9) {
+        return res.status(400).json({ success: false, message: 'طول بارکد شابک باید حداقل ۱۰ یا ۱۳ رقم باشد.' });
+      }
+
+      console.log(`[ISBN Lookup - IranKetab Direct] Searching for ISBN: ${cleanIsbn}...`);
+
+      let foundBook: {
+        title?: string;
+        author?: string;
+        publisher?: string;
+        category?: string;
+        description?: string;
+        coverImage?: string;
+        source?: string;
+        url?: string;
+        isbn: string;
+      } | null = null;
+
+      // Iranian ISBN check
+      const isIranianIsbn =
+        cleanIsbn.startsWith('978964') ||
+        cleanIsbn.startsWith('978600') ||
+        cleanIsbn.startsWith('978622') ||
+        cleanIsbn.startsWith('9786') ||
+        cleanIsbn.startsWith('964');
+
+      // 1. PRIMARY & SOLE DOMESTIC SOURCE: IranKetab (iranketab.ir)
+      // Check exact ISBN and 10/13 digit variants if needed
+      const isbnCandidates = normalizeIsbnVariants(cleanIsbn);
+      for (const candidate of isbnCandidates) {
+        try {
+          const ikData = await lookupIranKetab(candidate);
+          if (ikData && ikData.title) {
+            foundBook = {
+              ...ikData,
+              isbn: cleanIsbn
+            };
+            console.log(`[ISBN Lookup] Found directly on IranKetab: "${foundBook.title}" by ${foundBook.author}`);
+            break;
+          }
+        } catch (ikErr: any) {
+          console.warn('[ISBN Lookup] IranKetab lookup attempt error:', ikErr?.message);
+        }
+      }
+
+      // 2. Foreign database fallback ONLY for non-Iranian ISBNs if not in IranKetab
+      if (!foundBook && !isIranianIsbn) {
+        try {
+          const searchRes = await fetch(`https://openlibrary.org/search.json?q=${cleanIsbn}`);
+          if (searchRes.ok) {
+            const searchData = await searchRes.json();
+            if (searchData.docs && searchData.docs.length > 0) {
+              const doc = searchData.docs[0];
+              const title = doc.title || '';
+              const author = Array.isArray(doc.author_name) ? doc.author_name.join('، ') : '';
+              const publisher = Array.isArray(doc.publisher) ? doc.publisher[0] : '';
+              const cover = doc.cover_i ? `https://covers.openlibrary.org/b/id/${doc.cover_i}-L.jpg` : '';
+
+              if (title) {
+                foundBook = {
+                  title,
+                  author,
+                  publisher,
+                  description: doc.first_sentence ? doc.first_sentence[0] : '',
+                  coverImage: cover,
+                  source: 'پایگاه بین‌المللی OpenLibrary',
+                  isbn: cleanIsbn
+                };
+              }
+            }
+          }
+        } catch (err: any) {
+          console.warn('[ISBN Lookup] OpenLibrary query failed:', err?.message);
+        }
+      }
+
+      if (!foundBook || !foundBook.title) {
+        return res.status(404).json({
+          success: false,
+          message: `کتابی با شابک «${cleanIsbn}» در پایگاه ایران‌کتاب یافت نشد. می‌توانید مشخصات را دستی وارد کنید.`,
+          isbn: cleanIsbn
         });
       }
 
-      return res.status(422).json({ success: false, message: 'امکان تشخیص گوشه‌ها با هوش مصنوعی فراهم نشد.' });
+      // If a remote cover image was found, cache it locally so it displays seamlessly
+      if (foundBook.coverImage && foundBook.coverImage.startsWith('http')) {
+        const localCached = await cacheExternalCoverImage(foundBook.coverImage, cleanIsbn);
+        foundBook.coverImage = localCached;
+      }
+
+      return res.json({
+        success: true,
+        book: foundBook
+      });
     } catch (err: any) {
-      console.warn('AI corner detector error:', err?.message);
+      console.error('[ISBN Lookup] Unexpected error:', err);
       return res.status(500).json({
         success: false,
-        message: err?.message || 'خطا در پردازش تصویر با هوش مصنوعی'
+        message: 'خطا در استعلام شابک از سرور.'
       });
     }
   });

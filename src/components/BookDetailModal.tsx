@@ -138,7 +138,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
               </span>
             </div>
 
-            {/* Admin CamScanner Action Button */}
+            {/* Admin Crop Action Button */}
             {currentUser?.role === 'admin' && (
               <div className="sm:col-span-3 -mt-2 mb-2 p-3 bg-gradient-to-r from-amber-500/10 to-emerald-500/10 border border-amber-300/80 rounded-2xl flex flex-wrap items-center justify-between gap-2.5">
                 <div className="flex items-center gap-2 text-xs">
@@ -146,11 +146,11 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     <Crop className="w-3.5 h-3.5" />
                   </span>
                   <div>
-                    <span className="font-black text-slate-900">اسکنر کم‌اسکنر (مدیریت): </span>
+                    <span className="font-black text-slate-900">ابزار برش جلد (مدیریت): </span>
                     <span className="text-slate-600 text-[11px]">
                       {book.isCoverScanned
-                        ? 'این جلد قبلاً با کم‌اسکنر اصلاح شده است ✨'
-                        : 'می‌توانید زاویه کج و زمینه فرش/زمین این عکس را برش زده و صاف کنید.'}
+                        ? 'این جلد قبلاً برش خورده و مرتب شده است ✨'
+                        : 'می‌توانید کادر این جلد را به دلخواه برش داده و تنظیم کنید.'}
                     </span>
                   </div>
                 </div>
@@ -161,7 +161,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white font-black text-xs rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
                   >
                     <Crop className="w-3.5 h-3.5 text-amber-100" />
-                    <span>اصلاح جلد با کم‌اسکنر</span>
+                    <span>برش و تنظیم جلد</span>
                   </button>
 
                   {book.originalCoverImage && (
@@ -169,7 +169,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                       onClick={async () => {
                         if (
                           confirm(
-                            `آیا مایل هستید جلد کتاب «${book.title}» را به عکس اولیه دانش‌آموز برگردانید؟`
+                            `آیا مایل هستید جلد کتاب «${book.title}» را به عکس اولیه برگردانید؟`
                           )
                         ) {
                           const res = await revertBookCover(book.id);

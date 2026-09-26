@@ -1,6 +1,74 @@
 {
-  "_dailyData": {},
+  "_dailyData": {
+    "2026-09-26": {
+      "date": "2026-09-26",
+      "pageViews": 34,
+      "timeSpentSeconds": 2880,
+      "interactions": 62,
+      "userSessions": [
+        "sess_ugk6ff8gi_mu8t1ydv",
+        "sess_u21a8eyk3_muicnl3s"
+      ],
+      "hourlyViews": [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        4,
+        21,
+        9,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "pathViews": {
+        "پنل مدیریت": 2,
+        "کتابخانه اصلی و فهرست کتب": 16,
+        "my_books": 16
+      },
+      "interactionCounts": {
+        "general_click": 62
+      },
+      "deviceCounts": {
+        "رایانه و لپ‌تاپ 💻": 32,
+        "موبایل 📱": 2
+      },
+      "browserCounts": {
+        "Google Chrome": 19
+      },
+      "searchQueries": {},
+      "userStats": {
+        "u_admin_master_test_001100": {
+          "name": "مدیر تست سامانه (کد 001100)",
+          "seconds": 2160,
+          "views": 26,
+          "interactions": 62,
+          "lastSeen": 1790425522046
+        },
+        "guest_sess_u": {
+          "name": "کاربر مهمان",
+          "seconds": 720,
+          "views": 8,
+          "interactions": 0,
+          "lastSeen": 1790424728885
+        }
+      }
+    }
+  },
   "_recentInteractions": [],
-  "_lastSaved": "2026-09-24T08:52:19.603Z",
-  "_resetAt": "2026-09-24T08:52:19.603Z"
+  "_lastSaved": "2026-09-26T12:25:25.047Z"
 }

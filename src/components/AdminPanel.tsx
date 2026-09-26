@@ -6,6 +6,7 @@ import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
 import { AdminEventsManager } from './AdminEventsManager';
 import { CamScannerModal } from './CamScannerModal';
+import { AddBookModal } from './AddBookModal';
 import { Book } from '../types';
 import {
   Activity,
@@ -67,7 +68,9 @@ import {
   FolderUp,
   Gift,
   Crop,
-  Undo2
+  Undo2,
+  MoreVertical,
+  Scan
 } from 'lucide-react';
 
 export const AdminPanel: React.FC = () => {
@@ -112,9 +115,11 @@ export const AdminPanel: React.FC = () => {
   // CamScanner state
   const [scannerBook, setScannerBook] = useState<Book | null>(null);
   const [showDemoScanner, setShowDemoScanner] = useState<boolean>(false);
+  const [showAdminAddBookScanner, setShowAdminAddBookScanner] = useState<boolean>(false);
 
   // Manual Free Loan Grant State
   const [selectedStudentForFreeLoan, setSelectedStudentForFreeLoan] = useState<any | null>(null);
+  const [mobileStudentActionUser, setMobileStudentActionUser] = useState<any | null>(null);
   const [freeLoanCountToGrant, setFreeLoanCountToGrant] = useState<number>(1);
   const [freeLoanReason, setFreeLoanReason] = useState<string>('هدیه تشویقی مدیریت کتابخانه');
   const [isGrantingFreeLoan, setIsGrantingFreeLoan] = useState<boolean>(false);
@@ -3529,11 +3534,20 @@ export const AdminPanel: React.FC = () => {
       {activeTab === 'all_books' && (
         <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
           <div className="flex items-center justify-between flex-wrap gap-4">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2.5 flex-wrap">
               <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
                 <BookOpen className="w-5 h-5 text-indigo-600" />
                 <span>فهرست کل کتاب‌های ثبت‌شده در مدرسه ({books.length} جلد)</span>
               </h3>
+
+              <button
+                onClick={() => setShowAdminAddBookScanner(true)}
+                className="px-3.5 py-1.5 bg-gradient-to-r from-amber-500 to-emerald-600 hover:from-amber-600 hover:to-emerald-700 text-white rounded-xl text-xs font-black transition flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+                title="افزودن کتاب جدید با استفاده از بارکدخوان هوشمند شابک (نسخه آزمایشی مدیریت)"
+              >
+                <Scan className="w-3.5 h-3.5 text-amber-200" />
+                <span>+ افزودن کتاب با بارکدخوان (تست)</span>
+              </button>
 
               <button
                 onClick={handlePublishAllBooks}
@@ -3571,7 +3585,7 @@ export const AdminPanel: React.FC = () => {
             </div>
           )}
 
-          {/* CamScanner Showcase Card */}
+          {/* Book Cover Crop Showcase Card */}
           <div className="bg-gradient-to-r from-amber-500/10 via-emerald-500/10 to-teal-500/10 border-2 border-amber-300/80 rounded-3xl p-5 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
             <div className="flex items-center gap-3.5">
               <div className="p-3 bg-gradient-to-br from-amber-500 to-emerald-600 text-white rounded-2xl shadow-md shrink-0">
@@ -3579,13 +3593,13 @@ export const AdminPanel: React.FC = () => {
               </div>
               <div>
                 <h4 className="font-black text-slate-900 text-sm sm:text-base flex items-center gap-2">
-                  <span>اسکنر هوشمند جلد کتاب (کم‌اسکنر / CamScanner)</span>
+                  <span>ابزار برش و اصلاح کادر جلد کتاب</span>
                   <span className="text-[10px] font-black bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full border border-amber-300">
                     ویژه مدیریت 🛡️
                   </span>
                 </h4>
                 <p className="text-xs text-slate-600 mt-1 max-w-2xl leading-relaxed">
-                  کتاب‌های ثبت‌شده دانش‌آموزان را با برش پرسپکتیو ۴ نقطه‌ای، شناسایی دقیق کادر با کتابخانه اسکنر (Scanic WASM) و هوش مصنوعی اصلاح کنید تا فرش، موکت و زمینه زائد حذف شوند.
+                  با این ابزار می‌توانید کادر جلد کتاب‌ها را به صورت دستی برش داده و حواشی اضافی تصویر را حذف کنید تا جلدها تمیز و مرتب در طاقچه قرار گیرند.
                 </p>
               </div>
             </div>
@@ -3603,7 +3617,7 @@ export const AdminPanel: React.FC = () => {
                 className="w-full md:w-auto px-5 py-2.5 bg-gradient-to-r from-amber-600 to-emerald-600 hover:from-amber-700 hover:to-emerald-700 active:scale-95 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-2 shrink-0 cursor-pointer"
               >
                 <Crop className="w-4 h-4 text-amber-200" />
-                <span>📷 باز کردن کم‌اسکنر و تست با عکس واقعی</span>
+                <span>📷 باز کردن ابزار برش جلد کتاب</span>
               </button>
             </div>
           </div>
@@ -3709,22 +3723,22 @@ export const AdminPanel: React.FC = () => {
                       </td>
                       <td className="p-3 text-center">
                         <div className="flex items-center justify-center gap-1.5">
-                          {/* CamScanner Button */}
+                          {/* Crop Button */}
                           <button
                             onClick={() => setScannerBook(book)}
                             className="p-1.5 rounded-lg border bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 transition cursor-pointer"
-                            title="اصلاح حرفه‌ای عکس با کم‌اسکنر (برش ۴ نقطه‌ای و حذف فرش/زمینه)"
+                            title="برش و تنظیم کادر جلد کتاب"
                           >
                             <Crop className="w-3.5 h-3.5 text-amber-700" />
                           </button>
 
-                          {/* Revert Cover Button (if already scanned) */}
+                          {/* Revert Cover Button (if already cropped) */}
                           {book.originalCoverImage && (
                             <button
                               onClick={async () => {
                                 if (
                                   confirm(
-                                    `آیا مایل هستید جلد کتاب «${book.title}» را به عکس خام اولیه دانش‌آموز برگردانید؟`
+                                    `آیا مایل هستید جلد کتاب «${book.title}» را به عکس اولیه برگردانید؟`
                                   )
                                 ) {
                                   const res = await revertBookCover(book.id);
@@ -3734,7 +3748,7 @@ export const AdminPanel: React.FC = () => {
                                 }
                               }}
                               className="p-1.5 rounded-lg border bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100 transition cursor-pointer"
-                              title="بازگشت به عکس خام اولیه دانش‌آموز (قبل از اسکن)"
+                              title="بازگشت به عکس اولیه (قبل از برش)"
                             >
                               <Undo2 className="w-3.5 h-3.5 text-rose-600" />
                             </button>
@@ -4164,15 +4178,15 @@ export const AdminPanel: React.FC = () => {
                     {approvedStudents.map((st) => (
                       <div
                         key={st.id}
-                        className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-3 hover:bg-slate-100/60 transition shadow-2xs"
+                        className="p-3.5 sm:p-4 bg-slate-50 rounded-2xl border border-slate-200/80 flex items-center justify-between gap-2.5 sm:gap-3 hover:bg-slate-100/60 transition shadow-2xs"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
                           <img
                             src={st.avatar}
                             alt={st.name}
-                            className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-500 shrink-0"
+                            className="w-11 h-11 sm:w-12 sm:h-12 rounded-full object-cover ring-2 ring-emerald-500 shrink-0"
                           />
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="font-bold text-slate-900 text-sm truncate">{st.name}</div>
                             <div className="text-xs text-slate-500 truncate mt-0.5">
                               کلاس {st.className} • ⭐ {st.rating}
@@ -4189,7 +4203,21 @@ export const AdminPanel: React.FC = () => {
                           </div>
                         </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
+                        {/* Mobile View: Single Main Action Button */}
+                        <div className="flex sm:hidden shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setMobileStudentActionUser(st)}
+                            className="px-2.5 py-1.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white rounded-xl text-xs font-black flex items-center gap-1 shadow-xs transition active:scale-95 cursor-pointer shrink-0"
+                            title={`عملیات مدیریتی ${st.name}`}
+                          >
+                            <Sliders className="w-3.5 h-3.5" />
+                            <span>عملیات</span>
+                          </button>
+                        </div>
+
+                        {/* Desktop View: Quick Inline Buttons */}
+                        <div className="hidden sm:flex items-center gap-1 shrink-0">
                           {/* Quick Free Loan Grant Action Button */}
                           <button
                             onClick={() => {
@@ -5223,6 +5251,235 @@ export const AdminPanel: React.FC = () => {
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* Mobile Student Actions Bottom Sheet / Modal */}
+      {mobileStudentActionUser && (
+        <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl border border-slate-200 shadow-2xl overflow-hidden animate-in slide-in-from-bottom duration-200 max-h-[90vh] flex flex-col">
+            {/* Header with Student Info */}
+            <div className="p-4 bg-gradient-to-r from-slate-900 to-indigo-950 text-white flex items-center justify-between shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <img
+                  src={mobileStudentActionUser.avatar}
+                  alt={mobileStudentActionUser.name}
+                  className="w-12 h-12 rounded-full object-cover ring-2 ring-emerald-400 shrink-0"
+                />
+                <div className="min-w-0">
+                  <h4 className="font-black text-sm sm:text-base text-white truncate">{mobileStudentActionUser.name}</h4>
+                  <p className="text-xs text-slate-300 mt-0.5 truncate">
+                    کلاس {mobileStudentActionUser.className} • ⭐ {mobileStudentActionUser.rating}
+                  </p>
+                  <p className="text-[11px] text-emerald-300 font-bold mt-0.5">
+                    {mobileStudentActionUser.booksContributedCount} کتاب ثبت‌شده • {mobileStudentActionUser.booksReadCount} خوانده
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileStudentActionUser(null)}
+                className="p-2 text-slate-400 hover:text-white hover:bg-white/10 rounded-xl transition cursor-pointer shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Actions list */}
+            <div className="p-3 sm:p-4 space-y-2 overflow-y-auto flex-1">
+              <div className="text-[11px] font-bold text-slate-500 px-1 pb-1">
+                انتخاب عملیات مدیریتی:
+              </div>
+
+              {/* 1. Free loan grant */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = mobileStudentActionUser;
+                  setMobileStudentActionUser(null);
+                  setSelectedStudentForFreeLoan(target);
+                  setFreeLoanCountToGrant(1);
+                  setFreeLoanReason('هدیه تشویقی مدیریت کتابخانه');
+                  setFreeLoanSuccessMsg(null);
+                  setFreeLoanErrorMsg(null);
+                }}
+                className="w-full p-3 bg-amber-50 hover:bg-amber-100 text-slate-900 rounded-2xl border border-amber-200 text-right flex items-center justify-between transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-amber-500 text-white rounded-xl shadow-xs group-hover:scale-105 transition shrink-0">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black text-xs text-amber-950">اعطای سهمیه امانت رایگان</div>
+                    <div className="text-[11px] text-amber-800 truncate">
+                      موجودی فعلی: {mobileStudentActionUser.freeLoanQuota || 0} سهمیه
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xs font-black text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+                  🎁 سهمیه
+                </span>
+              </button>
+
+              {/* 2. Bale direct message */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = mobileStudentActionUser;
+                  if (!target.baleChatId) {
+                    alert(`⚠️ کاربر «${target.name}» هنوز حساب پیام‌رسان بله خود را متصل نکرده است.`);
+                    return;
+                  }
+                  setMobileStudentActionUser(null);
+                  setSelectedStudentForBaleMsg(target);
+                }}
+                className={`w-full p-3 rounded-2xl border text-right flex items-center justify-between transition cursor-pointer group ${
+                  mobileStudentActionUser.baleChatId
+                    ? 'bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-950'
+                    : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60'
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className={`p-2.5 rounded-xl shadow-xs transition shrink-0 ${
+                    mobileStudentActionUser.baleChatId ? 'bg-indigo-600 text-white group-hover:scale-105' : 'bg-slate-300 text-slate-600'
+                  }`}>
+                    <MessageSquare className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black text-xs">ارسال پیام در پیام‌رسان بله</div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                      {mobileStudentActionUser.baleChatId ? 'ارسال نوتیفیکیشن اختصاصی' : 'حساب بله متصل نیست'}
+                    </div>
+                  </div>
+                </div>
+                <span className="text-xs text-indigo-700 bg-indigo-100 px-2 py-0.5 rounded-full shrink-0">
+                  💬 بله
+                </span>
+              </button>
+
+              {/* 3. Make Admin */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = mobileStudentActionUser;
+                  if (
+                    confirm(
+                      `آیا مایل هستید دانش‌آموز «${target.name}» را به مقام مدیریت سامانه مکتب‌خانه ارتقا دهید؟`
+                    )
+                  ) {
+                    setMobileStudentActionUser(null);
+                    const res = await makeAdmin(target.id);
+                    if (res.success) {
+                      alert(res.message || 'کاربر با موفقیت به مدیریت ارتقا یافت.');
+                    } else {
+                      alert(res.message || 'خطا در ارتقای کاربر.');
+                    }
+                  }
+                }}
+                className="w-full p-3 bg-amber-50/60 hover:bg-amber-100 text-slate-900 rounded-2xl border border-amber-200/80 text-right flex items-center justify-between transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-amber-600 text-white rounded-xl shadow-xs group-hover:scale-105 transition shrink-0">
+                    <Crown className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black text-xs text-slate-900">ترفیع به مدیر سامانه</div>
+                    <div className="text-[11px] text-slate-500 truncate">افزودن دسترسی‌های مدیریتی مدرسه</div>
+                  </div>
+                </div>
+                <span className="text-xs text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full shrink-0">
+                  👑 ارتقا
+                </span>
+              </button>
+
+              {/* 4. Suspend user */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = mobileStudentActionUser;
+                  const reason = prompt(
+                    `لطفاً علت تعلیق حساب کاربر «${target.name}» را وارد کنید:`,
+                    'عدم عودت به موقع کتاب یا گزارش خسارت'
+                  );
+                  if (reason !== null && reason.trim()) {
+                    setMobileStudentActionUser(null);
+                    const res = await suspendUser(target.id, reason.trim());
+                    if (res.success) {
+                      alert(`حساب کاربری «${target.name}» با موفقیت تعلیق شد.`);
+                    } else {
+                      alert(res.message || 'خطا در تعلیق حساب');
+                    }
+                  }
+                }}
+                className="w-full p-3 bg-rose-50/70 hover:bg-rose-100 text-rose-950 rounded-2xl border border-rose-200 text-right flex items-center justify-between transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-rose-500 text-white rounded-xl shadow-xs group-hover:scale-105 transition shrink-0">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black text-xs text-rose-950">تعلیق موقت حساب</div>
+                    <div className="text-[11px] text-rose-700 truncate">غیرفعال‌سازی با ثبت دلیل برای دانش‌آموز</div>
+                  </div>
+                </div>
+                <span className="text-xs text-rose-800 bg-rose-100 px-2 py-0.5 rounded-full shrink-0">
+                  ⚠️ تعلیق
+                </span>
+              </button>
+
+              {/* 5. Delete user */}
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = mobileStudentActionUser;
+                  if (
+                    confirm(
+                      `آیا از حذف کامل حساب دانش‌آموز «${target.name}» مطمئن هستید؟ تمام کتاب‌ها و سوابق وی حذف خواهد شد.`
+                    )
+                  ) {
+                    setMobileStudentActionUser(null);
+                    const res = await deleteUser(target.id);
+                    if (!res.success) {
+                      alert(res.message || 'خطا در حذف کاربر');
+                    }
+                  }
+                }}
+                className="w-full p-3 bg-red-50 hover:bg-red-100 text-red-950 rounded-2xl border border-red-200 text-right flex items-center justify-between transition cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="p-2.5 bg-red-600 text-white rounded-xl shadow-xs group-hover:scale-105 transition shrink-0">
+                    <Trash2 className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-black text-xs text-red-950">حذف کامل حساب کاربری</div>
+                    <div className="text-[11px] text-red-700 truncate">حذف کاربر و کتاب‌های امانتی وی</div>
+                  </div>
+                </div>
+                <span className="text-xs text-red-800 bg-red-100 px-2 py-0.5 rounded-full shrink-0">
+                  🗑️ حذف
+                </span>
+              </button>
+            </div>
+
+            {/* Cancel Footer */}
+            <div className="p-3 bg-slate-50 border-t border-slate-200 shrink-0">
+              <button
+                type="button"
+                onClick={() => setMobileStudentActionUser(null)}
+                className="w-full py-2.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                بستن و انصراف
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Admin Add Book with Barcode Scanner Modal */}
+      {showAdminAddBookScanner && (
+        <AddBookModal
+          onClose={() => setShowAdminAddBookScanner(false)}
+          initialOpenScanner={true}
         />
       )}
     </div>

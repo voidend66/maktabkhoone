@@ -18,20 +18,23 @@ import {
   BookOpen,
   Plus,
   Check,
-  Library
+  Library,
+  Scan
 } from 'lucide-react';
 import { api } from '../services/api';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { ImageCropperModal } from './ImageCropperModal';
+import { BarcodeScannerModal, ScannedBookData } from './BarcodeScannerModal';
 
 interface AddBookModalProps {
   onClose: () => void;
+  initialOpenScanner?: boolean;
 }
 
 import { PRESET_BOOK_COVERS } from '../utils/coverPresets';
 
-export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
-  const { addBook } = useApp();
+export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpenScanner }) => {
+  const { addBook, currentUser } = useApp();
 
   const [title, setTitle] = useState('');
   const [author, setAuthor] = useState('');
@@ -46,6 +49,9 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [showCropperModal, setShowCropperModal] = useState(false);
+  const [showBarcodeScanner, setShowBarcodeScanner] = useState(
+    Boolean(initialOpenScanner && currentUser?.role === 'admin')
+  );
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [showPresetsToggle, setShowPresetsToggle] = useState(false);
   const [submittedBook, setSubmittedBook] = useState<{
@@ -206,6 +212,28 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
     }
   };
 
+  const handleBookFromBarcode = (scanned: ScannedBookData) => {
+    if (scanned.title) setTitle(scanned.title);
+    if (scanned.author) setAuthor(scanned.author);
+    if (scanned.category) {
+      const matched = CATEGORIES.find(
+        (c) => c === scanned.category || scanned.category?.includes(c) || c.includes(scanned.category || '')
+      );
+      if (matched) {
+        setCategory(matched);
+      }
+    }
+    if (scanned.description) {
+      setDescription(scanned.description);
+    }
+    if (scanned.coverImage) {
+      setCoverImage(scanned.coverImage);
+      setUploadedCover(scanned.coverImage);
+      setPreviewUrl(scanned.coverImage);
+    }
+    setError('');
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-xl w-full overflow-hidden shadow-2xl border border-slate-100 my-8 animate-in zoom-in-95 duration-150">
@@ -361,6 +389,36 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                 </div>
               )}
 
+              {/* Featured Hero Barcode Scanner Banner (Now the #1 Recommended Method) */}
+              <div className="p-4 sm:p-4.5 bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-teal-500/15 border-2 border-emerald-400/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3.5 shadow-sm hover:border-emerald-500 transition">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 via-emerald-600 to-teal-600 text-white flex items-center justify-center shadow-md shrink-0">
+                    <Scan className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div className="min-w-0 space-y-0.5">
+                    <div className="text-xs sm:text-sm font-black text-slate-900 flex items-center gap-2 flex-wrap">
+                      <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                      <span>پیشنهاد ویژه مکتب‌خانه: اسکن بارکد کتاب (شابک)</span>
+                      <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-2xs">
+                        ⚡ سریع‌ترین روش
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                      کافیست بارکد خطی پشت جلد کتاب را اسکن کنید تا <strong>عنوان، نویسنده و عکس باکیفیت جلد</strong> خودکار پر شود!
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowBarcodeScanner(true)}
+                  className="w-full sm:w-auto px-4.5 py-2.5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-700 active:scale-95 text-white rounded-xl text-xs sm:text-sm font-black flex items-center justify-center gap-2 shadow-md hover:shadow-lg transition cursor-pointer shrink-0"
+                >
+                  <Scan className="w-4 h-4 text-amber-200" />
+                  <span>اسکن بارکد پشت کتاب 📸</span>
+                </button>
+              </div>
+
               {/* Title & Author */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -427,193 +485,192 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
                 </div>
               </div>
 
-              {/* Image Upload Box */}
-              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3.5">
-                {/* Encouragement Banner */}
-                <div className="p-3 bg-gradient-to-r from-amber-50 via-emerald-50/90 to-teal-50 border border-emerald-200/90 rounded-xl flex items-start gap-2.5 shadow-2xs">
-                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                    <Camera className="w-4 h-4" />
-                  </div>
-                  <div className="space-y-0.5 text-right">
-                    <div className="flex items-center gap-1.5 text-xs font-black text-emerald-950">
-                      <Sparkles className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
-                      <span>پیشنهاد ویژه مکتب‌خانه: عکس واقعی جلد کتاب</span>
-                    </div>
-                    <p className="text-[11px] text-emerald-900/80 leading-relaxed font-medium">
-                      کتاب‌هایی که با <strong>عکس واقعی جلد</strong> ثبت می‌شوند، <strong>۳ برابر سریع‌تر</strong> توسط دوستان به امانت گرفته می‌شوند.
-                    </p>
-                  </div>
-                </div>
-
-                {/* Primary Action Buttons for Photo */}
-                <div className="space-y-3">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {/* Camera Button */}
-                    <button
-                      type="button"
-                      onClick={() => setShowCameraModal(true)}
-                      disabled={isUploading}
-                      className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 active:scale-95"
-                    >
-                      <Camera className="w-4 h-4 text-emerald-200" />
-                      <span>عکاسی مستقیم با دوربین 📸</span>
-                    </button>
-
-                    {/* File Upload Button */}
-                    <label
-                      className={`cursor-pointer py-3 px-4 rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition ${
-                        isUploading
-                          ? 'bg-slate-400 text-white cursor-wait'
-                          : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
-                      }`}
-                    >
-                      {isUploading ? (
-                        <Loader2 className="w-4 h-4 animate-spin text-white" />
-                      ) : (
-                        <Upload className="w-4 h-4 text-indigo-200" />
-                      )}
-                      <span>{isUploading ? 'در حال آپلود و پردازش تصویر...' : 'انتخاب عکس از گالری / فایل 📁'}</span>
-                      <input
-                        type="file"
-                        accept="image/jpeg,image/png,image/webp,image/jpg"
-                        onChange={handleFileUpload}
-                        disabled={isUploading}
-                        className="hidden"
-                      />
-                    </label>
-                  </div>
-
-                  <p className="text-[10px] text-slate-500 text-center">
-                    فرمت‌های مجاز: JPG, PNG, WEBP (حداکثر ۱۰ مگابایت)
-                  </p>
-
-                  {/* Instant Image Preview & Progress Card */}
-                  {(previewUrl || uploadedCover) && (
-                    <div className="p-3 bg-white rounded-2xl border-2 border-emerald-200 shadow-xs flex items-center justify-between gap-3 animate-in fade-in zoom-in-95">
-                      <div className="flex items-center gap-3">
-                        <div className="relative w-14 h-18 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0">
-                          <img
-                            src={previewUrl || uploadedCover}
-                            alt="پیش‌نمایش جلد کتاب"
-                            className={`w-full h-full object-cover transition duration-300 ${
-                              isUploading ? 'opacity-50 blur-[1px]' : 'opacity-100'
-                            }`}
-                          />
-                          {isUploading && (
-                            <div className="absolute inset-0 flex items-center justify-center bg-indigo-900/40">
-                              <Loader2 className="w-5 h-5 animate-spin text-white" />
-                            </div>
-                          )}
-                        </div>
-
-                        <div className="space-y-1 text-right">
-                          {isUploading ? (
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-indigo-700">
-                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                              <span>در حال ارسال و ذخیره تصویر بر روی سرور...</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-700">
-                              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                              <span>عکس واقعی کتاب با موفقیت ذخیره شد</span>
-                            </div>
-                          )}
-                          <span className="inline-block px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">
-                            🎖️ جلد اختصاصی فعال شد
-                          </span>
-                        </div>
+              {/* Image Upload Box / Confirmed Scanned Cover Box */}
+              {uploadedCover || previewUrl ? (
+                /* STATE 1: Book already has a cover (from Barcode scan or previous upload) -> Show clean confirmed cover card */
+                <div className="p-4 bg-gradient-to-br from-emerald-50/90 via-teal-50/60 to-slate-50 rounded-2xl border-2 border-emerald-300 shadow-xs space-y-3 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center text-xs shadow-xs">
+                        <CheckCircle2 className="w-4 h-4" />
                       </div>
-
-                      {!isUploading && (
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setImageToCrop(previewUrl || uploadedCover);
-                              setShowCropperModal(true);
-                            }}
-                            title="تنظیم کادر و برش عکس جلد کتاب"
-                            className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold rounded-xl transition flex items-center gap-1.5 border border-indigo-200"
-                          >
-                            <Crop className="w-3.5 h-3.5" />
-                            <span className="hidden sm:inline">برش ✂️</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={handleRemoveUploadedCover}
-                            title="حذف این عکس و انتخاب مجدد"
-                            className="p-2 text-rose-500 hover:bg-rose-50 rounded-xl transition border border-rose-200/50"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      )}
+                      <div>
+                        <span className="text-xs font-black text-emerald-950 block">تصویر جلد کتاب آماده است</span>
+                        <span className="text-[10px] text-emerald-700 font-medium">
+                          {uploadedCover?.startsWith('/uploads/isbn_') || uploadedCover?.includes('iranketab')
+                            ? 'دریافت مستقیم و رسمی از پایگاه ایران‌کتاب 📚'
+                            : 'عکس جلد با موفقیت ذخیره شد 📸'}
+                        </span>
+                      </div>
                     </div>
-                  )}
-                </div>
 
-                {/* Preset Covers Logic:
-                    CRITICAL REQUIREMENT: If the user uploaded a photo, do NOT show the preset covers
-                    so that clicking presets won't overwrite or erase their uploaded photo! */}
-                {uploadedCover || previewUrl ? (
-                  <div className="pt-2 border-t border-slate-200 text-center">
-                    <div className="p-2.5 bg-emerald-50/90 border border-emerald-200 rounded-xl text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-2">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                      <span>کاورهای آماده موقتاً مخفی شدند تا عکس واقعی شما حفظ شود.</span>
-                    </div>
-                  </div>
-                ) : (
-                  /* If NO uploaded photo yet, show an accordion trigger to discourage presets and favor camera */
-                  <div className="pt-2 border-t border-slate-200">
-                    <button
-                      type="button"
-                      onClick={() => setShowPresetsToggle(!showPresetsToggle)}
-                      className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200/80 rounded-xl text-slate-600 text-xs font-bold flex items-center justify-between transition"
-                    >
-                      <span className="flex items-center gap-1.5 text-[11px]">
-                        <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
-                        <span>دوربین ندارید؟ انتخاب از کاورهای نقاشی/آماده مکتب‌خانه</span>
-                      </span>
-                      {showPresetsToggle ? (
-                        <ChevronUp className="w-4 h-4 text-slate-500" />
-                      ) : (
-                        <ChevronDown className="w-4 h-4 text-slate-500" />
-                      )}
-                    </button>
+                    {!isUploading && (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setImageToCrop(previewUrl || uploadedCover);
+                            setShowCropperModal(true);
+                          }}
+                          title="تنظیم کادر و برش عکس"
+                          className="px-2.5 py-1.5 bg-white hover:bg-slate-100 text-indigo-700 text-xs font-bold rounded-xl transition flex items-center gap-1 border border-indigo-200 shadow-2xs cursor-pointer"
+                        >
+                          <Crop className="w-3.5 h-3.5" />
+                          <span>برش ✂️</span>
+                        </button>
 
-                    {showPresetsToggle && (
-                      <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-6 gap-2 animate-in fade-in">
-                        {PRESET_BOOK_COVERS.map((preset, i) => (
-                          <div
-                            key={i}
-                            onClick={() => {
-                              setCoverImage(preset.url);
-                              setUploadedCover('');
-                              setPreviewUrl('');
-                              setCustomCoverUrl('');
-                            }}
-                            className={`relative aspect-[3/4] rounded-xl overflow-hidden cursor-pointer border-2 transition ${
-                              coverImage === preset.url && !uploadedCover && !customCoverUrl
-                                ? 'border-indigo-600 ring-2 ring-indigo-500 scale-105'
-                                : 'border-transparent opacity-70 hover:opacity-100'
-                            }`}
-                          >
-                            <img
-                              src={preset.url}
-                              alt={preset.label}
-                              className="w-full h-full object-cover"
-                            />
-                            <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 text-[9px] text-white text-center py-0.5 truncate">
-                              {preset.label}
-                            </span>
-                          </div>
-                        ))}
+                        <button
+                          type="button"
+                          onClick={handleRemoveUploadedCover}
+                          title="تغییر عکس جلد یا عکاسی اختصاصی"
+                          className="px-2.5 py-1.5 bg-white hover:bg-rose-50 text-rose-600 text-xs font-bold rounded-xl transition flex items-center gap-1 border border-rose-200 shadow-2xs cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>تغییر عکس</span>
+                        </button>
                       </div>
                     )}
                   </div>
-                )}
-              </div>
+
+                  <div className="flex items-center gap-3.5 p-3 bg-white rounded-xl border border-emerald-200 shadow-2xs">
+                    <div className="relative w-16 h-22 sm:w-20 sm:h-26 rounded-lg overflow-hidden bg-slate-100 border border-slate-200 shrink-0 shadow-xs">
+                      <img
+                        src={previewUrl || uploadedCover}
+                        alt="جلد کتاب"
+                        className={`w-full h-full object-cover transition duration-300 ${
+                          isUploading ? 'opacity-50 blur-[1px]' : 'opacity-100'
+                        }`}
+                      />
+                      {isUploading && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-indigo-900/40">
+                          <Loader2 className="w-5 h-5 animate-spin text-white" />
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="min-w-0 flex-1 space-y-1 text-right">
+                      <div className="text-xs sm:text-sm font-black text-slate-900 truncate">
+                        {title || 'عنوان کتاب'}
+                      </div>
+                      <div className="text-[11px] text-slate-600 font-medium truncate">
+                        نویسنده / مترجم: <span className="text-slate-800 font-bold">{author || 'نامشخص'}</span>
+                      </div>
+                      <span className="inline-block px-2.5 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[10px] font-bold">
+                        ✓ تصویر جلد با کیفیت عالی ذخیره شد
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                /* STATE 2: Manual entry without photo yet -> Show full required photo upload box */
+                <div className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-200/90 space-y-3.5">
+                  <div className="p-3 bg-gradient-to-r from-indigo-50 via-slate-50 to-teal-50 border border-indigo-200/80 rounded-xl flex items-start gap-2.5 shadow-2xs">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                      <Camera className="w-4 h-4" />
+                    </div>
+                    <div className="space-y-0.5 text-right">
+                      <div className="flex items-center gap-1.5 text-xs font-black text-slate-900">
+                        <span>تصویر جلد کتاب *:</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                        برای نمایش دقیق و جذاب کتاب در قفسه کتابخانه، حتماً از جلد کتاب عکاسی کنید یا فایل آن را از گالری انتخاب نمایید.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Primary Action Buttons for Photo */}
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {/* Camera Button */}
+                      <button
+                        type="button"
+                        onClick={() => setShowCameraModal(true)}
+                        disabled={isUploading}
+                        className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+                      >
+                        <Camera className="w-4 h-4 text-emerald-200" />
+                        <span>عکاسی مستقیم با دوربین 📸</span>
+                      </button>
+
+                      {/* File Upload Button */}
+                      <label
+                        className={`cursor-pointer py-3 px-4 rounded-xl text-xs font-bold shadow-xs flex items-center justify-center gap-2 transition ${
+                          isUploading
+                            ? 'bg-slate-400 text-white cursor-wait'
+                            : 'bg-indigo-600 hover:bg-indigo-700 text-white active:scale-95'
+                        }`}
+                      >
+                        {isUploading ? (
+                          <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        ) : (
+                          <Upload className="w-4 h-4 text-indigo-200" />
+                        )}
+                        <span>{isUploading ? 'در حال آپلود و پردازش تصویر...' : 'انتخاب عکس از گالری / فایل 📁'}</span>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/jpg"
+                          onChange={handleFileUpload}
+                          disabled={isUploading}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+
+                    <p className="text-[10px] text-slate-500 text-center">
+                      فرمت‌های مجاز: JPG, PNG, WEBP (حداکثر ۱۰ مگابایت)
+                    </p>
+
+                    {/* Accordion trigger for preset covers for users without camera */}
+                    <div className="pt-2 border-t border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => setShowPresetsToggle(!showPresetsToggle)}
+                        className="w-full py-2 px-3 bg-slate-100 hover:bg-slate-200/80 rounded-xl text-slate-600 text-xs font-bold flex items-center justify-between transition cursor-pointer"
+                      >
+                        <span className="flex items-center gap-1.5 text-[11px]">
+                          <ImageIcon className="w-3.5 h-3.5 text-slate-500" />
+                          <span>دوربین ندارید؟ انتخاب از کاورهای نقاشی/آماده مکتب‌خانه</span>
+                        </span>
+                        {showPresetsToggle ? (
+                          <ChevronUp className="w-4 h-4 text-slate-500" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4 text-slate-500" />
+                        )}
+                      </button>
+
+                      {showPresetsToggle && (
+                        <div className="mt-2.5 grid grid-cols-3 sm:grid-cols-6 gap-2 animate-in fade-in">
+                          {PRESET_BOOK_COVERS.map((preset, i) => (
+                            <div
+                              key={i}
+                              onClick={() => {
+                                setCoverImage(preset.url);
+                                setUploadedCover('');
+                                setPreviewUrl('');
+                                setCustomCoverUrl('');
+                              }}
+                              className={`relative aspect-[3/4] rounded-xl overflow-hidden cursor-pointer border-2 transition ${
+                                coverImage === preset.url && !uploadedCover && !customCoverUrl
+                                  ? 'border-indigo-600 ring-2 ring-indigo-500 scale-105'
+                                  : 'border-transparent opacity-70 hover:opacity-100'
+                              }`}
+                            >
+                              <img
+                                src={preset.url}
+                                alt={preset.label}
+                                className="w-full h-full object-cover"
+                              />
+                              <span className="absolute bottom-0 inset-x-0 bg-slate-900/80 text-[9px] text-white text-center py-0.5 truncate">
+                                {preset.label}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Description */}
               <div>
@@ -680,6 +737,13 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose }) => {
           aspectRatio="3:4"
           title="تنظیم کادر و برش عکس جلد کتاب 📸"
         />
+
+        {showBarcodeScanner && (
+          <BarcodeScannerModal
+            onClose={() => setShowBarcodeScanner(false)}
+            onBookFound={handleBookFromBarcode}
+          />
+        )}
       </div>
     </div>
   );
