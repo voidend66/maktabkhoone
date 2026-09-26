@@ -26,7 +26,8 @@ import {
   Upload,
   Loader2,
   Star,
-  Gift
+  Gift,
+  Sparkles
 } from 'lucide-react';
 
 export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }> = ({ initialTab }) => {
@@ -39,10 +40,13 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
     completeReturnAndSubmitFeedback,
     reportDamageAndSuspendUser,
     bankCardInfo,
-    submitPaymentProof
+    submitPaymentProof,
+    applyFreeLoanToRequest
   } = useApp();
 
   const [activeTab, setActiveTab] = useState<'incoming' | 'outgoing'>(initialTab || 'incoming');
+  const [showFreeQuotaPromptModal, setShowFreeQuotaPromptModal] = useState<{ reqId: string; bookTitle: string } | null>(null);
+  const [isApplyingFreeQuota, setIsApplyingFreeQuota] = useState(false);
 
   React.useEffect(() => {
     if (initialTab) {
@@ -669,6 +673,40 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
                 {/* Card to Card Payment Box & Proof Submission Form */}
                 {(req.status === 'payment_pending' || (req.status === 'accepted' && req.paymentStatus !== 'paid')) && (
                   <div className="bg-amber-50/90 p-5 rounded-2xl border-2 border-amber-300 space-y-4">
+                    {/* Free Quota Notice & Quick Action Banner */}
+                    {(currentUser.freeLoanQuota || 0) > 0 && (
+                      <div className="p-4 bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-emerald-500/20 border-2 border-amber-400 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-xs animate-in fade-in">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-orange-500 text-slate-950 flex items-center justify-center shrink-0 shadow-md">
+                            <Gift className="w-5 h-5 animate-bounce" />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-xs sm:text-sm font-black text-amber-950">
+                                شما دارای {currentUser.freeLoanQuota} سهمیه امانت رایگان هستید! 🎉
+                              </span>
+                              <span className="text-[10px] font-bold bg-amber-300 text-amber-950 px-2 py-0.5 rounded-full">
+                                بدون نیاز به پرداخت
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-700 mt-0.5 font-medium">
+                              نیازی به واریز کارت‌به‌کارت و ارسال فیش ۱۰,۰۰۰ تومانی ندارید؛ می‌توانید فوراً از جایزه رایگان خود استفاده کنید.
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          disabled={isApplyingFreeQuota}
+                          onClick={() => setShowFreeQuotaPromptModal({ reqId: req.id, bookTitle: req.bookTitle })}
+                          className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-600 hover:to-orange-600 active:scale-95 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+                        >
+                          <Sparkles className="w-4 h-4" />
+                          <span>⚡ تسویه آنی با ۱ جایزه رایگان</span>
+                        </button>
+                      </div>
+                    )}
+
                     <div className="flex items-center justify-between flex-wrap gap-2 border-b border-amber-200 pb-3">
                       <div className="flex items-center gap-2 text-amber-950 font-black text-sm">
                         <CreditCard className="w-5 h-5 text-amber-700" />
@@ -710,6 +748,10 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
                     <form
                       onSubmit={(e) => {
                         e.preventDefault();
+                        if ((currentUser.freeLoanQuota || 0) > 0) {
+                          setShowFreeQuotaPromptModal({ reqId: req.id, bookTitle: req.bookTitle });
+                          return;
+                        }
                         if (!receiptImage.trim()) {
                           setReceiptUploadError('بارگذاری تصویر / اسکرین‌شات فیش واریزی الزامی است.');
                           return;
@@ -1231,6 +1273,76 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
                 className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-black rounded-xl shadow-md shadow-rose-600/20 disabled:opacity-50"
               >
                 تایید گزارش آسیب & مسدودی حساب
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Free Quota Confirmation Modal before submitting payment/receipt */}
+      {showFreeQuotaPromptModal && (
+        <div className="fixed inset-0 z-70 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-md w-full p-6 text-white text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-300 text-slate-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+              <Gift className="w-8 h-8 animate-bounce" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-black text-amber-300">
+                شما یک جایزه امانت رایگان دارید! 🎉
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                در حساب کاربری شما <strong>{currentUser?.freeLoanQuota} سهمیه امانت رایگان</strong> موجود است. آیا مایلید به جای پرداخت ۱۰,۰۰۰ تومان و ارسال فیش، این کتاب را با ۱ جایزه رایگان خود فوراً تسویه کنید؟
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 text-right leading-relaxed">
+              💡 با انتخاب گزینه رایگان، نیازی به کارت‌به‌کارت و منتظر ماندن برای تایید فیش توسط مدیر سایت نخواهید داشت و پرداخت فوراً تایید می‌شود.
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                disabled={isApplyingFreeQuota}
+                onClick={async () => {
+                  setIsApplyingFreeQuota(true);
+                  const res = await applyFreeLoanToRequest(showFreeQuotaPromptModal.reqId);
+                  setIsApplyingFreeQuota(false);
+                  setShowFreeQuotaPromptModal(null);
+                  if (res.success) {
+                    alert(res.message);
+                  } else {
+                    alert(res.message);
+                  }
+                }}
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{isApplyingFreeQuota ? 'در حال تسویه...' : '✨ بله، استفاده از جایزه رایگان (پیشنهادی)'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const reqId = showFreeQuotaPromptModal.reqId;
+                  setShowFreeQuotaPromptModal(null);
+                  if (!receiptImage.trim()) {
+                    setReceiptUploadError('بارگذاری تصویر / اسکرین‌شات فیش واریزی الزامی است.');
+                    return;
+                  }
+                  submitPaymentProof(reqId, {
+                    trackingCode: trackingCode.trim() || undefined,
+                    paymentDate: paymentDate.trim(),
+                    receiptImage: receiptImage.trim()
+                  });
+                  setTrackingCode('');
+                  setReceiptImage('');
+                  setReceiptPreviewUrl('');
+                  setReceiptUploadError('');
+                }}
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                خیر، ادامه با پرداخت کارت به کارت و ارسال فیش
               </button>
             </div>
           </div>

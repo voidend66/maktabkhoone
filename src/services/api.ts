@@ -274,6 +274,15 @@ export const api = {
     return await res.json();
   },
 
+  async applyFreeLoan(id: string, userId: string) {
+    const res = await fetch(`${API_BASE}/requests/${id}/apply-free-loan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+    return await res.json();
+  },
+
   async approvePayment(id: string) {
     const res = await fetch(`${API_BASE}/requests/${id}/approve-payment`, { method: 'POST' });
     return await res.json();

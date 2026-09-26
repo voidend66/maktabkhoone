@@ -45,6 +45,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [deletingReviewId, setDeletingReviewId] = useState<string | null>(null);
   const [useFreeLoanQuota, setUseFreeLoanQuota] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
+  const [showFreeLoanReminderModal, setShowFreeLoanReminderModal] = useState(false);
 
   const hasFreeQuota = (currentUser?.freeLoanQuota || 0) > 0;
   const activeEvent = activeEvents[0];
@@ -280,14 +281,18 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
 
                 <button
                   onClick={() => {
-                    onRequestLoan(book.id, {
-                      useFreeLoan: useFreeLoanQuota,
-                      freeEventTitle: activeEvent?.title,
-                      freeEventId: activeEvent?.id
-                    });
+                    if (hasFreeQuota && !useFreeLoanQuota) {
+                      setShowFreeLoanReminderModal(true);
+                    } else {
+                      onRequestLoan(book.id, {
+                        useFreeLoan: useFreeLoanQuota,
+                        freeEventTitle: activeEvent?.title,
+                        freeEventId: activeEvent?.id
+                      });
+                    }
                   }}
                   disabled={!isAvailable}
-                  className={`px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition ${
+                  className={`px-6 py-3 rounded-xl font-bold text-sm flex items-center gap-2 transition cursor-pointer ${
                     !isAvailable
                       ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                       : useFreeLoanQuota
@@ -501,6 +506,64 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Free Loan Quota Reminder Modal (Prevents accidental payment) */}
+      {showFreeLoanReminderModal && (
+        <div className="fixed inset-0 z-70 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-slate-900 border-2 border-amber-400 rounded-3xl max-w-md w-full p-6 text-white text-center space-y-4 shadow-2xl animate-in zoom-in-95 duration-200">
+            <div className="w-16 h-16 rounded-3xl bg-gradient-to-tr from-amber-500 via-orange-500 to-amber-300 text-slate-950 flex items-center justify-center mx-auto shadow-lg shadow-amber-500/20">
+              <Gift className="w-8 h-8 animate-bounce" />
+            </div>
+
+            <div className="space-y-1.5">
+              <h3 className="text-lg font-black text-amber-300">
+                شما یک جایزه امانت رایگان دارید! 🎉
+              </h3>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                در حساب کاربری شما <strong>{currentUser?.freeLoanQuota} سهمیه امانت رایگان</strong> فعال است. آیا می‌خواهید این کتاب را با سهمیه جایزه خود امانت بگیرید تا نیازی به پرداخت هزینه ۱۰,۰۰۰ تومان نباشد؟
+              </p>
+            </div>
+
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-[11px] text-amber-200 text-right leading-relaxed">
+              💡 با انتخاب گزینه رایگان، یک سهمیه از موجودی شما کسر شده و بدون نیاز به پرداخت کارت‌به‌کارت و ارسال فیش، درخواست فوراً برای صاحب کتاب ارسال می‌شود.
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFreeLoanReminderModal(false);
+                  setUseFreeLoanQuota(true);
+                  onRequestLoan(book.id, {
+                    useFreeLoan: true,
+                    freeEventTitle: activeEvent?.title || 'سهمیه امانت رایگان ایونت',
+                    freeEventId: activeEvent?.id
+                  });
+                }}
+                className="w-full py-3 px-4 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-400 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs sm:text-sm rounded-xl shadow-lg shadow-amber-500/20 transition flex items-center justify-center gap-2 active:scale-95 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>✨ بله، استفاده از جایزه رایگان (بدون پرداخت)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFreeLoanReminderModal(false);
+                  onRequestLoan(book.id, {
+                    useFreeLoan: false,
+                    freeEventTitle: activeEvent?.title,
+                    freeEventId: activeEvent?.id
+                  });
+                }}
+                className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-750 text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
+              >
+                خیر، پرداخت عادی (ذخیره سهمیه رایگان برای بعد)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CamScanner Modal for Admin */}
       {showCamScanner && (

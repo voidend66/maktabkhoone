@@ -3802,6 +3802,47 @@ async function startServer() {
     res.json({ success: true, request: updated });
   });
 
+  app.post('/api/requests/:id/apply-free-loan', (req: Request, res: Response): any => {
+    try {
+      const { id } = req.params;
+      const { userId } = req.body;
+      const request = dbService.getRequestById(id);
+      const user = dbService.getUserById(userId);
+
+      if (!request || !user) {
+        return res.status(404).json({ success: false, message: 'درخواست یا کاربر یافت نشد.' });
+      }
+
+      if (!user.freeLoanQuota || user.freeLoanQuota < 1) {
+        return res.status(400).json({ success: false, message: 'سهمیه امانت رایگان برای این کاربر موجود نیست.' });
+      }
+
+      // Deduct 1 free loan quota
+      const newQuota = Math.max(0, user.freeLoanQuota - 1);
+      dbService.updateUser(user.id, { freeLoanQuota: newQuota });
+
+      // Update request to free loan and paid status
+      const updatedReq = dbService.updateRequest(id, {
+        isFreeEventLoan: true,
+        feeAmount: 0,
+        freeEventTitle: 'سهمیه امانت رایگان کاربر',
+        paymentStatus: 'paid',
+        paidAt: new Date().toLocaleDateString('fa-IR'),
+        status: request.pickupLocation ? 'accepted' : 'payment_completed'
+      });
+
+      dbService.addSystemLog(
+        'info',
+        'تسویه امانت با سهمیه رایگان',
+        `کاربر ${user.name} (${user.className}) امانت کتاب «${request.bookTitle}» را با ۱ سهمیه رایگان خود تسویه کرد. موجودی باقیمانده: ${newQuota}.`
+      );
+
+      res.json({ success: true, request: updatedReq, remainingQuota: newQuota });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: err.message || 'خطا در اعمال سهمیه رایگان' });
+    }
+  });
+
   app.post('/api/requests/:id/approve-payment', (req: Request, res: Response): any => {
     const reqItem = dbService.getRequestById(req.params.id);
     if (!reqItem) return res.status(404).json({ success: false, message: 'درخواست یافت نشد.' });

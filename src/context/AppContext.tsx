@@ -92,6 +92,7 @@ interface AppContextType {
     requestId: string,
     proof: { trackingCode: string; paymentDate: string; receiptImage?: string }
   ) => void;
+  applyFreeLoanToRequest: (requestId: string) => Promise<{ success: boolean; message: string }>;
   verifyPaymentByAdmin: (requestId: string, isApproved: boolean, rejectionReason?: string) => void;
   confirmHandover: (requestId: string, confirmedByRole?: string) => void;
   completeReturnAndSubmitFeedback: (
@@ -415,6 +416,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       await refreshData();
     } catch (e) {
       console.error('Error submitting payment proof to server:', e);
+    }
+  };
+
+  // Apply Free Loan to an existing pending payment request
+  const applyFreeLoanToRequest = async (requestId: string) => {
+    if (!currentUser) return { success: false, message: 'لطفاً ابتدا وارد شوید.' };
+    if (!currentUser.freeLoanQuota || currentUser.freeLoanQuota < 1) {
+      return { success: false, message: 'شما سهمیه امانت رایگان فعالی ندارید.' };
+    }
+
+    try {
+      const res = await api.applyFreeLoan(requestId, currentUser.id);
+      if (res.success && res.request) {
+        setRequests((prev) => prev.map((r) => (r.id === requestId ? res.request : r)));
+        setCurrentUser((prev) => (prev ? { ...prev, freeLoanQuota: Math.max(0, (prev.freeLoanQuota || 0) - 1) } : null));
+        await refreshData();
+        return { success: true, message: 'سهمیه امانت رایگان با موفقیت برای این کتاب اعمال شد! 🎉' };
+      }
+      return { success: false, message: res.message || 'خطا در اعمال سهمیه' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
     }
   };
 
@@ -1511,6 +1533,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         acceptLoanRequest,
         rejectLoanRequest,
         submitPaymentProof,
+        applyFreeLoanToRequest,
         verifyPaymentByAdmin,
         confirmHandover,
         completeReturnAndSubmitFeedback,
