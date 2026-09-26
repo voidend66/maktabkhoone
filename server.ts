@@ -3059,15 +3059,30 @@ async function startServer() {
         return res.status(404).json({ success: false, message: 'کاربر مورد نظر یافت نشد.' });
       }
 
-      // Safeguard: Prevent deleting the main system admin
+      // Safeguard: Check if this user is an admin, ensure at least 1 other admin remains in the system
       if (isAdminPhone(user.phone) || user.role === 'admin') {
-        return res.status(403).json({ success: false, message: 'امکان حذف حساب کاربری مدیر اصلی سامانه وجود ندارد.' });
+        const allUsers = dbService.getAllUsers();
+        const remainingAdmins = allUsers.filter(
+          (u) => u.id !== id && (u.role === 'admin' || (u.phone && isAdminPhone(u.phone)))
+        );
+        if (remainingAdmins.length === 0) {
+          return res.status(400).json({
+            success: false,
+            message: 'حداقل یک مدیر باید در سامانه فعال بماند و امکان حذف آخرین مدیر وجود ندارد.'
+          });
+        }
       }
 
       const deleted = dbService.deleteUser(id);
       if (!deleted) {
         return res.status(500).json({ success: false, message: 'خطا در حذف کاربر از دیتابیس.' });
       }
+
+      dbService.addSystemLog(
+        'warn',
+        `حذف حساب کاربری (${user.name})`,
+        `حساب کاربری ${user.name} (نقش: ${user.role || 'user'}) توسط مدیر حذف گردید.`
+      );
 
       res.json({ success: true, message: 'حساب کاربری و اطلاعات مرتبط با موفقیت حذف شد.' });
     } catch (err: any) {
