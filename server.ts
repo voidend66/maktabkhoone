@@ -3363,6 +3363,65 @@ async function startServer() {
     }
   });
 
+  // Admin endpoint to auto-enrich book metadata, tags, and categories from IranKetab
+  app.post('/api/admin/books/:id/enrich-iranketab', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const book = dbService.getBookById(req.params.id);
+      if (!book) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+
+      // Try search queries in sequence: 1. ISBN (if present), 2. Title + Author, 3. Title only
+      let ikData = null;
+
+      if (book.isbn && book.isbn.length >= 9) {
+        console.log(`[Admin Enrich] Attempt 1: Fetching by ISBN (${book.isbn})...`);
+        ikData = await lookupIranKetab(book.isbn);
+      }
+
+      if (!ikData && book.title) {
+        const cleanTitle = book.title.replace(/کتاب/g, '').trim();
+        const fullQuery = book.author ? `${cleanTitle} ${book.author}` : cleanTitle;
+        console.log(`[Admin Enrich] Attempt 2: Fetching by Title + Author (${fullQuery})...`);
+        ikData = await lookupIranKetab(fullQuery);
+      }
+
+      if (!ikData && book.title) {
+        const cleanTitle = book.title.replace(/کتاب/g, '').trim();
+        console.log(`[Admin Enrich] Attempt 3: Fetching by Title (${cleanTitle})...`);
+        ikData = await lookupIranKetab(cleanTitle);
+      }
+
+      if (!ikData) {
+        return res.status(404).json({ success: false, message: 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.' });
+      }
+
+      const updates: Partial<Book> = {
+        publisher: ikData.publisher || book.publisher,
+        translator: ikData.translator || book.translator,
+        originalTitle: ikData.originalTitle || book.originalTitle,
+        isbn: ikData.isbn || book.isbn,
+        pageCount: ikData.pageCount || book.pageCount,
+        tags: ikData.tags || book.tags,
+        extraCategories: ikData.extraCategories || book.extraCategories,
+        rawMetadata: ikData.rawMetadata || book.rawMetadata,
+        sourceUrl: ikData.url || book.sourceUrl,
+        description: (book.description && book.description.length > 50) ? book.description : (ikData.description || book.description)
+      };
+
+      const updated = dbService.updateBook(book.id, updates);
+
+      dbService.addSystemLog(
+        'info',
+        'تکمیل و استعلام شناسنامه از ایران‌کتاب',
+        `شناسنامه، هشتگ‌ها و دسته‌بندی‌های غنی کتاب «${book.title}» بر اساس ایران‌کتاب به‌روزرسانی شد.`
+      );
+
+      res.json({ success: true, message: 'اطلاعات و هشتگ‌های کتاب با موفقیت از ایران‌کتاب استخراج و ثبت گردید.', book: updated });
+    } catch (err: any) {
+      console.error('Enrich IranKetab Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در استعلام اطلاعات از ایران‌کتاب.' });
+    }
+  });
+
   // Helper to safely cache external book cover to local uploads directory
   async function cacheExternalCoverImage(imageUrl: string, isbn: string): Promise<string> {
     if (!imageUrl || !imageUrl.startsWith('http')) return imageUrl;
@@ -3408,19 +3467,29 @@ async function startServer() {
       .trim();
   }
 
-  // Scraper specifically for IranKetab (iranketab.ir)
+  // Scraper specifically for IranKetab (iranketab.ir) - Extracts rich hashtags, categories & metadata
   async function lookupIranKetab(query: string): Promise<{
     title: string;
     author: string;
-    publisher: string;
+    publisher?: string;
+    translator?: string;
+    originalTitle?: string;
     category: string;
     description: string;
     coverImage: string;
     source: string;
     url?: string;
+    isbn?: string;
+    pageCount?: string | number;
+    tags?: string[];
+    extraCategories?: string[];
+    rawMetadata?: Record<string, any>;
   } | null> {
     try {
-      const cleanQuery = query.trim().replace(/[\s]/g, '');
+      const isNumeric = /^[0-9X\s-]+$/i.test(query.trim());
+      const cleanQuery = isNumeric ? query.replace(/[^0-9X]/gi, '') : query.trim().replace(/\s+/g, ' ');
+      if (!cleanQuery) return null;
+
       const searchUrl = `https://www.iranketab.ir/result/${encodeURIComponent(cleanQuery)}`;
       console.log(`[IranKetab Scraper] Querying ${searchUrl}...`);
 
@@ -3436,13 +3505,13 @@ async function startServer() {
       const searchHtml = await searchRes.text();
 
       // Find first book link on search result
-      const bookLinkMatch = searchHtml.match(/href=\"(\/book\/[^\"]+)\"/);
-      if (!bookLinkMatch) {
+      const bookLinkMatches = [...searchHtml.matchAll(/href=["\x27](\/book\/[^"\x27]+)/gi)];
+      if (bookLinkMatches.length === 0) {
         console.log(`[IranKetab Scraper] No book link found on search page for: ${query}`);
         return null;
       }
 
-      const bookPath = bookLinkMatch[1];
+      const bookPath = bookLinkMatches[0][1];
       const bookUrl = `https://www.iranketab.ir${bookPath}`;
 
       // Extract initial fallback info from search card
@@ -3459,13 +3528,20 @@ async function startServer() {
       const imgMatch = searchHtml.match(/src=\"(https:\/\/img\.iranketab\.ir\/img\/[^\"]+)\"/i);
       if (imgMatch) searchImg = imgMatch[1].trim();
 
-      // Now fetch the book detail page for high-res cover, publisher, and full description
+      // Detailed metadata variables
       let title = searchTitle;
       let author = searchAuthor;
       let publisher = '';
+      let translator = '';
+      let originalTitle = '';
       let category = 'داستان و رمان';
       let description = '';
       let coverImage = searchImg;
+      let isbnFound = '';
+      let pageCount: string | number = '';
+      const tagsSet = new Set<string>();
+      const extraCategoriesSet = new Set<string>();
+      const rawMetadata: Record<string, any> = {};
 
       const bookRes = await fetch(bookUrl, {
         headers: {
@@ -3478,7 +3554,48 @@ async function startServer() {
       if (bookRes.ok) {
         const bookHtml = await bookRes.text();
 
-        // 1. JSON-LD structured data (Product & Breadcrumb)
+        // 1. Specific Book Category Pill Buttons (rounded-full)
+        const pillMatches = [...bookHtml.matchAll(/<a[^>]*href=["\x27]\/(?:tag|category|subject|topic)\/[^"\x27]*["\x27][^>]*class=["\x27][^"\x27]*rounded-full[^"\x27]*["\x27][^>]*>([\s\S]*?)<\/a>/gi)];
+        for (const pm of pillMatches) {
+          const tagTxt = cleanHtmlText(pm[1]);
+          if (tagTxt && tagTxt.length > 1) {
+            tagsSet.add(tagTxt);
+            extraCategoriesSet.add(tagTxt);
+          }
+        }
+
+        // 2. Specific Left Box Specifications (قطع، تعداد صفحه، سال انتشار، نوع جلد، شابک، سری چاپ، انتشارات)
+        const flexMatches = [...bookHtml.matchAll(/<span[^>]*class=["\x27][^"\x27]*text-default[^"\x27]*["\x27][^>]*>([^<:]+):?<\/span>\s*<span[^>]*>([\s\S]*?)<\/span>/gi)];
+        for (const fm of flexMatches) {
+          const k = cleanHtmlText(fm[1]);
+          const v = cleanHtmlText(fm[2]);
+          if (k && v && k.length < 30) {
+            rawMetadata[k] = v;
+            if (k.includes('شابک') && !isbnFound) isbnFound = v.replace(/[^0-9X]/gi, '');
+            if ((k.includes('صفحه') || k.includes('صفحات')) && !pageCount) pageCount = v;
+            if (k.includes('مترجم') && !translator) translator = v;
+            if (k.includes('عنوان اصلی') && !originalTitle) originalTitle = v;
+          }
+        }
+
+        // Publisher link
+        const pubMatch = bookHtml.match(/href=["\x27]\/publisher\/[^"\x27]*["\x27][^>]*>([\s\S]*?)<\/a>/i);
+        if (pubMatch) {
+          const pubName = cleanHtmlText(pubMatch[1]);
+          if (pubName) {
+            publisher = pubName;
+            rawMetadata['انتشارات'] = pubName;
+          }
+        }
+
+        // Schema itemprops
+        const isbnMeta = bookHtml.match(/itemprop=["\x27]isbn["\x27]\s+content=["\x27]([^"\x27]+)/i);
+        if (isbnMeta && isbnMeta[1]) isbnFound = isbnMeta[1].replace(/[^0-9X]/gi, '');
+
+        const pageMeta = bookHtml.match(/itemprop=["\x27]numberOfPages["\x27]\s+content=["\x27]([^"\x27]+)/i);
+        if (pageMeta && pageMeta[1]) pageCount = pageMeta[1];
+
+        // 3. JSON-LD structured data (Product & Breadcrumb)
         const jsonLdMatches = [...bookHtml.matchAll(/<script[^>]*type=\"application\/ld\+json\"[^>]*>([\s\S]*?)<\/script>/gi)];
         for (const m of jsonLdMatches) {
           try {
@@ -3486,11 +3603,23 @@ async function startServer() {
             if (d['@type'] === 'Product') {
               if (d.name) title = cleanHtmlText(d.name);
               if (d.brand?.name) publisher = cleanHtmlText(d.brand.name);
-              if (d.image) coverImage = d.image;
+              if (d.publisher?.name) publisher = cleanHtmlText(d.publisher.name);
+              if (d.image) coverImage = Array.isArray(d.image) ? d.image[0] : d.image;
+              if (d.gtin13 || d.isbn) isbnFound = String(d.gtin13 || d.isbn).replace(/[^0-9X]/gi, '');
+              if (d.keywords) {
+                const kwList = Array.isArray(d.keywords) ? d.keywords : String(d.keywords).split(/[,،]/);
+                kwList.forEach((k: string) => {
+                  const cleaned = cleanHtmlText(k);
+                  if (cleaned && cleaned.length > 1 && !cleaned.includes('خرید')) tagsSet.add(cleaned);
+                });
+              }
             }
             if (d['@type'] === 'BreadcrumbList' && Array.isArray(d.itemListElement)) {
               for (const item of d.itemListElement) {
-                const name = item?.name || '';
+                const name = cleanHtmlText(item?.name || '');
+                if (name && name !== 'خانه' && name !== 'کتاب') {
+                  extraCategoriesSet.add(name);
+                }
                 if (name.includes('کودک') || name.includes('نوجوان')) category = 'کودک و نوجوان';
                 else if (name.includes('شعر')) category = 'شعر و ادبیات';
                 else if (name.includes('مذهب') || name.includes('دین')) category = 'مذهبی و قرآنی';
@@ -3502,16 +3631,9 @@ async function startServer() {
           } catch {}
         }
 
-        // 2. Author from detail page
-        const authorDetailMatch = bookHtml.match(/itemprop=\"author\"[\s\S]*?<span itemprop=\"name\">([^<]+)<\/span>/i) ||
-                                  bookHtml.match(/itemprop=\"author\"[^>]*>([^<]+)/i);
-        if (authorDetailMatch && authorDetailMatch[1]?.trim()) {
-          author = cleanHtmlText(authorDetailMatch[1]);
-        }
-
-        // 3. Detailed book introduction or summary
-        const introMatch = bookHtml.match(/class=\"text-sm text-justify mb-3 leading-6\"[^>]*>([\s\S]*?)<\/div>/i) ||
-                           bookHtml.match(/class=\"[^\"]*leading-6[^\"]*\"[^>]*>([\s\S]*?)<\/div>/i);
+        // 4. Detailed book introduction or summary
+        const introMatch = bookHtml.match(/class=["\x27][^"\x27]*text-justify[^"\x27]*["\x27][^>]*>([\s\S]*?)<\/div>/i) ||
+                           bookHtml.match(/class=["\x27][^"\x27]*leading-6[^"\x27]*["\x27][^>]*>([\s\S]*?)<\/div>/i);
         if (introMatch) {
           description = cleanHtmlText(introMatch[1]);
         } else {
@@ -3522,20 +3644,26 @@ async function startServer() {
         }
       }
 
-      // If description is super long, truncate gently at 600 chars
-      if (description.length > 600) {
-        description = description.slice(0, 597) + '...';
-      }
+      // Filter out generic store tags from tagsSet
+      const filterOutGeneric = ['خرید کتاب', 'خرید اینترنتی کتاب', 'سایت خرید کتاب', 'خرید اقساطی کتاب', 'خانه', 'کتاب'];
+      const cleanTags = Array.from(tagsSet).filter((t) => !filterOutGeneric.some((g) => t.includes(g)));
 
       return {
         title: title || searchTitle,
         author: author || searchAuthor || 'نامشخص',
-        publisher: publisher || '',
+        publisher: publisher || undefined,
+        translator: translator || undefined,
+        originalTitle: originalTitle || undefined,
         category,
         description,
         coverImage,
         source: 'ایران کتاب (iranketab.ir)',
-        url: bookUrl
+        url: bookUrl,
+        isbn: isbnFound || (cleanQuery.match(/^[0-9X]{10,13}$/i) ? cleanQuery : undefined),
+        pageCount: pageCount || undefined,
+        tags: cleanTags.length > 0 ? cleanTags : undefined,
+        extraCategories: Array.from(extraCategoriesSet).length > 0 ? Array.from(extraCategoriesSet) : undefined,
+        rawMetadata: Object.keys(rawMetadata).length > 0 ? rawMetadata : undefined
       };
     } catch (err: any) {
       console.warn('[IranKetab Scraper] Error:', err?.message);

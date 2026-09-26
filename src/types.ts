@@ -83,6 +83,17 @@ export interface Book {
   baleChannelMessageId?: number; // Message ID of the book in Bale channel for auto-deletion
   originalCoverImage?: string; // Backup of the student's raw upload before CamScanner correction
   isCoverScanned?: boolean; // Flag indicating the cover was professionally corrected with CamScanner
+
+  // Rich Metadata & IranKetab Extra Specifications
+  publisher?: string;
+  translator?: string;
+  originalTitle?: string;
+  isbn?: string;
+  pageCount?: string | number;
+  tags?: string[]; // IranKetab hashtags, keywords, subjects, e.g. ["داستان ایرانی", "مجموعه رمان"]
+  extraCategories?: string[]; // All subcategories & breadcrumbs from IranKetab
+  rawMetadata?: Record<string, any>; // Extra IranKetab specs (print year, format, Dewey, quotes, series, edition, etc.)
+  sourceUrl?: string; // Direct link to IranKetab or external source page
 }
 
 export interface BankCardInfo {

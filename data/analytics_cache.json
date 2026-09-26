@@ -2,12 +2,13 @@
   "_dailyData": {
     "2026-09-26": {
       "date": "2026-09-26",
-      "pageViews": 34,
-      "timeSpentSeconds": 2880,
-      "interactions": 62,
+      "pageViews": 84,
+      "timeSpentSeconds": 12105,
+      "interactions": 110,
       "userSessions": [
         "sess_ugk6ff8gi_mu8t1ydv",
-        "sess_u21a8eyk3_muicnl3s"
+        "sess_u21a8eyk3_muicnl3s",
+        "sess_20mkjvb0f_muieox4h"
       ],
       "hourlyViews": [
         0,
@@ -22,13 +23,13 @@
         0,
         4,
         21,
-        9,
+        24,
+        10,
+        5,
+        6,
+        7,
         0,
-        0,
-        0,
-        0,
-        0,
-        0,
+        7,
         0,
         0,
         0,
@@ -36,28 +37,29 @@
         0
       ],
       "pathViews": {
-        "پنل مدیریت": 2,
-        "کتابخانه اصلی و فهرست کتب": 16,
-        "my_books": 16
+        "پنل مدیریت": 3,
+        "کتابخانه اصلی و فهرست کتب": 50,
+        "my_books": 31
       },
       "interactionCounts": {
-        "general_click": 62
+        "general_click": 109,
+        "add_book": 1
       },
       "deviceCounts": {
-        "رایانه و لپ‌تاپ 💻": 32,
-        "موبایل 📱": 2
+        "رایانه و لپ‌تاپ 💻": 70,
+        "موبایل 📱": 14
       },
       "browserCounts": {
-        "Google Chrome": 19
+        "Google Chrome": 59
       },
       "searchQueries": {},
       "userStats": {
         "u_admin_master_test_001100": {
           "name": "مدیر تست سامانه (کد 001100)",
-          "seconds": 2160,
-          "views": 26,
-          "interactions": 62,
-          "lastSeen": 1790425522046
+          "seconds": 11385,
+          "views": 76,
+          "interactions": 110,
+          "lastSeen": 1790449242649
         },
         "guest_sess_u": {
           "name": "کاربر مهمان",
@@ -69,6 +71,23 @@
       }
     }
   },
-  "_recentInteractions": [],
-  "_lastSaved": "2026-09-26T12:25:25.047Z"
+  "_recentInteractions": [
+    {
+      "id": "ev_1790448963638_2oenf",
+      "type": "add_book",
+      "label": "اهدای کتاب جدید «آب انبار»",
+      "category": "donations",
+      "categoryLabel": "اهدای کتاب به مدرسه",
+      "userName": "مدیر تست سامانه (کد 001100)",
+      "userRole": "student",
+      "timestamp": 1790448963638,
+      "timeAgo": "لحظاتی پیش",
+      "path": "/library",
+      "metadata": {
+        "bookTitle": "آب انبار",
+        "author": "هوشنگ مرادی کرمانی"
+      }
+    }
+  ],
+  "_lastSaved": "2026-09-26T19:00:45.649Z"
 }

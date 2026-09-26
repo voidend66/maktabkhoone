@@ -225,6 +225,17 @@ export const api = {
     return await res.json();
   },
 
+  async enrichBookFromIranKetab(id: string): Promise<{ success: boolean; message?: string; book?: Book }> {
+    try {
+      const res = await fetch(`${API_BASE}/admin/books/${id}/enrich-iranketab`, {
+        method: 'POST'
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ارتباط با سرور' };
+    }
+  },
+
   async revertBookCover(id: string) {
     const res = await fetch(`${API_BASE}/books/${id}/revert-cover`, {
       method: 'POST',

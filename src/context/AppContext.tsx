@@ -77,9 +77,19 @@ interface AppContextType {
     condition: BookCondition;
     coverImage: string;
     description: string;
+    publisher?: string;
+    translator?: string;
+    originalTitle?: string;
+    isbn?: string;
+    pageCount?: string | number;
+    tags?: string[];
+    extraCategories?: string[];
+    rawMetadata?: Record<string, any>;
+    sourceUrl?: string;
   }) => Promise<Book>;
   updateBook: (id: string, data: Partial<Book>) => Promise<{ success: boolean; book?: Book; message?: string }>;
   revertBookCover: (id: string) => Promise<{ success: boolean; book?: Book; message?: string }>;
+  enrichBookFromIranKetab: (id: string) => Promise<{ success: boolean; book?: Book; message?: string }>;
   deleteBook: (bookId: string) => void;
   acceptLoanRequest: (
     requestId: string,
@@ -727,6 +737,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       return { success: false, message: res?.message || 'خطا در بازنشانی جلد کتاب' };
     } catch (e: any) {
       return { success: false, message: e.message || 'خطا در بازنشانی جلد کتاب' };
+    }
+  };
+
+  // Enrich book metadata & tags from IranKetab
+  const enrichBookFromIranKetab = async (id: string) => {
+    try {
+      const res = await api.enrichBookFromIranKetab(id);
+      if (res && res.success && res.book) {
+        setBooks((prev) => prev.map((b) => (b.id === id ? res.book! : b)));
+        return { success: true, book: res.book, message: res.message };
+      }
+      return { success: false, message: res?.message || 'اطلاعاتی در ایران‌کتاب یافت نشد' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در استعلام از ایران‌کتاب' };
     }
   };
 
@@ -1602,7 +1626,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         updateUserBirthday,
         claimBirthdayReward,
         updateBook,
-        revertBookCover
+        revertBookCover,
+        enrichBookFromIranKetab
       }}
     >
       {children}

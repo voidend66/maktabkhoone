@@ -83,11 +83,19 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           book.author.toLowerCase().includes(query) ||
           book.ownerName.toLowerCase().includes(query) ||
           book.ownerClass.toLowerCase().includes(query) ||
-          book.description.toLowerCase().includes(query);
+          book.description.toLowerCase().includes(query) ||
+          (book.publisher && book.publisher.toLowerCase().includes(query)) ||
+          (book.translator && book.translator.toLowerCase().includes(query)) ||
+          (book.originalTitle && book.originalTitle.toLowerCase().includes(query)) ||
+          (book.isbn && book.isbn.toLowerCase().includes(query)) ||
+          (book.tags && book.tags.some((t) => t.toLowerCase().includes(query))) ||
+          (book.extraCategories && book.extraCategories.some((c) => c.toLowerCase().includes(query)));
 
         // Category Filter
         const matchesCategory =
-          selectedCategory === 'همه تصنیف‌ها' || book.category === selectedCategory;
+          selectedCategory === 'همه تصنیف‌ها' ||
+          book.category === selectedCategory ||
+          (book.extraCategories && book.extraCategories.includes(selectedCategory));
 
         // Availability Filter
         const matchesAvailability = !onlyAvailable || book.status === 'available';

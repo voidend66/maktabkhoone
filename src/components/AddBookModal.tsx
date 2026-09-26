@@ -54,6 +54,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpen
   );
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [showPresetsToggle, setShowPresetsToggle] = useState(false);
+  const [richMetadata, setRichMetadata] = useState<{
+    publisher?: string;
+    translator?: string;
+    originalTitle?: string;
+    isbn?: string;
+    pageCount?: string | number;
+    tags?: string[];
+    extraCategories?: string[];
+    rawMetadata?: Record<string, any>;
+    sourceUrl?: string;
+  } | null>(null);
+
   const [submittedBook, setSubmittedBook] = useState<{
     id?: string;
     title: string;
@@ -192,7 +204,16 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpen
         category,
         condition,
         coverImage: finalCover,
-        description: description.trim()
+        description: description.trim(),
+        publisher: richMetadata?.publisher,
+        translator: richMetadata?.translator,
+        originalTitle: richMetadata?.originalTitle,
+        isbn: richMetadata?.isbn,
+        pageCount: richMetadata?.pageCount,
+        tags: richMetadata?.tags,
+        extraCategories: richMetadata?.extraCategories,
+        rawMetadata: richMetadata?.rawMetadata,
+        sourceUrl: richMetadata?.sourceUrl
       });
 
       setSubmittedBook({
@@ -212,7 +233,7 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpen
     }
   };
 
-  const handleBookFromBarcode = (scanned: ScannedBookData) => {
+  const handleBookFromBarcode = (scanned: any) => {
     if (scanned.title) setTitle(scanned.title);
     if (scanned.author) setAuthor(scanned.author);
     if (scanned.category) {
@@ -231,6 +252,18 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpen
       setUploadedCover(scanned.coverImage);
       setPreviewUrl(scanned.coverImage);
     }
+
+    setRichMetadata({
+      publisher: scanned.publisher,
+      translator: scanned.translator,
+      originalTitle: scanned.originalTitle,
+      isbn: scanned.isbn,
+      pageCount: scanned.pageCount,
+      tags: scanned.tags,
+      extraCategories: scanned.extraCategories,
+      rawMetadata: scanned.rawMetadata,
+      sourceUrl: scanned.url || scanned.sourceUrl
+    });
     setError('');
   };
 
@@ -668,6 +701,43 @@ export const AddBookModal: React.FC<AddBookModalProps> = ({ onClose, initialOpen
                         </div>
                       )}
                     </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Rich IranKetab Extracted Metadata Confirmation Card */}
+              {richMetadata && (richMetadata.publisher || richMetadata.tags?.length || richMetadata.isbn) && (
+                <div className="p-3.5 bg-gradient-to-r from-sky-50 via-indigo-50 to-slate-50 rounded-2xl border border-sky-200 shadow-2xs space-y-2 animate-in fade-in">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-sky-600 animate-pulse shrink-0" />
+                      <span className="text-xs font-black text-slate-900">
+                        اطلاعات و هشتگ‌های ایران‌کتاب آماده ثبت در دیتابیس است ✨
+                      </span>
+                    </div>
+                    {richMetadata.isbn && (
+                      <span className="font-mono text-[10px] text-slate-600 font-bold bg-white px-2 py-0.5 rounded border border-slate-200">
+                        ISBN: {richMetadata.isbn}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 text-[11px] text-slate-700 pt-1 border-t border-sky-100">
+                    {richMetadata.publisher && (
+                      <span className="bg-white/90 px-2 py-0.5 rounded border border-slate-200">
+                        ناشر: <strong>{richMetadata.publisher}</strong>
+                      </span>
+                    )}
+                    {richMetadata.translator && (
+                      <span className="bg-white/90 px-2 py-0.5 rounded border border-slate-200">
+                        مترجم: <strong>{richMetadata.translator}</strong>
+                      </span>
+                    )}
+                    {richMetadata.tags && richMetadata.tags.length > 0 && (
+                      <span className="bg-sky-100/90 text-sky-900 font-bold px-2 py-0.5 rounded border border-sky-200">
+                        {richMetadata.tags.length} هشتگ اختصاصی
+                      </span>
+                    )}
                   </div>
                 </div>
               )}

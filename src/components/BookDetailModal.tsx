@@ -22,6 +22,7 @@ import {
   Undo2
 } from 'lucide-react';
 import { CamScannerModal } from './CamScannerModal';
+import { ExtractedMetadataModal } from './ExtractedMetadataModal';
 
 interface BookDetailModalProps {
   book: Book | null;
@@ -34,7 +35,7 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   onClose,
   onRequestLoan
 }) => {
-  const { currentUser, addBookReview, deleteBookReview, users, activeEvents, updateBook, revertBookCover } = useApp();
+  const { currentUser, addBookReview, deleteBookReview, users, activeEvents, updateBook, revertBookCover, enrichBookFromIranKetab } = useApp();
   
   const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
 
@@ -46,6 +47,8 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [useFreeLoanQuota, setUseFreeLoanQuota] = useState(false);
   const [showCamScanner, setShowCamScanner] = useState(false);
   const [showFreeLoanReminderModal, setShowFreeLoanReminderModal] = useState(false);
+  const [showExtractedModal, setShowExtractedModal] = useState(false);
+  const [isEnriching, setIsEnriching] = useState(false);
 
   const hasFreeQuota = (currentUser?.freeLoanQuota || 0) > 0;
   const activeEvent = activeEvents[0];
@@ -225,6 +228,91 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                   </p>
                   <p className="leading-relaxed">{book.description || 'توضیحاتی برای این کتاب وارد نشده است.'}</p>
                 </div>
+
+                {/* IranKetab Rich Specifications & Tags */}
+                {(book.publisher || book.translator || book.originalTitle || book.pageCount || book.isbn || (book.tags && book.tags.length > 0)) && (
+                  <div className="mt-4 p-3.5 bg-gradient-to-r from-sky-50/70 via-indigo-50/50 to-slate-50 rounded-2xl border border-sky-100 text-xs space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-black text-slate-900 text-xs flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-sky-600" />
+                        شناسنامه و هشتگ‌های اختصاصی:
+                      </span>
+                      {book.isbn && (
+                        <span className="text-[10px] text-slate-500 font-mono bg-white px-2 py-0.5 rounded-md border border-slate-200">
+                          ISBN: {book.isbn}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px] text-slate-700">
+                      {book.publisher && (
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-slate-100">
+                          <span className="text-slate-400 block text-[9px]">ناشر:</span>
+                          <span className="font-bold text-slate-800 truncate block">{book.publisher}</span>
+                        </div>
+                      )}
+                      {book.translator && (
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-slate-100">
+                          <span className="text-slate-400 block text-[9px]">مترجم:</span>
+                          <span className="font-bold text-slate-800 truncate block">{book.translator}</span>
+                        </div>
+                      )}
+                      {book.originalTitle && (
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-slate-100">
+                          <span className="text-slate-400 block text-[9px]">عنوان اصلی:</span>
+                          <span className="font-bold text-slate-800 truncate block">{book.originalTitle}</span>
+                        </div>
+                      )}
+                      {book.pageCount && (
+                        <div className="bg-white/80 p-1.5 rounded-lg border border-slate-100">
+                          <span className="text-slate-400 block text-[9px]">تعداد صفحه:</span>
+                          <span className="font-bold text-slate-800 block">{book.pageCount} صفحه</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Hashtags / Tags */}
+                    {book.tags && book.tags.length > 0 && (
+                      <div className="pt-2 border-t border-sky-100/80">
+                        <span className="text-[10px] text-slate-500 font-bold block mb-1.5">هشتگ‌ها و موضوعات مرتبط (قابل جستجو):</span>
+                        <div className="flex flex-wrap gap-1">
+                          {book.tags.map((tag, idx) => (
+                            <span
+                              key={idx}
+                              className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-sky-100/80 text-sky-900 border border-sky-200"
+                            >
+                              #{tag.replace(/\s+/g, '_')}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Admin Metadata Passport Option */}
+                {currentUser?.role === 'admin' && (
+                  <div className="mt-4 p-3.5 bg-gradient-to-r from-indigo-900 via-indigo-950 to-slate-900 text-white rounded-2xl shadow-md border border-indigo-500/30 flex flex-wrap items-center justify-between gap-2.5">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-sky-400 shrink-0 animate-pulse" />
+                      <div>
+                        <h4 className="text-xs font-black text-white">
+                          شناسنامه جامع ایران‌کتاب (مدیریت)
+                        </h4>
+                        <p className="text-[10px] text-slate-300">
+                          مشاهده هشتگ‌ها، مشخصات فنی، قطع، سال انتشار و مشخصات استخراج شده
+                        </p>
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => setShowExtractedModal(true)}
+                      className="px-3 py-1.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs transition shadow-2xs cursor-pointer flex items-center gap-1"
+                    >
+                      <span>مشاهده تمام اطلاعات استخراج‌شده 📋</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* Free Loan Option (Event Reward Quota) */}
                 {hasFreeQuota && isAvailable && (
@@ -589,6 +677,25 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                 }
               : undefined
           }
+        />
+      )}
+
+      {/* Extracted Metadata Modal for Admin */}
+      {showExtractedModal && (
+        <ExtractedMetadataModal
+          book={book}
+          onClose={() => setShowExtractedModal(false)}
+          onReEnrich={async () => {
+            setIsEnriching(true);
+            const res = await enrichBookFromIranKetab(book.id);
+            setIsEnriching(false);
+            if (res && res.success) {
+              alert(res.message || 'اطلاعات با موفقیت به‌روزرسانی شد.');
+            } else {
+              alert(res?.message || 'خطا در به‌روزرسانی اطلاعات.');
+            }
+          }}
+          isReEnriching={isEnriching}
         />
       )}
     </div>
