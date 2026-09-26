@@ -382,26 +382,52 @@ function MainAppContent() {
                 );
               } else if (daysLeft <= 3) {
                 return (
-                  <div key={request.id} className="bg-cyan-50 border border-cyan-200 text-cyan-950 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                  <div key={request.id} className="bg-amber-50/90 border-2 border-amber-300 text-amber-950 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-full bg-cyan-600 flex items-center justify-center text-white shrink-0">
+                      <div className="w-10 h-10 rounded-full bg-amber-500 flex items-center justify-center text-white shrink-0 shadow-xs">
                         <Clock className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="font-black text-xs sm:text-sm">📅 روزشمار تحویل: {daysLeft} روز دیگر تا تحویل کتاب «{request.bookTitle}»</h4>
-                        <p className="text-[11px] text-cyan-800 mt-0.5">مهلت عودت کتاب شما تا تاریخ <strong>{request.dueDate}</strong> است.</p>
+                        <h4 className="font-black text-xs sm:text-sm">⏳ یادآور مکتب‌خانه: {daysLeft} روز دیگر تا تحویل کتاب «{request.bookTitle}»</h4>
+                        <p className="text-[11px] text-amber-800 mt-0.5">موعد بازگرداندن کتاب به مالک («{request.ownerName}»): <strong>{request.dueDate || `${daysLeft} روز دیگر`}</strong></p>
                       </div>
                     </div>
                     <button 
                       onClick={() => { setActiveTab('requests'); }}
-                      className="text-xs font-bold bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0"
+                      className="text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
                     >
                       ورود به صفحه امانت‌ها ➜
                     </button>
                   </div>
                 );
+              } else {
+                return (
+                  <div key={request.id} className="bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 border-2 border-emerald-300/80 text-emerald-950 rounded-2xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-600 flex items-center justify-center text-white shrink-0 shadow-xs">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h4 className="font-black text-xs sm:text-sm">📖 کتاب «{request.bookTitle}» در امانت شماست</h4>
+                          <span className="text-[10px] font-black bg-emerald-600 text-white px-2 py-0.5 rounded-full shadow-2xs">
+                            ⏳ {daysLeft} روز مهلت باقی‌مانده
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-emerald-800/90 mt-0.5 font-medium">
+                          شما تا <strong>{daysLeft} روز دیگر (تاریخ {request.dueDate || `${daysLeft} روز آینده`})</strong> فرصت مطالعه دارید تا به همکلاسی خود («{request.ownerName}») تحویل دهید.
+                        </p>
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => { setActiveTab('requests'); }}
+                      className="text-xs font-bold bg-emerald-700 hover:bg-emerald-800 text-white px-4 py-2 rounded-xl transition cursor-pointer self-start sm:self-auto shrink-0 shadow-xs"
+                    >
+                      مشاهده جزئیات امانت ➜
+                    </button>
+                  </div>
+                );
               }
-              return null;
             })}
           </div>
         </div>

@@ -130,6 +130,20 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
   const incomingRequests = requests.filter((r) => r.ownerId === currentUser.id);
   const outgoingRequests = requests.filter((r) => r.borrowerId === currentUser.id);
 
+  // Helper for computing countdown and overdue status for both owners and borrowers
+  const getLoanCountdownInfo = (req: LendingRequest) => {
+    const now = Date.now();
+    let ts = req.dueDateTimestamp;
+    if (!ts) {
+      ts = Date.now() + 4 * 24 * 60 * 60 * 1000;
+    }
+    const diffMs = ts - now;
+    const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+    const hoursLeft = Math.ceil(diffMs / (1000 * 60 * 60));
+    const isOverdue = diffMs < 0;
+    return { diffDays, hoursLeft, isOverdue };
+  };
+
   const handleAcceptSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptingReqId) return;
@@ -393,6 +407,56 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
                     </div>
                   </div>
                 )}
+
+                {/* Return Countdown Timer for Book Owner (Lender) */}
+                {req.status === 'handover_confirmed' && (() => {
+                  const { diffDays, hoursLeft, isOverdue } = getLoanCountdownInfo(req);
+                  return (
+                    <div className={`p-4 rounded-2xl border-2 space-y-2 ${
+                      isOverdue
+                        ? 'bg-rose-50/95 border-rose-300 text-rose-950 shadow-xs animate-pulse'
+                        : hoursLeft <= 24
+                        ? 'bg-amber-50/95 border-amber-300 text-amber-950 shadow-xs'
+                        : 'bg-gradient-to-r from-emerald-50/90 via-teal-50/90 to-cyan-50/90 border-emerald-300 text-emerald-950 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
+                          {isOverdue ? (
+                            <>
+                              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                              <span>⚠️ موعد تحویل کتاب به شما گذشته است!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-5 h-5 text-emerald-600 shrink-0" />
+                              <span>
+                                📅 زمان‌سنج بازگشت کتاب: این کتاب شما تا {diffDays} روز دیگر به دست شما می‌رسد
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        <span className={`text-[11px] font-black px-3 py-1 rounded-full shadow-2xs ${
+                          isOverdue
+                            ? 'bg-rose-200 text-rose-950'
+                            : hoursLeft <= 24
+                            ? 'bg-amber-200 text-amber-950 animate-pulse'
+                            : 'bg-emerald-200 text-emerald-950'
+                        }`}>
+                          {isOverdue
+                            ? `${Math.abs(diffDays)} روز تاخیر در تحویل`
+                            : hoursLeft <= 24
+                            ? `کمتر از ۲۴ ساعت (${hoursLeft} ساعت)`
+                            : `⏳ ${diffDays} روز تا بازگشت`}
+                        </span>
+                      </div>
+
+                      <p className="text-xs leading-relaxed font-medium">
+                        این کتاب هم‌اکنون نزد <strong>«{req.borrowerName}»</strong> (کلاس {req.borrowerClass} - شماره تماس: {req.borrowerPhone || 'در دسترس'}) است و طبق مهلت قانونی باید تا تاریخ <strong>{req.dueDate || `${diffDays} روز دیگر`}</strong> به شما تحویل داده شود.
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Actions Bar */}
                 <div className="flex items-center justify-between flex-wrap gap-2 pt-2">
@@ -840,6 +904,56 @@ export const LendingRequests: React.FC<{ initialTab?: 'incoming' | 'outgoing' }>
                     </div>
                   </div>
                 )}
+
+                {/* Reading Countdown Timer for Borrower */}
+                {req.status === 'handover_confirmed' && (() => {
+                  const { diffDays, hoursLeft, isOverdue } = getLoanCountdownInfo(req);
+                  return (
+                    <div className={`p-4 rounded-2xl border-2 space-y-2 ${
+                      isOverdue
+                        ? 'bg-rose-50/95 border-rose-300 text-rose-950 shadow-xs animate-pulse'
+                        : hoursLeft <= 24
+                        ? 'bg-amber-50/95 border-amber-300 text-amber-950 shadow-xs'
+                        : 'bg-gradient-to-r from-indigo-50/90 via-cyan-50/90 to-teal-50/90 border-cyan-300 text-cyan-950 shadow-xs'
+                    }`}>
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2 font-black text-xs sm:text-sm">
+                          {isOverdue ? (
+                            <>
+                              <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                              <span>⚠️ مهلت مطالعه شما برای این کتاب به پایان رسیده است!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Clock className="w-5 h-5 text-cyan-700 shrink-0" />
+                              <span>
+                                ⏳ زمان‌سنج مهلت مطالعه: شما تا {diffDays} روز دیگر فرصت دارید
+                              </span>
+                            </>
+                          )}
+                        </div>
+
+                        <span className={`text-[11px] font-black px-3 py-1 rounded-full shadow-2xs ${
+                          isOverdue
+                            ? 'bg-rose-200 text-rose-950'
+                            : hoursLeft <= 24
+                            ? 'bg-amber-200 text-amber-950 animate-pulse'
+                            : 'bg-cyan-200 text-cyan-950'
+                        }`}>
+                          {isOverdue
+                            ? 'مهلت پایان یافته'
+                            : hoursLeft <= 24
+                            ? `${hoursLeft} ساعت مانده`
+                            : `⏳ ${diffDays} روز مهلت باقی‌مانده`}
+                        </span>
+                      </div>
+
+                      <p className="text-xs leading-relaxed font-medium">
+                        شما این کتاب را از همکلاسی خود <strong>«{req.ownerName}»</strong> امانت گرفته‌اید. موعد بازگرداندن و تحویل کتاب: <strong>{req.dueDate || `${diffDays} روز دیگر`}</strong>.
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {req.status === 'handover_confirmed' && (
                   <div className="flex justify-end">
