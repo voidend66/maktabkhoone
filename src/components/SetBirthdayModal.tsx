@@ -132,8 +132,8 @@ export const SetBirthdayModal: React.FC<SetBirthdayModalProps> = ({ onClose, onS
           </div>
 
           {/* One-time Lock Warning Notice */}
-          <div className="p-2.5 bg-rose-500/15 border border-rose-500/30 rounded-xl text-[11px] text-rose-200 text-right leading-relaxed font-medium">
-            🔒 <strong>توجه مهم:</strong> تاریخ تولد تنها <u>یک‌بار</u> قابل ثبت است و پس از ثبت نهایی جهت جلوگیری از سوءاستفاده در دریافت هدایا، قفل خواهد شد. لطفاً در انتخاب ماه و روز دقت نمایید.
+          <div className="p-2.5 bg-amber-500/15 border border-amber-500/30 rounded-xl text-[11px] text-amber-200 text-right leading-relaxed font-medium">
+            📌 <strong>توجه:</strong> تاریخ تولد پس از ثبت نهایی، قابل ویرایش نیست. لطفاً در انتخاب ماه و روز دقت فرمایید.
           </div>
         </div>
 

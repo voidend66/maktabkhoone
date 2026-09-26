@@ -2843,11 +2843,11 @@ async function startServer() {
         return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
       }
 
-      // Prevent abuse: If user already has a birthday registered, disallow changing unless forced by admin
+      // Prevent re-editing: If user already has a birthday registered, disallow changing unless forced by admin
       if (user.birthMonth && user.birthDay && !forceAdminOverride) {
         return res.status(400).json({
           success: false,
-          message: 'تاریخ تولد شما قبلاً ثبت شده و جهت جلوگیری از سوءاستفاده قفل است. در صورت نیاز به تغییر با مدیر سایت هماهنگ فرمایید.'
+          message: 'تاریخ تولد شما قبلاً ثبت شده و قابل ویرایش نیست. در صورت نیاز با مدیر سایت هماهنگ فرمایید.'
         });
       }
 
