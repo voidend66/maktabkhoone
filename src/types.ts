@@ -30,6 +30,10 @@ export interface User {
   baleChatId?: number | string;
   freeLoanQuota?: number; // Active free loan quotas won from events
   claimedEventRewards?: string[]; // Array of event IDs user has claimed rewards for
+  birthMonth?: number; // 1..12 (1 = فروردین, ..., 12 = اسفند)
+  birthDay?: number; // 1..31
+  birthDatePersian?: string; // e.g. "۱۵ مهر"
+  lastBirthdayRewardYear?: number; // Solar year of last claimed birthday reward (e.g. 1403)
   pendingFreeLoanReward?: {
     count: number;
     source: 'event' | 'manual';
@@ -346,6 +350,10 @@ export interface SystemConfig {
   announcement?: SystemAnnouncement;
   allowMasterTestCode?: boolean;
   googleDrive?: GoogleDriveConfig;
+  birthdayRewardEnabled?: boolean;
+  birthdayRewardFreeLoans?: number;
+  birthdayCustomMessage?: string;
+  birthdaySendBaleMessage?: boolean;
 }
 
 export interface CustomAvatar {

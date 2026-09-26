@@ -2602,6 +2602,83 @@ async function startServer() {
    * API: کاربران (Users)
    * --------------------------------------------------------------------------
    */
+  // Cascade synchronize user profile changes across all books, requests, and reviews
+  function syncUserChangesAcrossDatabase(userId: string, updatedUser: User) {
+    try {
+      // 1. Cascade to all books owned or borrowed by user
+      const allBooks = dbService.getAllBooks();
+      allBooks.forEach((book) => {
+        let bookModified = false;
+        const bookUpdates: Partial<Book> = {};
+
+        if (book.ownerId === userId) {
+          bookUpdates.ownerName = updatedUser.name;
+          bookUpdates.ownerClass = updatedUser.className;
+          bookUpdates.ownerAvatar = updatedUser.avatar;
+          bookModified = true;
+        }
+
+        if (book.borrowerId === userId) {
+          bookUpdates.borrowerName = updatedUser.name;
+          bookModified = true;
+        }
+
+        // Cascade to reviews inside book
+        if (book.reviews && book.reviews.length > 0) {
+          let reviewsChanged = false;
+          const updatedReviews = book.reviews.map((rev) => {
+            if (rev.userId === userId) {
+              reviewsChanged = true;
+              return {
+                ...rev,
+                userName: updatedUser.name,
+                userAvatar: updatedUser.avatar,
+                userClass: updatedUser.className
+              };
+            }
+            return rev;
+          });
+          if (reviewsChanged) {
+            bookUpdates.reviews = updatedReviews;
+            bookModified = true;
+          }
+        }
+
+        if (bookModified) {
+          dbService.updateBook(book.id, bookUpdates);
+        }
+      });
+
+      // 2. Cascade to all lending requests
+      const allRequests = dbService.getAllRequests();
+      allRequests.forEach((req) => {
+        let reqModified = false;
+        const reqUpdates: Partial<LendingRequest> = {};
+
+        if (req.ownerId === userId) {
+          reqUpdates.ownerName = updatedUser.name;
+          reqUpdates.ownerClass = updatedUser.className;
+          reqModified = true;
+        }
+
+        if (req.borrowerId === userId) {
+          reqUpdates.borrowerName = updatedUser.name;
+          reqUpdates.borrowerClass = updatedUser.className;
+          if (updatedUser.phone) {
+            reqUpdates.borrowerPhone = updatedUser.phone;
+          }
+          reqModified = true;
+        }
+
+        if (reqModified) {
+          dbService.updateRequest(req.id, reqUpdates);
+        }
+      });
+    } catch (err) {
+      console.warn('Error cascading user changes across database:', err);
+    }
+  }
+
   app.get('/api/users', (_req: Request, res: Response) => {
     res.json({ success: true, users: dbService.getAllUsers() });
   });
@@ -2623,6 +2700,9 @@ async function startServer() {
 
       const user = dbService.updateUser(req.params.id, updates);
       if (!user) return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+
+      // Automatically cascade sync name, class, and avatar across all books and requests
+      syncUserChangesAcrossDatabase(user.id, user);
 
       // Notify admins if user completed their profile or resubmitted for review
       if (user.role !== 'admin' && user.status === 'pending') {
@@ -2743,6 +2823,129 @@ async function startServer() {
     } catch (err: any) {
       console.error('Grant free loan error:', err);
       res.status(500).json({ success: false, message: 'خطا در اعطای سهمیه امانت رایگان.' });
+    }
+  });
+
+  /**
+   * API: ثبت یا ویرایش تاریخ تولد کاربر (ماه و روز شمسی)
+   */
+  app.post('/api/users/:id/birthday', (req: Request, res: Response): any => {
+    try {
+      const { birthMonth, birthDay, forceAdminOverride } = req.body || {};
+      const numMonth = Math.min(12, Math.max(1, Number(birthMonth) || 1));
+      const numDay = Math.min(31, Math.max(1, Number(birthDay) || 1));
+
+      const PERSIAN_MONTHS = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+      const birthDatePersian = `${numDay} ${PERSIAN_MONTHS[numMonth - 1]}`;
+
+      const user = dbService.getUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+      }
+
+      // Prevent abuse: If user already has a birthday registered, disallow changing unless forced by admin
+      if (user.birthMonth && user.birthDay && !forceAdminOverride) {
+        return res.status(400).json({
+          success: false,
+          message: 'تاریخ تولد شما قبلاً ثبت شده و جهت جلوگیری از سوءاستفاده قفل است. در صورت نیاز به تغییر با مدیر سایت هماهنگ فرمایید.'
+        });
+      }
+
+      const updated = dbService.updateUser(user.id, {
+        birthMonth: numMonth,
+        birthDay: numDay,
+        birthDatePersian
+      });
+
+      dbService.addSystemLog(
+        'info',
+        `ثبت تاریخ تولد کاربر (${user.name})`,
+        `تاریخ تولد: ${birthDatePersian}`
+      );
+
+      res.json({ success: true, user: updated, birthDatePersian });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'خطا در ثبت تاریخ تولد.' });
+    }
+  });
+
+  /**
+   * API: دریافت هدیه روز تولد (سهمیه امانت رایگان)
+   */
+  app.post('/api/users/:id/claim-birthday-reward', (req: Request, res: Response): any => {
+    try {
+      const user = dbService.getUserById(req.params.id);
+      if (!user) {
+        return res.status(404).json({ success: false, message: 'کاربر یافت نشد.' });
+      }
+
+      const config = dbService.getSystemConfig();
+      if (config.birthdayRewardEnabled === false) {
+        return res.status(400).json({ success: false, message: 'رویداد هدیه تولد در حال حاضر غیرفعال است.' });
+      }
+
+      // Calculate current Jalali year, month, day
+      const formatter = new Intl.DateTimeFormat('fa-IR-u-nu-latn', {
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric'
+      });
+      const parts = formatter.formatToParts(new Date());
+      const curYear = Number(parts.find((p) => p.type === 'year')?.value || 1403);
+      const curMonth = Number(parts.find((p) => p.type === 'month')?.value || 1);
+      const curDay = Number(parts.find((p) => p.type === 'day')?.value || 1);
+
+      if (user.birthMonth !== curMonth || user.birthDay !== curDay) {
+        return res.status(400).json({ success: false, message: 'امروز تاریخ تولد ثبت‌شده شما نیست.' });
+      }
+
+      if (user.lastBirthdayRewardYear === curYear) {
+        return res.status(400).json({ success: false, message: `هدیه تولد سال ${curYear} قبلاً دریافت شده است.` });
+      }
+
+      const rewardCount = config.birthdayRewardFreeLoans ?? 1;
+      const newQuota = (user.freeLoanQuota || 0) + rewardCount;
+
+      const customMsg = config.birthdayCustomMessage || `زادروزت فرخنده باد! مکتب‌خانه تولد شما را تبریک می‌گوید 🎂🎈`;
+
+      const updatedUser = dbService.updateUser(user.id, {
+        freeLoanQuota: newQuota,
+        lastBirthdayRewardYear: curYear
+      });
+
+      dbService.addSystemLog(
+        'info',
+        `🎁 اعطای هدیه روز تولد به ${user.name}`,
+        `تعداد ${rewardCount} سهمیه امانت رایگان به مناسبت تولد کاربر اهدا شد.`
+      );
+
+      dbService.createNotification({
+        userId: user.id,
+        title: '🎂 تولدت مبارک! هدیه امانت رایگان مکتب‌خانه',
+        message: `${customMsg} (تعداد ${rewardCount} سهمیه امانت رایگان به حسابت اضافه شد)`,
+        type: 'system',
+        linkTab: 'library'
+      });
+
+      if (config.birthdaySendBaleMessage !== false && user.baleChatId) {
+        notifyUserOnBale(
+          user.id,
+          `🎂 <b>تولدت مبارک ${user.name} عزیز! 🎉🎈</b>\n\n` +
+          `${customMsg}\n\n` +
+          `🎁 <b>هدیه مکتب‌خانه:</b> ${rewardCount} سهمیه امانت کتاب کاملاً رایگان!\n` +
+          `📚 <b>موجودی سهمیه‌های شما:</b> ${newQuota} امانت رایگان\n\n` +
+          `سالی پر از شادی، سلامتی و دانایی برایت آرزومندیم. 🌟`
+        );
+      }
+
+      res.json({
+        success: true,
+        user: updatedUser,
+        rewardCount,
+        message: `🎂 تولدت مبارک! ${rewardCount} سهمیه امانت رایگان با موفقیت به حسابت اضافه شد!`
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'خطا در دریافت هدیه تولد.' });
     }
   });
 

@@ -115,6 +115,23 @@ export const api = {
     return await res.json();
   },
 
+  async updateBirthday(id: string, birthMonth: number, birthDay: number) {
+    const res = await fetch(`${API_BASE}/users/${id}/birthday`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ birthMonth, birthDay })
+    });
+    return await res.json();
+  },
+
+  async claimBirthdayReward(id: string) {
+    const res = await fetch(`${API_BASE}/users/${id}/claim-birthday-reward`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    return await res.json();
+  },
+
   async approveUser(id: string) {
     const res = await fetch(`${API_BASE}/users/${id}/approve`, { method: 'POST' });
     return await res.json();

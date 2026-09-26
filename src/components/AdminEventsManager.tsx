@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { SystemEvent, UserEventProgress } from '../types';
+import { getCurrentJalaliDate, PERSIAN_MONTHS, formatPersianBirthday } from '../utils/jalaliDate';
 import {
   Sparkles,
   Plus,
@@ -21,7 +22,10 @@ import {
   ExternalLink,
   ShieldCheck,
   Check,
-  RotateCcw
+  RotateCcw,
+  Cake,
+  PartyPopper,
+  Save
 } from 'lucide-react';
 
 export const AdminEventsManager: React.FC = () => {
@@ -33,7 +37,8 @@ export const AdminEventsManager: React.FC = () => {
     deleteEvent,
     publishEventToBale,
     users,
-    systemConfig
+    systemConfig,
+    updateSystemConfig
   } = useApp();
 
   const [isCreating, setIsCreating] = useState(false);
@@ -41,6 +46,68 @@ export const AdminEventsManager: React.FC = () => {
   const [expandedEventId, setExpandedEventId] = useState<string | null>(null);
   const [eventProgressList, setEventProgressList] = useState<Record<string, UserEventProgress[]>>({});
   const [isLoadingProgress, setIsLoadingProgress] = useState(false);
+
+  // Birthday Reward Settings State
+  const [birthdayRewardEnabled, setBirthdayRewardEnabled] = useState<boolean>(
+    systemConfig?.birthdayRewardEnabled !== false
+  );
+  const [birthdayRewardFreeLoans, setBirthdayRewardFreeLoans] = useState<number>(
+    systemConfig?.birthdayRewardFreeLoans ?? 1
+  );
+  const [birthdayCustomMessage, setBirthdayCustomMessage] = useState<string>(
+    systemConfig?.birthdayCustomMessage ||
+      'زادروزت فرخنده باد! مکتب‌خانه تولد شما را تبریک می‌گوید و این هدیه تقدیم شماست 🎂🎁'
+  );
+  const [birthdaySendBaleMessage, setBirthdaySendBaleMessage] = useState<boolean>(
+    systemConfig?.birthdaySendBaleMessage !== false
+  );
+  const [isSavingBirthdayConfig, setIsSavingBirthdayConfig] = useState(false);
+  const [birthdaySaveFeedback, setBirthdaySaveFeedback] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (systemConfig) {
+      setBirthdayRewardEnabled(systemConfig.birthdayRewardEnabled !== false);
+      setBirthdayRewardFreeLoans(systemConfig.birthdayRewardFreeLoans ?? 1);
+      setBirthdayCustomMessage(
+        systemConfig.birthdayCustomMessage ||
+          'زادروزت فرخنده باد! مکتب‌خانه تولد شما را تبریک می‌گوید و این هدیه تقدیم شماست 🎂🎁'
+      );
+      setBirthdaySendBaleMessage(systemConfig.birthdaySendBaleMessage !== false);
+    }
+  }, [systemConfig]);
+
+  const handleSaveBirthdayConfig = async () => {
+    setIsSavingBirthdayConfig(true);
+    setBirthdaySaveFeedback(null);
+    try {
+      const res = await updateSystemConfig({
+        birthdayRewardEnabled,
+        birthdayRewardFreeLoans,
+        birthdayCustomMessage,
+        birthdaySendBaleMessage
+      });
+      if (res.success) {
+        setBirthdaySaveFeedback('تنظیمات رویداد هدیه تولد با موفقیت ذخیره شد ✓');
+        setTimeout(() => setBirthdaySaveFeedback(null), 4000);
+      } else {
+        setBirthdaySaveFeedback(res.message || 'خطا در ذخیره تنظیمات');
+      }
+    } catch (e: any) {
+      setBirthdaySaveFeedback(e.message || 'خطا در ارتباط با سرور');
+    } finally {
+      setIsSavingBirthdayConfig(false);
+    }
+  };
+
+  const { month: currentJalaliMonth, day: currentJalaliDay } = getCurrentJalaliDate();
+
+  // Filter students who have birthday today and this month
+  const todayBirthdays = users.filter(
+    (u) => u.birthMonth === currentJalaliMonth && u.birthDay === currentJalaliDay
+  );
+  const thisMonthBirthdays = users.filter(
+    (u) => u.birthMonth === currentJalaliMonth && u.birthDay !== currentJalaliDay
+  );
 
   // Form State
   const [title, setTitle] = useState('');
@@ -247,6 +314,169 @@ export const AdminEventsManager: React.FC = () => {
             </>
           )}
         </button>
+      </div>
+
+      {/* Birthday Reward Event Permanent Config Card */}
+      <div className="bg-gradient-to-br from-amber-50 via-orange-50/50 to-rose-50/50 border-2 border-amber-300 rounded-3xl p-6 shadow-md space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-amber-200/80">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-orange-500 to-rose-400 text-slate-950 flex items-center justify-center shadow-md shrink-0">
+              <Cake className="w-6 h-6 animate-bounce" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="font-black text-slate-900 text-base sm:text-lg">
+                  رویداد دائمی هدیه روز تولد دانش‌آموزان 🎂🎁
+                </h3>
+                <span className="text-[10px] bg-amber-200 text-amber-950 font-black px-2.5 py-0.5 rounded-full">
+                  خودکار & سالانه
+                </span>
+              </div>
+              <p className="text-xs text-slate-600 mt-0.5">
+                تعیین تعداد سهمیه امانت رایگان اهدایی به هر دانش‌آموز در سالروز تولدش، پیام تبریک و اطلاع‌رسانی در بله
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-center gap-2 bg-white px-4 py-2.5 rounded-2xl border-2 border-amber-300 cursor-pointer shadow-xs shrink-0 self-start sm:self-auto">
+            <input
+              type="checkbox"
+              checked={birthdayRewardEnabled}
+              onChange={(e) => setBirthdayRewardEnabled(e.target.checked)}
+              className="w-4 h-4 text-amber-600 rounded-md focus:ring-amber-500 cursor-pointer"
+            />
+            <span className="text-xs font-black text-slate-900">
+              {birthdayRewardEnabled ? '✅ رویداد تولد فعال است' : '❌ رویداد تولد غیرفعال'}
+            </span>
+          </label>
+        </div>
+
+        {/* Config Inputs */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-800 mb-1.5">
+              تعداد سهمیه امانت رایگان هدیه تولد:
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="1"
+                max="10"
+                value={birthdayRewardFreeLoans}
+                onChange={(e) => setBirthdayRewardFreeLoans(Math.max(1, Number(e.target.value)))}
+                className="w-full bg-white border border-amber-300 focus:border-amber-500 text-slate-900 font-black text-sm rounded-xl p-3 outline-hidden"
+              />
+              <span className="absolute left-3 top-3 text-xs text-slate-400 font-bold">عدد</span>
+            </div>
+          </div>
+
+          <div className="md:col-span-2">
+            <label className="block text-xs font-bold text-slate-800 mb-1.5">
+              متن اختصاصی پیام تبریک تولد:
+            </label>
+            <input
+              type="text"
+              value={birthdayCustomMessage}
+              onChange={(e) => setBirthdayCustomMessage(e.target.value)}
+              placeholder="زادروزت فرخنده باد! مکتب‌خانه تولد شما را تبریک می‌گوید..."
+              className="w-full bg-white border border-amber-300 focus:border-amber-500 text-slate-900 font-medium text-xs rounded-xl p-3 outline-hidden"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-between flex-wrap gap-3 pt-2">
+          <label className="flex items-center gap-2 cursor-pointer text-xs font-bold text-slate-700">
+            <input
+              type="checkbox"
+              checked={birthdaySendBaleMessage}
+              onChange={(e) => setBirthdaySendBaleMessage(e.target.checked)}
+              className="w-4 h-4 text-sky-600 rounded-md focus:ring-sky-500 cursor-pointer"
+            />
+            <span className="flex items-center gap-1">
+              <Send className="w-3.5 h-3.5 text-sky-600" />
+              ارسال خودکار پیام تبریک و اطلاع‌رسانی هدیه به حساب بله دانش‌آموز در روز تولدش
+            </span>
+          </label>
+
+          <button
+            type="button"
+            disabled={isSavingBirthdayConfig}
+            onClick={handleSaveBirthdayConfig}
+            className="px-5 py-2.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow-md transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            <span>{isSavingBirthdayConfig ? 'در حال ذخیره...' : 'ذخیره تنظیمات رویداد تولد'}</span>
+          </button>
+        </div>
+
+        {birthdaySaveFeedback && (
+          <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{birthdaySaveFeedback}</span>
+          </div>
+        )}
+
+        {/* Birthday Students Status (Today & This Month) */}
+        <div className="pt-3 border-t border-amber-200/80 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Today Birthdays */}
+          <div className="bg-white/80 p-3.5 rounded-2xl border border-amber-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                <PartyPopper className="w-4 h-4 text-rose-500" />
+                <span>متولدین امروز ({currentJalaliDay} {PERSIAN_MONTHS[currentJalaliMonth - 1]}):</span>
+              </span>
+              <span className="text-[10px] bg-rose-100 text-rose-800 font-bold px-2 py-0.5 rounded-full">
+                {todayBirthdays.length} نفر
+              </span>
+            </div>
+
+            {todayBirthdays.length === 0 ? (
+              <p className="text-[11px] text-slate-400">امروز تولد هیچ دانش‌آموزی ثبت نشده است.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {todayBirthdays.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between text-xs bg-amber-50 p-2 rounded-xl border border-amber-200">
+                    <div className="flex items-center gap-2">
+                      <img src={u.avatar} alt={u.name} className="w-6 h-6 rounded-full object-cover" />
+                      <span className="font-bold text-slate-900">{u.name} ({u.className})</span>
+                    </div>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                      🎂 تولد مبارک!
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* This Month Birthdays */}
+          <div className="bg-white/80 p-3.5 rounded-2xl border border-amber-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-black text-xs text-slate-900 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-amber-600" />
+                <span>سایر متولدین ماه {PERSIAN_MONTHS[currentJalaliMonth - 1]}:</span>
+              </span>
+              <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-2 py-0.5 rounded-full">
+                {thisMonthBirthdays.length} نفر
+              </span>
+            </div>
+
+            {thisMonthBirthdays.length === 0 ? (
+              <p className="text-[11px] text-slate-400">دانش‌آموز دیگری در این ماه ثبت نشده است.</p>
+            ) : (
+              <div className="space-y-1.5 max-h-32 overflow-y-auto pr-1">
+                {thisMonthBirthdays.map((u) => (
+                  <div key={u.id} className="flex items-center justify-between text-xs bg-slate-50 p-1.5 rounded-xl border border-slate-200">
+                    <span className="font-bold text-slate-800">{u.name} ({u.className})</span>
+                    <span className="text-[10px] font-bold text-slate-500">
+                      {formatPersianBirthday(u.birthMonth, u.birthDay)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Action Toast Feedback */}

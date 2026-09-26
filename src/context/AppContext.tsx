@@ -137,6 +137,8 @@ interface AppContextType {
   claimEventReward: (eventId: string) => Promise<{ success: boolean; message: string; user?: User; progress?: UserEventProgress }>;
   grantFreeLoans: (userId: string, count: number, reason?: string) => Promise<{ success: boolean; message: string; user?: User }>;
   acknowledgeFreeLoanReward: () => Promise<void>;
+  updateUserBirthday: (birthMonth: number, birthDay: number) => Promise<{ success: boolean; message?: string }>;
+  claimBirthdayReward: () => Promise<{ success: boolean; rewardCount?: number; message?: string }>;
   requestBookLoan: (
     bookId: string,
     options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
@@ -1329,7 +1331,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       if (owner) {
         updatedBook.ownerName = owner.name;
         updatedBook.ownerAvatar = owner.avatar;
-        updatedBook.ownerClass = owner.schoolClass || book.ownerClass;
+        updatedBook.ownerClass = owner.className || (owner as any).schoolClass || book.ownerClass;
       }
       if (book.borrowerId) {
         const borrower = users.find((u) => u.id === book.borrowerId);
@@ -1343,7 +1345,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (reviewer) {
           updatedReview.userName = reviewer.name;
           updatedReview.userAvatar = reviewer.avatar;
-          updatedReview.userClass = reviewer.schoolClass || review.userClass;
+          updatedReview.userClass = reviewer.className || (reviewer as any).schoolClass || review.userClass;
         }
         return updatedReview;
       });
@@ -1358,12 +1360,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const owner = users.find((u) => u.id === req.ownerId);
       if (owner) {
         updatedReq.ownerName = owner.name;
-        updatedReq.ownerClass = owner.schoolClass || req.ownerClass;
+        updatedReq.ownerClass = owner.className || (owner as any).schoolClass || req.ownerClass;
       }
       const borrower = users.find((u) => u.id === req.borrowerId);
       if (borrower) {
         updatedReq.borrowerName = borrower.name;
-        updatedReq.borrowerClass = borrower.schoolClass || req.borrowerClass;
+        updatedReq.borrowerClass = borrower.className || (borrower as any).schoolClass || req.borrowerClass;
         updatedReq.borrowerPhone = borrower.phone || req.borrowerPhone;
       }
       return updatedReq;
@@ -1499,6 +1501,38 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Update User Birthday
+  const updateUserBirthday = async (birthMonth: number, birthDay: number) => {
+    if (!currentUser) return { success: false, message: 'لطفاً وارد حساب کاربری شوید' };
+    try {
+      const res = await api.updateBirthday(currentUser.id, birthMonth, birthDay);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
+        setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? res.user! : u)));
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ثبت تاریخ تولد' };
+    }
+  };
+
+  // Claim Birthday Reward
+  const claimBirthdayReward = async () => {
+    if (!currentUser) return { success: false, message: 'کاربر لاگین نیست' };
+    try {
+      const res = await api.claimBirthdayReward(currentUser.id);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
+        setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? res.user! : u)));
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در دریافت هدیه تولد' };
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1565,6 +1599,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         claimEventReward,
         grantFreeLoans,
         acknowledgeFreeLoanReward,
+        updateUserBirthday,
+        claimBirthdayReward,
         updateBook,
         revertBookCover
       }}

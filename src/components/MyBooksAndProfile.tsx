@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { AddBookModal } from './AddBookModal';
 import { EditProfileModal } from './EditProfileModal';
+import { SetBirthdayModal } from './SetBirthdayModal';
+import { formatPersianBirthday } from '../utils/jalaliDate';
 import { BookCard } from './BookCard';
 import { Book } from '../types';
 import { MaktabKhanehHouseLogo, SloganBadge } from './MaktabKhanehBranding';
@@ -19,7 +21,9 @@ import {
   LogOut,
   Library,
   Star,
-  Gift
+  Gift,
+  Cake,
+  Calendar
 } from 'lucide-react';
 
 interface MyBooksAndProfileProps {
@@ -34,6 +38,7 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
   const { currentUser, books, deleteBook, deleteUser, logoutUser } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [showSetBirthdayModal, setShowSetBirthdayModal] = useState(false);
 
   const handleAddBookClick = () => {
     if (currentUser?.status !== 'approved') {
@@ -362,6 +367,53 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
           </a>
         </div>
 
+        {/* Birthday Info Card */}
+        <div className="bg-gradient-to-r from-amber-50 via-orange-50/50 to-rose-50/50 border border-amber-200 rounded-2xl p-3.5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-amber-500 to-rose-400 text-slate-950 flex items-center justify-center shadow-xs shrink-0">
+              <Cake className="w-5 h-5 animate-pulse" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="font-black text-slate-900 text-xs sm:text-sm">
+                  {currentUser.birthMonth && currentUser.birthDay
+                    ? `🎂 تاریخ تولد شما: ${formatPersianBirthday(currentUser.birthMonth, currentUser.birthDay)}`
+                    : '🎂 تاریخ تولد شما ثبت نشده است!'}
+                </h4>
+                {currentUser.birthMonth && currentUser.birthDay ? (
+                  <span className="text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    🔒 ثبت و قفل شده
+                  </span>
+                ) : (
+                  <span className="text-[10px] font-bold bg-amber-200 text-amber-900 px-2 py-0.5 rounded-full">
+                    رویداد فعال
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-600 text-[11px] mt-0.5">
+                {currentUser.birthMonth && currentUser.birthDay
+                  ? 'در سالروز تولدتان، سهمیه امانت رایگان کتاب به صورت خودکار به حسابتان هدیه داده می‌شود 🎁'
+                  : 'با ثبت تاریخ تولد، در روز تولدتان از مکتب‌خانه سهمیه امانت رایگان هدیه بگیرید!'}
+              </p>
+            </div>
+          </div>
+
+          {(!currentUser.birthMonth || !currentUser.birthDay) ? (
+            <button
+              type="button"
+              onClick={() => setShowSetBirthdayModal(true)}
+              className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer shrink-0"
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>ثبت تاریخ تولد 🎈</span>
+            </button>
+          ) : (
+            <div className="text-[11px] text-slate-500 font-bold bg-slate-100/90 px-3 py-1.5 rounded-xl border border-slate-200 shrink-0">
+              🔒 غیرقابل تغییر توسط کاربر
+            </div>
+          )}
+        </div>
+
         {/* Free Loan Quota Banner (if user has active free loans) */}
         {(currentUser.freeLoanQuota || 0) > 0 && (
           <div className="bg-gradient-to-r from-amber-500/15 via-emerald-500/15 to-teal-500/15 border-2 border-amber-300/80 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs shadow-2xs">
@@ -436,6 +488,11 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
       {/* Edit Profile & Avatar Modal */}
       {showEditProfileModal && (
         <EditProfileModal onClose={() => setShowEditProfileModal(false)} />
+      )}
+
+      {/* Set / Edit Birthday Modal */}
+      {showSetBirthdayModal && (
+        <SetBirthdayModal onClose={() => setShowSetBirthdayModal(false)} />
       )}
     </div>
   );

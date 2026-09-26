@@ -14,6 +14,9 @@ import { CompleteProfileModal } from './components/CompleteProfileModal';
 import { SystemGuideModal } from './components/SystemGuideModal';
 import { NotificationCenterModal } from './components/NotificationCenterModal';
 import { FreeLoanCelebrationModal } from './components/FreeLoanCelebrationModal';
+import { SetBirthdayModal } from './components/SetBirthdayModal';
+import { BirthdayCelebrationModal } from './components/BirthdayCelebrationModal';
+import { isTodayBirthday, getCurrentJalaliDate } from './utils/jalaliDate';
 import { NotFoundPage } from './components/NotFoundPage';
 import { Book } from './types';
 import { CheckCircle2, AlertCircle, Heart, BookOpen, ShieldCheck, Terminal, HelpCircle, Clock, AlertTriangle, Send, Gift, Sparkles, X } from 'lucide-react';
@@ -110,6 +113,8 @@ function MainAppContent() {
     markNotificationRead,
     clearNotifications,
     requests,
+    systemConfig,
+    claimBirthdayReward,
     isLoading
   } = useApp();
   const [activeTab, setActiveTab] = useState<string>('library');
@@ -117,6 +122,8 @@ function MainAppContent() {
   const [showNotifications, setShowNotifications] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [showBirthdayPromptModal, setShowBirthdayPromptModal] = useState(false);
+  const [showBirthdayCelebration, setShowBirthdayCelebration] = useState<{ rewardCount: number } | null>(null);
 
   const borrowedBooksCountdowns = useMemo(() => {
     if (!currentUser) return [];
@@ -145,6 +152,50 @@ function MainAppContent() {
     currentUser &&
     currentUser.role !== 'admin' &&
     (!currentUser.name || currentUser.name.startsWith('کاربر بله'));
+
+  // Prompt birthday after user has contributed their first book and hasn't set birthday yet
+  useEffect(() => {
+    if (!currentUser || currentUser.role === 'admin' || isProfileIncomplete) return;
+
+    const userBooksCount = books.filter((b) => b.ownerId === currentUser.id).length;
+    const hasAddedAtLeastOneBook = userBooksCount >= 1 || (currentUser.booksContributedCount || 0) >= 1;
+    const hasNoBirthday = !currentUser.birthMonth || !currentUser.birthDay;
+    const isDismissed = sessionStorage.getItem(`birthday_prompt_dismissed_${currentUser.id}`) === 'true';
+
+    if (hasAddedAtLeastOneBook && hasNoBirthday && !isDismissed) {
+      // Delay slightly for smooth page presentation
+      const timer = setTimeout(() => {
+        setShowBirthdayPromptModal(true);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [currentUser, books, isProfileIncomplete]);
+
+  // Check if today is the student's birthday and grant reward automatically
+  useEffect(() => {
+    if (!currentUser || !currentUser.birthMonth || !currentUser.birthDay) return;
+    if (systemConfig?.birthdayRewardEnabled === false) return;
+
+    const { year: curYear } = getCurrentJalaliDate();
+    const isToday = isTodayBirthday(currentUser.birthMonth, currentUser.birthDay);
+
+    if (isToday && currentUser.lastBirthdayRewardYear !== curYear) {
+      claimBirthdayReward().then((res) => {
+        if (res && res.success) {
+          setShowBirthdayCelebration({
+            rewardCount: res.rewardCount || systemConfig?.birthdayRewardFreeLoans || 1
+          });
+        }
+      });
+    }
+  }, [
+    currentUser?.id,
+    currentUser?.birthMonth,
+    currentUser?.birthDay,
+    currentUser?.lastBirthdayRewardYear,
+    systemConfig?.birthdayRewardEnabled,
+    systemConfig?.birthdayRewardFreeLoans
+  ]);
 
   // Global Error Listener for Admin System Logs
   useEffect(() => {
@@ -447,6 +498,30 @@ function MainAppContent() {
       {/* Interactive System Guide Modal */}
       {showGuideModal && (
         <SystemGuideModal onClose={() => setShowGuideModal(false)} />
+      )}
+
+      {/* Quick Birthday Prompt Modal (Triggered after user adds their first book) */}
+      {showBirthdayPromptModal && (
+        <SetBirthdayModal
+          onClose={() => {
+            if (currentUser?.id) {
+              sessionStorage.setItem(`birthday_prompt_dismissed_${currentUser.id}`, 'true');
+            }
+            setShowBirthdayPromptModal(false);
+          }}
+          onSuccess={() => {
+            setShowBirthdayPromptModal(false);
+            showToast('🎂 تاریخ تولد شما با موفقیت ثبت شد! در روز تولدتان هدیه خواهید گرفت 🎉', 'success');
+          }}
+        />
+      )}
+
+      {/* Birthday Celebration Modal when it's student's birthday */}
+      {showBirthdayCelebration && (
+        <BirthdayCelebrationModal
+          rewardCount={showBirthdayCelebration.rewardCount}
+          onClose={() => setShowBirthdayCelebration(null)}
+        />
       )}
 
       {/* Main Body Content Container */}
