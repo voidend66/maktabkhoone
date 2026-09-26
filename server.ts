@@ -3450,20 +3450,30 @@ async function startServer() {
     }
   }
 
-  // Helper to decode Persian HTML entities
+  // Helper to decode Persian HTML entities and clean text
   function cleanHtmlText(text: string): string {
     if (!text) return '';
     return text
       .replace(/<br\s*\/?>/gi, '\n')
       .replace(/<[^>]+>/g, '')
+      .replace(/&#x2B;/gi, '+')
+      .replace(/&#x2B/gi, '+')
+      .replace(/&#xA0;/gi, ' ')
+      .replace(/&#xA0/gi, ' ')
+      .replace(/&nbsp;/gi, ' ')
       .replace(/&laquo;/gi, '«')
       .replace(/&raquo;/gi, '»')
       .replace(/&zwnj;/gi, '‌')
       .replace(/&#xD;&#xA;/g, '\n')
+      .replace(/&#xD;/g, '\n')
+      .replace(/&#xA;/g, '\n')
       .replace(/&quot;/gi, '"')
       .replace(/&#39;/gi, "'")
       .replace(/&amp;/gi, '&')
-      .replace(/&nbsp;/gi, ' ')
+      .replace(/&#[0-9]+;/g, ' ')
+      .replace(/&#x[0-9a-f]+;/gi, ' ')
+      .replace(/;x[0-9a-f]+/gi, '')
+      .replace(/\s+/g, ' ')
       .trim();
   }
 
@@ -3644,9 +3654,11 @@ async function startServer() {
         }
       }
 
-      // Filter out generic store tags from tagsSet
+      // Filter out generic store tags and invalid HTML entities from tagsSet
       const filterOutGeneric = ['خرید کتاب', 'خرید اینترنتی کتاب', 'سایت خرید کتاب', 'خرید اقساطی کتاب', 'خانه', 'کتاب'];
-      const cleanTags = Array.from(tagsSet).filter((t) => !filterOutGeneric.some((g) => t.includes(g)));
+      const cleanTags = Array.from(tagsSet)
+        .map((t) => cleanHtmlText(t).replace(/^;+/g, '').replace(/;x[0-9a-f]+/gi, '').replace(/\s+/g, ' ').trim())
+        .filter((t) => t.length > 1 && !t.includes(';') && !t.includes('&#') && !filterOutGeneric.some((g) => t.includes(g)));
 
       return {
         title: title || searchTitle,

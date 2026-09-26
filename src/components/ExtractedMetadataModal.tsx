@@ -33,7 +33,10 @@ export const ExtractedMetadataModal: React.FC<ExtractedMetadataModalProps> = ({
 }) => {
   const [copiedTags, setCopiedTags] = React.useState(false);
 
-  const tags = book.tags || [];
+  const rawTags = book.tags || [];
+  const tags = rawTags
+    .map((t) => t.replace(/&[a-z0-9#]+;/gi, '').replace(/;x[0-9a-f]+/gi, '').trim())
+    .filter((t) => t.length > 1 && !t.includes(';'));
   const extraCategories = book.extraCategories || [];
   const rawMetadata = book.rawMetadata || {};
 
