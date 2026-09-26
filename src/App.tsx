@@ -153,23 +153,21 @@ function MainAppContent() {
     currentUser.role !== 'admin' &&
     (!currentUser.name || currentUser.name.startsWith('کاربر بله'));
 
-  // Prompt birthday after user has contributed their first book and hasn't set birthday yet
+  // Prompt birthday immediately upon entering site for all users without a registered birthday
   useEffect(() => {
     if (!currentUser || currentUser.role === 'admin' || isProfileIncomplete) return;
 
-    const userBooksCount = books.filter((b) => b.ownerId === currentUser.id).length;
-    const hasAddedAtLeastOneBook = userBooksCount >= 1 || (currentUser.booksContributedCount || 0) >= 1;
     const hasNoBirthday = !currentUser.birthMonth || !currentUser.birthDay;
     const isDismissed = sessionStorage.getItem(`birthday_prompt_dismissed_${currentUser.id}`) === 'true';
 
-    if (hasAddedAtLeastOneBook && hasNoBirthday && !isDismissed) {
-      // Delay slightly for smooth page presentation
+    if (hasNoBirthday && !isDismissed) {
+      // Show immediately upon entering the site
       const timer = setTimeout(() => {
         setShowBirthdayPromptModal(true);
-      }, 800);
+      }, 300);
       return () => clearTimeout(timer);
     }
-  }, [currentUser, books, isProfileIncomplete]);
+  }, [currentUser, isProfileIncomplete]);
 
   // Check if today is the student's birthday and grant reward automatically
   useEffect(() => {
