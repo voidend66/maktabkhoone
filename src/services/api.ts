@@ -879,26 +879,59 @@ export const api = {
 
   async getAiBookRecommendations(params: AiRecommendationRequest): Promise<AiRecommendationResult> {
     try {
-      const res = await fetch(`${API_BASE}/ai/recommend-books`, {
+      // 1. Initiate async background job (Immune to 60s cloud gateway timeouts)
+      const initRes = await fetch(`${API_BASE}/ai/recommend-books-async`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
       });
-      const text = await res.text();
-      try {
-        const parsed = JSON.parse(text);
-        return parsed;
-      } catch {
-        return {
-          success: false,
-          message: res.ok
-            ? 'فرمت پاسخ هوش مصنوعی نامعتبر بود.'
-            : `خطا در ارتباط با سرور (${res.status}): سرور هوش مصنوعی محلی در شبکه در دسترس نیست.`,
-          recommendedBooks: [],
-          candidatesCount: 0,
-          isAiGenerated: false
-        };
+
+      if (!initRes.ok) {
+        throw new Error(`خطا در ایجاد درخواست هوش مصنوعی (${initRes.status})`);
       }
+
+      const initData = await initRes.json();
+      const jobId = initData.jobId;
+
+      if (!jobId) {
+        throw new Error('شناسه درخواست هوش مصنوعی دریافت نشد.');
+      }
+
+      // 2. Poll job status every 800ms
+      const maxPollAttempts = 350; // up to ~4.5 minutes
+      for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 800));
+
+        try {
+          const pollRes = await fetch(`${API_BASE}/ai/job-status/${jobId}`);
+          if (!pollRes.ok) continue;
+
+          const pollData = await pollRes.json();
+          if (pollData.status === 'completed' && pollData.result) {
+            return pollData.result;
+          }
+
+          if (pollData.status === 'failed') {
+            return {
+              success: false,
+              message: pollData.message || 'اجرای استنتاج مدل با خطا مواجه شد.',
+              recommendedBooks: [],
+              candidatesCount: 0,
+              isAiGenerated: false
+            };
+          }
+        } catch {
+          // Keep polling through transient errors
+        }
+      }
+
+      return {
+        success: false,
+        message: 'مهلت زمان استنتاج مدل در صف سرور به پایان رسید.',
+        recommendedBooks: [],
+        candidatesCount: 0,
+        isAiGenerated: false
+      };
     } catch (err: any) {
       return {
         success: false,
