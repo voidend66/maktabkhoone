@@ -718,12 +718,53 @@ export const AdminAiSettingsTab: React.FC = () => {
               dir="ltr"
               value={modelName}
               onChange={(e) => setModelName(e.target.value)}
-              placeholder="qwen2.5:7b"
+              placeholder="qwen2.5:3b"
               className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
             />
-            <span className="text-[11px] text-slate-400 block">
-              نام مدل بارگذاری‌شده در Ollama (مثلاً <code className="text-slate-600">qwen2.5:7b</code> یا <code className="text-slate-600">qwen2.5:3b</code>).
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <span className="text-[10px] text-slate-400 font-bold">انتخاب سریع:</span>
+              <button
+                type="button"
+                onClick={() => {
+                  setModelName('qwen2.5:3b');
+                  setNumPredict(120);
+                  setMaxCandidates(4);
+                }}
+                className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold border transition cursor-pointer ${
+                  modelName === 'qwen2.5:3b'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
+                }`}
+              >
+                qwen2.5:3b (پیشنهادی ⚡️)
+              </button>
+              <button
+                type="button"
+                onClick={() => setModelName('qwen2.5:7b')}
+                className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold border transition cursor-pointer ${
+                  modelName === 'qwen2.5:7b'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+              >
+                qwen2.5:7b (۴.۴GB)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setModelName('qwen2.5:1.5b');
+                  setNumPredict(100);
+                  setMaxCandidates(3);
+                }}
+                className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold border transition cursor-pointer ${
+                  modelName === 'qwen2.5:1.5b'
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                }`}
+              >
+                qwen2.5:1.5b (خیلی سریع)
+              </button>
+            </div>
           </div>
         </div>
 

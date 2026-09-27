@@ -5992,7 +5992,7 @@ async function startServer() {
       });
 
       scored.sort((a, b) => b.score - a.score);
-      const maxCands = Math.max(6, Math.min(25, aiConfig.maxCandidates || 14));
+      const maxCands = Math.max(2, Math.min(12, aiConfig.maxCandidates !== undefined ? aiConfig.maxCandidates : 4));
       const candidates = scored.slice(0, maxCands).map((s) => s.book);
 
       function extractJson(raw: string): any {
@@ -6029,37 +6029,16 @@ async function startServer() {
 
       if (aiConfig.enabled !== false && aiConfig.endpointUrl) {
         const booksListPrompt = candidates.map((b, idx) => {
-          const tagsStr = (b.tags || []).slice(0, 5).join('، ');
-          const desc = b.description ? b.description.slice(0, 150).replace(/[\r\n]+/g, ' ') : 'بدون خلاصه';
-          return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | صفحات: ${b.pageCount || 'نامشخص'} | موضوعات: ${tagsStr || b.category} | خلاصه: ${desc}]`;
+          return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | موضوع: ${b.category}]`;
         }).join('\n');
 
-        userPrompt = `📚 قفسه کتاب‌های موجود در کتابخانه مکتب‌خانه:
+        userPrompt = `📚 قفسه کتاب‌ها:
 ${booksListPrompt}
 
-🎯 پروفایل و تمایلات انتخابی دانش‌آموز:
-- حس و حال فعلی: ${moodLabel}
-- ترجیح زمانی و حجم کتاب: ${timeLabel}
-- سبک ترجیحی قالب اثر: ${visualLabel}
-${gradeLevel ? `- مقطع یا پایه تحصیلی: ${gradeLevel}` : ''}
-${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آموز: "${customPrompt}"` : ''}
+🎯 سلیقه دانش‌آموز: ${moodLabel}${customPrompt ? ` (خواسته: ${customPrompt})` : ''}
 
-📝 ماموریت شما:
-۱. از بین کتاب‌های فوق، ۲ الی ۳ کتاب که بیشترین پیوند روحی و تناسب داستانی را با حال‌وهوای این دانش‌آموز دارند انتخاب کن.
-۲. یک پیام سلام و شروع اختصاصی (greeting) با لحنی پرانرژی و متناسب با حس‌وحال دانش‌آموز بنویس (حداکثر ۲ جمله).
-۳. برای هر کتاب، یک دلیل گیرا، صمیمی و وسوسه‌کننده (reason) بنویس که به یک ویژگی ناب از داستان یا شخصیت‌های آن اشاره کند و اشتیاق خواندن را در او برانگیزد (حداکثر ۲ جمله).
-۴. توجه خیلی مهم: فقط از کتاب‌های موجود در لیست بالا انتخاب کن و شناسه‌های دقیق را در فیلد bookId بنویس.
-
-خروجی الزاماً باید فقط یک شیء استاندارد JSON به این شکل باشد و هیچ توضیح اضافه یا متنی خارج از JSON ننویس:
-{
-  "greeting": "سلام و احوالپرسی اختصاصی و صمیمی متناسب با حس و حال دانش‌آموز",
-  "recommendations": [
-    {
-      "bookId": "شناسه دقیق کتاب مانند b_...",
-      "reason": "دلیل جذاب و پرکشش که چرا این کتاب خاص او را به وجد می‌آورد"
-    }
-  ]
-}`;
+ماموریت: ۲ کتاب از لیست انتخاب کن و خروجی را فقط در قالب شیء JSON با greeting (یک جمله کوتاه) و recommendations (شامل bookId و reason در یک جمله جذاب) تولید کن:
+{"greeting":"...","recommendations":[{"bookId":"...","reason":"..."}]}`;
 
         const startTime = Date.now();
         const controller = new AbortController();
@@ -6085,7 +6064,7 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
               format: 'json',
               stream: false,
               options: {
-                num_predict: aiConfig.numPredict || 350,
+                num_predict: Math.min(aiConfig.numPredict || 140, 200),
                 temperature: aiConfig.temperature ?? 0.3,
                 top_p: aiConfig.topP ?? 0.9,
                 repeat_penalty: aiConfig.repeatPenalty ?? 1.1
