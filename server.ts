@@ -6015,6 +6015,18 @@ async function startServer() {
       let greeting = 'سلام کتاب‌خوان پرتلاش مکتب‌خانه! بر اساس سلیقه و علایقت، این کتاب‌های عالی رو برات گلچین کردم:';
       let recommendationsResult: Array<{ book: any; reason: string }> = [];
 
+      let rawEndpointUsed = (aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+      let targetGenerateUrl = rawEndpointUsed.endsWith('/api/generate')
+        ? rawEndpointUsed
+        : `${rawEndpointUsed.replace(/\/+$/, '')}/api/generate`;
+      let userPrompt = '';
+      let systemPromptUsed = aiConfig.systemPrompt || defaultSystemPrompt;
+      let rawAiResponseText: string = '';
+      let parsedOutput: any = null;
+      let parseSuccess = false;
+      let fetchErrorStr: string | null = null;
+      let httpStatusCode: number | null = null;
+
       if (aiConfig.enabled !== false && aiConfig.endpointUrl) {
         const booksListPrompt = candidates.map((b, idx) => {
           const tagsStr = (b.tags || []).slice(0, 5).join('، ');
@@ -6022,7 +6034,7 @@ async function startServer() {
           return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | صفحات: ${b.pageCount || 'نامشخص'} | موضوعات: ${tagsStr || b.category} | خلاصه: ${desc}]`;
         }).join('\n');
 
-        const userPrompt = `📚 قفسه کتاب‌های موجود در کتابخانه مکتب‌خانه:
+        userPrompt = `📚 قفسه کتاب‌های موجود در کتابخانه مکتب‌خانه:
 ${booksListPrompt}
 
 🎯 پروفایل و تمایلات انتخابی دانش‌آموز:
@@ -6051,21 +6063,16 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
 
         const startTime = Date.now();
         const controller = new AbortController();
-        const timeoutDuration = (aiConfig.timeoutSeconds || 90) * 1000;
+        const timeoutDuration = Math.min(Math.max(aiConfig.timeoutSeconds || 15, 3), 20) * 1000;
         const timer = setTimeout(() => controller.abort(), timeoutDuration);
 
         try {
-          const rawEndpoint = (aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
-          const targetGenerateUrl = rawEndpoint.endsWith('/api/generate')
-            ? rawEndpoint
-            : `${rawEndpoint.replace(/\/+$/, '')}/api/generate`;
-
           const aiResponse = await fetch(targetGenerateUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               model: aiConfig.modelName || 'qwen2.5:7b',
-              system: aiConfig.systemPrompt || 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+              system: systemPromptUsed,
               prompt: userPrompt,
               format: 'json',
               stream: false,
@@ -6081,12 +6088,15 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
 
           clearTimeout(timer);
           latencyMs = Date.now() - startTime;
+          httpStatusCode = aiResponse.status;
 
           if (aiResponse.ok) {
             const aiData: any = await aiResponse.json();
-            const parsedOutput = extractJson(aiData?.response);
+            rawAiResponseText = aiData?.response || JSON.stringify(aiData);
+            parsedOutput = extractJson(aiData?.response);
 
             if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {
+              parseSuccess = true;
               if (parsedOutput.greeting && typeof parsedOutput.greeting === 'string') {
                 greeting = parsedOutput.greeting;
               }
@@ -6104,23 +6114,69 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
               if (recommendationsResult.length > 0) {
                 isAiGenerated = true;
               }
+            } else {
+              parseSuccess = false;
+              fetchErrorStr = 'فرمت خروجی مدل JSON معتبر یا دارای لیست پیشنهادات (recommendations) نبود.';
             }
           } else {
+            const errText = await aiResponse.text().catch(() => '');
+            rawAiResponseText = errText;
+            fetchErrorStr = `پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status}): ${errText.slice(0, 200)}`;
             reportAiServerOffline(`پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status})`, aiConfig.endpointUrl);
           }
         } catch (fetchErr: any) {
           clearTimeout(timer);
-          console.warn('Ollama local AI request skipped or failed, using smart algorithmic fallback:', fetchErr.message);
-          let errDesc = fetchErr.message || 'خطای اتصال';
+          latencyMs = Date.now() - startTime;
+          console.warn('Ollama local AI request skipped or failed:', fetchErr.message);
+          let errDesc = fetchErr.message || 'خطای اتصال به سرور هوش مصنوعی';
           if (fetchErr.name === 'AbortError' || String(fetchErr.message).toLowerCase().includes('aborted')) {
-            errDesc = `پایان مهلت زمان (۹۰ ثانیه) یا عدم دسترسی به آی‌پی محلی از محیط ابری (${fetchErr.message})`;
+            errDesc = `پایان مهلت زمان (${Math.round(timeoutDuration / 1000)} ثانیه) یا عدم دسترسی به آی‌پی محلی از محیط ابری (${fetchErr.message})`;
           }
+          fetchErrorStr = errDesc;
           reportAiServerOffline(errDesc, aiConfig.endpointUrl);
         }
       }
 
-      // 4. Fallback if AI was offline or produced empty result:
+      const debugInfo = {
+        endpointUsed: targetGenerateUrl,
+        modelUsed: aiConfig.modelName || 'qwen2.5:7b',
+        systemPrompt: systemPromptUsed,
+        userPrompt: userPrompt,
+        candidatesSent: candidates.map((c) => ({
+          id: c.id,
+          title: c.title,
+          author: c.author,
+          category: c.category,
+          tags: c.tags || [],
+          pageCount: typeof c.pageCount === 'number' ? c.pageCount : parseInt(String(c.pageCount || '0'), 10) || undefined,
+          description: c.description ? c.description.slice(0, 200) : undefined
+        })),
+        rawAiResponse: rawAiResponseText,
+        parsedJson: parsedOutput,
+        parseSuccess,
+        fetchError: fetchErrorStr,
+        httpStatus: httpStatusCode,
+        executionTimeMs: latencyMs
+      };
+
+      // 4. Fallback handling:
+      const fallbackEnabled = aiConfig.fallbackEnabled === true; // Default is OFF as requested by user
+
       if (recommendationsResult.length === 0) {
+        if (!fallbackEnabled) {
+          // Fallback is turned off: Return clear error with debug info so admin can diagnose pure AI response
+          return res.json({
+            success: false,
+            message: fetchErrorStr || 'پاسخی از مدل هوش مصنوعی دریافت نشد (الگوریتم پشتیبان خاموش است).',
+            recommendedBooks: [],
+            candidatesCount: candidates.length,
+            isAiGenerated: false,
+            latencyMs: latencyMs > 0 ? latencyMs : undefined,
+            debugInfo
+          });
+        }
+
+        // Fallback is enabled:
         const topBooks = candidates.slice(0, 3);
         recommendationsResult = topBooks.map((b) => {
           let reason = `کتاب «${b.title}» نوشته ${b.author} با دسته‌بندی ${b.category} تطابق بسیار خوبی با سلیقه انتخابی شما دارد.`;
@@ -6146,7 +6202,8 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
         recommendedBooks: recommendationsResult,
         candidatesCount: candidates.length,
         isAiGenerated,
-        latencyMs: latencyMs > 0 ? latencyMs : undefined
+        latencyMs: latencyMs > 0 ? latencyMs : undefined,
+        debugInfo
       });
     } catch (err: any) {
       console.error('Error in /api/ai/recommend-books:', err);

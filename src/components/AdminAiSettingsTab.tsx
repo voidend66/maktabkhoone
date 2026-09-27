@@ -83,10 +83,12 @@ export const AdminAiSettingsTab: React.FC = () => {
     topP: 0.9,
     repeatPenalty: 1.15,
     maxCandidates: 14,
-    timeoutSeconds: 90
+    timeoutSeconds: 15,
+    fallbackEnabled: false
   };
 
   const [enabled, setEnabled] = useState<boolean>(currentAiConfig.enabled ?? true);
+  const [fallbackEnabled, setFallbackEnabled] = useState<boolean>(currentAiConfig.fallbackEnabled ?? false);
   const [endpointUrl, setEndpointUrl] = useState<string>(currentAiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate');
   const [modelName, setModelName] = useState<string>(currentAiConfig.modelName || 'qwen2.5:7b');
   const [systemPrompt, setSystemPrompt] = useState<string>(
@@ -97,7 +99,7 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [topP, setTopP] = useState<number>(currentAiConfig.topP ?? 0.9);
   const [repeatPenalty, setRepeatPenalty] = useState<number>(currentAiConfig.repeatPenalty ?? 1.15);
   const [maxCandidates, setMaxCandidates] = useState<number>(currentAiConfig.maxCandidates || 14);
-  const [timeoutSeconds, setTimeoutSeconds] = useState<number>(currentAiConfig.timeoutSeconds || 90);
+  const [timeoutSeconds, setTimeoutSeconds] = useState<number>(currentAiConfig.timeoutSeconds || 15);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
@@ -122,6 +124,7 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [testPrompt, setTestPrompt] = useState<string>('یک رمان ماجراجویی و طنز مدرسه‌ای');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<any>(null);
+  const [simSubTab, setSimSubTab] = useState<'recommendations' | 'candidates' | 'prompt' | 'raw_response' | 'diagnostics'>('candidates');
 
   // Live Chatbot State
   const [chatMessages, setChatMessages] = useState<Array<{
@@ -248,7 +251,8 @@ export const AdminAiSettingsTab: React.FC = () => {
       topP: Number(topP),
       repeatPenalty: Number(repeatPenalty),
       maxCandidates: Math.max(4, Math.min(30, maxCandidates)),
-      timeoutSeconds: Math.max(10, Math.min(180, timeoutSeconds))
+      timeoutSeconds: Math.max(5, Math.min(60, timeoutSeconds)),
+      fallbackEnabled: Boolean(fallbackEnabled)
     };
 
     try {
@@ -615,23 +619,60 @@ export const AdminAiSettingsTab: React.FC = () => {
 
       {/* Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
-        {/* Toggle Switch */}
-        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
-          <div>
-            <label htmlFor="ai_enabled" className="text-xs sm:text-sm font-black text-slate-900 block cursor-pointer">
-              فعال‌سازی دستیار هوشمند پیشنهاد کتاب در سایت
-            </label>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              با فعال بودن این گزینه، بنر و دکمهٔ «کتابدار هوشمند» در صفحه کتابخانه به دانش‌آموزان نمایش داده می‌شود.
-            </p>
+        {/* Toggle Switches */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Main AI Toggle */}
+          <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex items-center justify-between gap-4">
+            <div>
+              <label htmlFor="ai_enabled" className="text-xs sm:text-sm font-black text-slate-900 block cursor-pointer">
+                فعال‌سازی دستیار هوشمند در سایت
+              </label>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                نمایش بنر و دکمهٔ «کتابدار هوشمند» به دانش‌آموزان در صفحه کتابخانه.
+              </p>
+            </div>
+            <input
+              id="ai_enabled"
+              type="checkbox"
+              checked={enabled}
+              onChange={(e) => setEnabled(e.target.checked)}
+              className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
+            />
           </div>
-          <input
-            id="ai_enabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
-          />
+
+          {/* Algorithmic Fallback Toggle */}
+          <div className={`p-4 rounded-2xl border transition flex items-center justify-between gap-4 ${
+            fallbackEnabled
+              ? 'bg-amber-50/60 border-amber-300'
+              : 'bg-slate-50 border-slate-200'
+          }`}>
+            <div>
+              <div className="flex items-center gap-2">
+                <label htmlFor="fallback_enabled" className="text-xs sm:text-sm font-black text-slate-900 block cursor-pointer">
+                  الگوریتم پشتیبان خودکار (Fallback)
+                </label>
+                <span className={`text-[9px] font-black px-2 py-0.5 rounded-md ${
+                  fallbackEnabled
+                    ? 'bg-amber-200 text-amber-900'
+                    : 'bg-rose-100 text-rose-800'
+                }`}>
+                  {fallbackEnabled ? 'فعال (جایگزینی خودکار)' : 'خاموش (جهت تست خالص مدل)'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {fallbackEnabled
+                  ? 'در صورت خاموش بودن Ollama، سیستم بر اساس تطابق موضوعی کتاب پیشنهاد می‌دهد.'
+                  : 'در صورت قطعی یا خطای مدل، خطا مستقیماً نشان داده می‌شود تا عیب‌یابی شود.'}
+              </p>
+            </div>
+            <input
+              id="fallback_enabled"
+              type="checkbox"
+              checked={fallbackEnabled}
+              onChange={(e) => setFallbackEnabled(e.target.checked)}
+              className="w-5 h-5 accent-amber-600 rounded cursor-pointer"
+            />
+          </div>
         </div>
 
         {/* Server & Model Configuration Inputs */}
@@ -1107,17 +1148,34 @@ export const AdminAiSettingsTab: React.FC = () => {
         </div>
       </div>
 
-      {/* Simulator Playground (Live Student Testing) */}
+      {/* Simulator Playground (Live Student Testing & Deep Inspection) */}
       <div className="pt-6 border-t border-slate-100 space-y-4">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
-            <Play className="w-4 h-4" />
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+              <Play className="w-4 h-4" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-slate-900">محیط تست زنده و عیب‌یابی عمیق مدل (AI Diagnostic Playground)</h4>
+              <p className="text-[11px] text-slate-500">
+                بررسی دقیق کتاب‌های ارسالی به مدل، پرامپت کامل، پاسخ خام سرور Ollama و خروجی استخراج‌شده
+              </p>
+            </div>
           </div>
-          <div>
-            <h4 className="text-sm font-black text-slate-900">محیط تست زنده خروجی (Simulator Playground)</h4>
-            <p className="text-[11px] text-slate-500">
-              یک سناریوی فرضی دانش‌آموز را انتخاب کنید تا رفتار مدل Qwen را قبل از دسترسی عمومی دانش‌آموزان آزمایش کنید.
-            </p>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFallbackEnabled(!fallbackEnabled)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition flex items-center gap-1.5 cursor-pointer ${
+                fallbackEnabled
+                  ? 'bg-amber-50 text-amber-900 border-amber-300'
+                  : 'bg-rose-50 text-rose-800 border-rose-300'
+              }`}
+            >
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>الگوریتم پشتیبان: {fallbackEnabled ? 'فعال' : 'خاموش (تست خالص)'}</span>
+            </button>
           </div>
         </div>
 
@@ -1125,91 +1183,371 @@ export const AdminAiSettingsTab: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {/* Mood selector */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">حس و حال دانش‌آموز:</label>
+              <label className="text-xs font-bold text-slate-700">حس و حال انتخابی دانش‌آموز:</label>
               <select
                 value={testMood}
                 onChange={(e) => setTestMood(e.target.value)}
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none cursor-pointer"
               >
                 <option value="laugh">می‌خواهم از ته دل بخندم (طنز)</option>
-                <option value="curious">کنجکاوم و می‌خواهم معما حل کنم (معمایی)</option>
-                <option value="adventure">دنبال ماجراجویی و هیجان بالام (ماجراجویی)</option>
-                <option value="deep">به دنبال فکر کردن و درس عبرت هستم (آموزنده)</option>
-                <option value="relax">می‌خواهم آرامش بگیرم و قصه گرم بخوانم (آرامش‌بخش)</option>
+                <option value="mystery">کنجکاوم و می‌خواهم معما حل کنم (معمایی و جنایی)</option>
+                <option value="adventure">دنبال ماجراجویی و هیجان بالام (ماجراجویی و فانتزی)</option>
+                <option value="thoughtful">به دنبال فکر کردن و درس عبرت هستم (انگیزشی و رشد فردی)</option>
+                <option value="scientific">دانستنی‌ها و شگفتی‌های علم (علمی و اطلاعات عمومی)</option>
+                <option value="thriller">دلهره‌آور و پرحادثه (هیجان بالا)</option>
               </select>
             </div>
 
             {/* Custom Prompt */}
             <div className="space-y-1">
-              <label className="text-xs font-bold text-slate-700">درخواست اختیاری دانش‌آموز:</label>
+              <label className="text-xs font-bold text-slate-700">درخواست یا علاقه اختصاصی دانش‌آموز:</label>
               <input
                 type="text"
                 value={testPrompt}
                 onChange={(e) => setTestPrompt(e.target.value)}
-                placeholder="مثلاً: کتاب‌های داستان کارآگاهی کوتاه"
+                placeholder="مثلاً: من عاشق کتاب‌های ماجراجویی با چاشنی طنزم"
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 outline-none"
               />
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleRunSimulation}
-            disabled={isSimulating}
-            className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
-          >
-            {isSimulating ? (
-              <>
-                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span>در حال دریافت پیشنهاد از مدل...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                <span>اجرای تست پیشنهاد زنده</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={handleRunSimulation}
+              disabled={isSimulating}
+              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
+            >
+              {isSimulating ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>در حال ارسال درخواست و استنتاج مدل...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                  <span>ارسال به هوش مصنوعی و اجرای آزمون</span>
+                </>
+              )}
+            </button>
+          </div>
 
-          {/* Simulation Output */}
+          {/* Simulation Output and Deep Diagnostic Tabs */}
           {simulationResult && (
-            <div className="mt-4 p-4 bg-white rounded-2xl border border-slate-200 space-y-3 animate-in fade-in">
-              <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-100 flex-wrap gap-2">
-                <span className="font-black text-slate-900 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>نتیجه آزمون: {simulationResult.isAiGenerated ? 'تولید شده توسط Qwen 7B' : 'تطابق هوشمند'}</span>
-                </span>
-                {simulationResult.latencyMs && (
-                  <span className="font-mono text-[10px] bg-slate-100 px-2 py-0.5 rounded text-slate-700">
-                    تاخیر: {simulationResult.latencyMs}ms | کاندیداها: {simulationResult.candidatesCount} جلد
+            <div className="mt-4 p-4 bg-white rounded-2xl border border-slate-200 space-y-4 animate-in fade-in">
+              {/* Header Status Bar */}
+              <div className="flex items-center justify-between text-xs pb-3 border-b border-slate-100 flex-wrap gap-2">
+                <div className="flex items-center gap-2">
+                  <span className={`font-black flex items-center gap-1.5 ${
+                    simulationResult.success && simulationResult.isAiGenerated
+                      ? 'text-emerald-700'
+                      : simulationResult.success
+                      ? 'text-amber-700'
+                      : 'text-rose-700'
+                  }`}>
+                    {simulationResult.success ? (
+                      <CheckCircle2 className="w-4 h-4" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4" />
+                    )}
+                    <span>
+                      {simulationResult.isAiGenerated
+                        ? '✅ تولید شده توسط هوش مصنوعی (Qwen)'
+                        : simulationResult.success
+                        ? '⚠️ تطابق الگوریتم داخلی (پشتیبان)'
+                        : '❌ خطا در دریافت پاسخ از مدل'}
+                    </span>
                   </span>
-                )}
+
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                    simulationResult.debugInfo?.parseSuccess
+                      ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                      : 'bg-slate-100 text-slate-700 border-slate-200'
+                  }`}>
+                    {simulationResult.debugInfo?.parseSuccess ? 'JSON معتبر' : 'پارس JSON ناموفق / خاموش'}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2 font-mono text-[10px] text-slate-600">
+                  {simulationResult.latencyMs && (
+                    <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      تاخیر: {simulationResult.latencyMs}ms
+                    </span>
+                  )}
+                  {simulationResult.candidatesCount !== undefined && (
+                    <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                      کاندیداها: {simulationResult.candidatesCount} جلد
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {simulationResult.greeting && (
-                <p className="text-xs text-indigo-900 font-bold bg-indigo-50 p-2.5 rounded-xl border border-indigo-100">
-                  {simulationResult.greeting}
-                </p>
+              {/* Error Alert if any */}
+              {!simulationResult.success && (
+                <div className="p-3 bg-rose-50 border border-rose-200 text-rose-900 rounded-xl text-xs space-y-1">
+                  <div className="font-bold flex items-center gap-1.5">
+                    <AlertCircle className="w-4 h-4 text-rose-600" />
+                    <span>پیام خطا: {simulationResult.message}</span>
+                  </div>
+                  {simulationResult.debugInfo?.fetchError && (
+                    <p className="font-mono text-[11px] text-rose-700 mt-1">
+                      علت جزئی: {simulationResult.debugInfo.fetchError}
+                    </p>
+                  )}
+                </div>
               )}
 
-              <div className="space-y-2">
-                <span className="text-[11px] font-black text-slate-700 block">کتاب‌های برگزیده مدل:</span>
-                {simulationResult.recommendedBooks?.map(({ book, reason }: any, idx: number) => (
-                  <div key={idx} className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-start gap-2.5">
-                    <span className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
-                      {idx + 1}
+              {/* Navigation Subtabs for Deep Inspection */}
+              <div className="flex items-center gap-1.5 border-b border-slate-200 pb-2 overflow-x-auto text-xs">
+                <button
+                  type="button"
+                  onClick={() => setSimSubTab('candidates')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    simSubTab === 'candidates'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <BookOpen className="w-3.5 h-3.5" />
+                  <span>کتاب‌های ارسالی به مدل ({simulationResult.debugInfo?.candidatesSent?.length || simulationResult.candidatesCount || 0})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSimSubTab('prompt')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    simSubTab === 'prompt'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <Terminal className="w-3.5 h-3.5" />
+                  <span>پرامپت کامل ارسالی</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSimSubTab('raw_response')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    simSubTab === 'raw_response'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>پاسخ خام مدل هوش مصنوعی</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSimSubTab('recommendations')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    simSubTab === 'recommendations'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>پیشنهادهای استخراج‌شده ({simulationResult.recommendedBooks?.length || 0})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setSimSubTab('diagnostics')}
+                  className={`px-3 py-1.5 rounded-xl font-bold transition whitespace-nowrap cursor-pointer flex items-center gap-1.5 ${
+                    simSubTab === 'diagnostics'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  }`}
+                >
+                  <Activity className="w-3.5 h-3.5" />
+                  <span>اطلاعات شبکه و دیباگ</span>
+                </button>
+              </div>
+
+              {/* Tab 1: Candidates Sent */}
+              {simSubTab === 'candidates' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs text-slate-600">
+                    <span className="font-bold">
+                      لیست {simulationResult.debugInfo?.candidatesSent?.length || 0} کتابی که از قفسه مکتب‌خانه فیلتر شده و در پرامپت به هوش مصنوعی ارسال گردید:
                     </span>
-                    <div className="min-w-0 flex-1">
-                      <div className="font-black text-slate-900">
-                        {book.title} <span className="text-slate-500 font-normal">({book.author})</span>
-                      </div>
-                      <div className="text-[11px] text-slate-600 mt-0.5">
-                        💡 <strong>دلیل مدل:</strong> {reason}
-                      </div>
+                  </div>
+
+                  {simulationResult.debugInfo?.candidatesSent && simulationResult.debugInfo.candidatesSent.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-96 overflow-y-auto pr-1">
+                      {simulationResult.debugInfo.candidatesSent.map((c: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-black text-slate-900 truncate">
+                              {idx + 1}. {c.title}
+                            </span>
+                            <span className="font-mono text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 shrink-0">
+                              {c.id}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[11px] text-slate-600 flex-wrap gap-1">
+                            <span>نویسنده: <strong>{c.author}</strong></span>
+                            <span>دسته‌بندی: <strong className="text-indigo-700">{c.category}</strong></span>
+                            {c.pageCount ? <span>صفحات: {c.pageCount}</span> : null}
+                          </div>
+
+                          {c.tags && c.tags.length > 0 && (
+                            <div className="flex items-center gap-1 flex-wrap pt-0.5">
+                              {c.tags.map((t: string, tidx: number) => (
+                                <span key={tidx} className="text-[10px] bg-indigo-50 text-indigo-700 px-1.5 py-0.2 rounded border border-indigo-100">
+                                  #{t}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+
+                          {c.description && (
+                            <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed bg-white/70 p-1.5 rounded border border-slate-100">
+                              {c.description}
+                            </p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500">لیست کاندیداها ثبت نشده است.</p>
+                  )}
+                </div>
+              )}
+
+              {/* Tab 2: Full Prompt Sent */}
+              {simSubTab === 'prompt' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">متن کامل پرامپت ارسال‌شده به مدل Qwen در Ollama:</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fullText = `=== SYSTEM PROMPT ===\n${simulationResult.debugInfo?.systemPrompt || ''}\n\n=== USER PROMPT ===\n${simulationResult.debugInfo?.userPrompt || ''}`;
+                        navigator.clipboard.writeText(fullText);
+                        setCopiedText('prompt');
+                        setTimeout(() => setCopiedText(''), 2000);
+                      }}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedText === 'prompt' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedText === 'prompt' ? 'کپی شد' : 'کپی کل پرامپت'}</span>
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-black text-indigo-900 block">دستور سیستمی (System Prompt):</span>
+                    <pre className="p-3 bg-slate-900 text-emerald-400 font-mono text-[11px] rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-40">
+                      {simulationResult.debugInfo?.systemPrompt || 'پیش‌فرض'}
+                    </pre>
+
+                    <span className="text-[11px] font-black text-indigo-900 block pt-2">پرامپت کاربر و لیست کتاب‌ها (User Prompt):</span>
+                    <pre className="p-3 bg-slate-900 text-slate-100 font-mono text-[11px] rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-72">
+                      {simulationResult.debugInfo?.userPrompt || 'پرامپتی ثبت نشده است'}
+                    </pre>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 3: Raw AI Response */}
+              {simSubTab === 'raw_response' && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700">پاسخ خام بازگردانده شده از سرور هوش مصنوعی (Raw Response Body):</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(simulationResult.debugInfo?.rawAiResponse || '');
+                        setCopiedText('raw');
+                        setTimeout(() => setCopiedText(''), 2000);
+                      }}
+                      className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      {copiedText === 'raw' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedText === 'raw' ? 'کپی شد' : 'کپی پاسخ خام'}</span>
+                    </button>
+                  </div>
+
+                  <pre className="p-3.5 bg-slate-950 text-sky-300 font-mono text-xs rounded-xl overflow-x-auto whitespace-pre-wrap leading-relaxed max-h-80 border border-slate-800">
+                    {simulationResult.debugInfo?.rawAiResponse || 'هیچ پاسخی از سرور دریافت نشد (خالی)'}
+                  </pre>
+                </div>
+              )}
+
+              {/* Tab 4: Final Extracted Recommendations */}
+              {simSubTab === 'recommendations' && (
+                <div className="space-y-3">
+                  {simulationResult.greeting && (
+                    <p className="text-xs text-indigo-900 font-bold bg-indigo-50 p-3 rounded-xl border border-indigo-100 leading-relaxed">
+                      💬 <strong>پیام کتابدار هوشمند:</strong> {simulationResult.greeting}
+                    </p>
+                  )}
+
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-black text-slate-700 block">کتاب‌های برگزیده مدل:</span>
+                    {simulationResult.recommendedBooks && simulationResult.recommendedBooks.length > 0 ? (
+                      simulationResult.recommendedBooks.map(({ book, reason }: any, idx: number) => (
+                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-start gap-2.5">
+                          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 mt-0.5">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="font-black text-slate-900 text-xs">
+                                {book.title} <span className="text-slate-500 font-normal">({book.author})</span>
+                              </span>
+                              <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">
+                                {book.id}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-700 mt-1 bg-white p-2 rounded-lg border border-slate-100 leading-relaxed">
+                              💡 <strong>دلیل معرفی مدل:</strong> {reason}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-slate-500 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
+                        کتابی استخراج نشد.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab 5: Diagnostics & Network Details */}
+              {simSubTab === 'diagnostics' && (
+                <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs space-y-2 font-mono">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
+                    <div>
+                      <span className="text-slate-500 font-sans">آدرس اندپوینت: </span>
+                      <strong className="text-slate-900">{simulationResult.debugInfo?.endpointUsed || '-'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-sans">مدل درخواستی: </span>
+                      <strong className="text-slate-900">{simulationResult.debugInfo?.modelUsed || '-'}</strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-sans">کد وضعیت HTTP: </span>
+                      <strong className={simulationResult.debugInfo?.httpStatus === 200 ? 'text-emerald-700' : 'text-rose-700'}>
+                        {simulationResult.debugInfo?.httpStatus ?? 'نامشخص'}
+                      </strong>
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-sans">مدت زمان اجرا: </span>
+                      <strong className="text-slate-900">{simulationResult.debugInfo?.executionTimeMs ?? simulationResult.latencyMs ?? 0} میلی‌ثانیه</strong>
                     </div>
                   </div>
-                ))}
-              </div>
+
+                  {simulationResult.debugInfo?.fetchError && (
+                    <div className="p-2 bg-rose-100/70 text-rose-900 rounded-lg text-[11px] font-sans">
+                      ⚠️ <strong>خطای شبکه / اتصال:</strong> {simulationResult.debugInfo.fetchError}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

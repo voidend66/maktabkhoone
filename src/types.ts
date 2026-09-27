@@ -354,6 +354,7 @@ export interface LocalAiConfig {
   repeatPenalty: number; // e.g. 1.1
   maxCandidates: number; // e.g. 14
   timeoutSeconds: number; // e.g. 20
+  fallbackEnabled?: boolean; // When false, fallback algorithm is disabled to allow pure AI testing & debugging
 }
 
 export interface AiRecommendationRequest {
@@ -376,6 +377,27 @@ export interface AiRecommendationResult {
   candidatesCount: number;
   isAiGenerated: boolean;
   latencyMs?: number;
+  debugInfo?: {
+    endpointUsed?: string;
+    modelUsed?: string;
+    systemPrompt?: string;
+    userPrompt?: string;
+    candidatesSent?: Array<{
+      id: string;
+      title: string;
+      author: string;
+      category: string;
+      tags: string[];
+      pageCount?: number;
+      description?: string;
+    }>;
+    rawAiResponse?: string;
+    parsedJson?: any;
+    parseSuccess?: boolean;
+    fetchError?: string | null;
+    httpStatus?: number | null;
+    executionTimeMs?: number;
+  };
 }
 
 export interface InstalledOllamaModel {

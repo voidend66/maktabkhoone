@@ -60,7 +60,8 @@ const INITIAL_SYSTEM_CONFIG: SystemConfig = {
     topP: 0.9,
     repeatPenalty: 1.15,
     maxCandidates: 14,
-    timeoutSeconds: 90
+    timeoutSeconds: 15,
+    fallbackEnabled: false
   }
 };
 

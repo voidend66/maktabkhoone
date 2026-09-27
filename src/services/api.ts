@@ -884,7 +884,21 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params)
       });
-      return await res.json();
+      const text = await res.text();
+      try {
+        const parsed = JSON.parse(text);
+        return parsed;
+      } catch {
+        return {
+          success: false,
+          message: res.ok
+            ? 'فرمت پاسخ هوش مصنوعی نامعتبر بود.'
+            : `خطا در ارتباط با سرور (${res.status}): سرور هوش مصنوعی محلی در شبکه در دسترس نیست.`,
+          recommendedBooks: [],
+          candidatesCount: 0,
+          isAiGenerated: false
+        };
+      }
     } catch (err: any) {
       return {
         success: false,
