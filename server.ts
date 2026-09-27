@@ -6063,8 +6063,16 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
 
         const startTime = Date.now();
         const controller = new AbortController();
-        const timeoutDuration = Math.min(Math.max(aiConfig.timeoutSeconds || 15, 3), 20) * 1000;
-        const timer = setTimeout(() => controller.abort(), timeoutDuration);
+        const isTestMode = req.body?.isTest === true || req.body?.noTimeout === true;
+        // In test mode or when timeoutSeconds is set to 0, timeout is disabled (unlimited)
+        const cfgTimeoutSec = typeof aiConfig.timeoutSeconds === 'number' ? aiConfig.timeoutSeconds : 120;
+        const shouldDisableTimeout = isTestMode || cfgTimeoutSec <= 0;
+        const timeoutDurationMs = shouldDisableTimeout ? 0 : Math.max(cfgTimeoutSec, 5) * 1000;
+
+        let timer: NodeJS.Timeout | null = null;
+        if (timeoutDurationMs > 0) {
+          timer = setTimeout(() => controller.abort(), timeoutDurationMs);
+        }
 
         try {
           const aiResponse = await fetch(targetGenerateUrl, {
@@ -6086,7 +6094,7 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
             signal: controller.signal
           });
 
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           latencyMs = Date.now() - startTime;
           httpStatusCode = aiResponse.status;
 
@@ -6125,12 +6133,14 @@ ${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آ�
             reportAiServerOffline(`پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status})`, aiConfig.endpointUrl);
           }
         } catch (fetchErr: any) {
-          clearTimeout(timer);
+          if (timer) clearTimeout(timer);
           latencyMs = Date.now() - startTime;
           console.warn('Ollama local AI request skipped or failed:', fetchErr.message);
           let errDesc = fetchErr.message || 'خطای اتصال به سرور هوش مصنوعی';
           if (fetchErr.name === 'AbortError' || String(fetchErr.message).toLowerCase().includes('aborted')) {
-            errDesc = `پایان مهلت زمان (${Math.round(timeoutDuration / 1000)} ثانیه) یا عدم دسترسی به آی‌پی محلی از محیط ابری (${fetchErr.message})`;
+            errDesc = timeoutDurationMs > 0
+              ? `پایان مهلت زمان (${Math.round(timeoutDurationMs / 1000)} ثانیه) یا عدم دسترسی به آی‌پی محلی (${fetchErr.message})`
+              : `قطع ارتباط با سرور هوش مصنوعی (${fetchErr.message})`;
           }
           fetchErrorStr = errDesc;
           reportAiServerOffline(errDesc, aiConfig.endpointUrl);

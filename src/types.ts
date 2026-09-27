@@ -364,6 +364,8 @@ export interface AiRecommendationRequest {
   gradeLevel?: string;
   favoriteTopics?: string[];
   customPrompt?: string;
+  isTest?: boolean;
+  noTimeout?: boolean;
 }
 
 export interface AiRecommendationResult {

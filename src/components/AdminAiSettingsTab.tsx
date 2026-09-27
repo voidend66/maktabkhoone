@@ -123,6 +123,7 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [testMood, setTestMood] = useState<string>('laugh');
   const [testPrompt, setTestPrompt] = useState<string>('یک رمان ماجراجویی و طنز مدرسه‌ای');
   const [isSimulating, setIsSimulating] = useState(false);
+  const [simElapsedSeconds, setSimElapsedSeconds] = useState<number>(0);
   const [simulationResult, setSimulationResult] = useState<any>(null);
   const [simSubTab, setSimSubTab] = useState<'recommendations' | 'candidates' | 'prompt' | 'raw_response' | 'diagnostics'>('candidates');
 
@@ -304,12 +305,20 @@ export const AdminAiSettingsTab: React.FC = () => {
   const handleRunSimulation = async () => {
     setIsSimulating(true);
     setSimulationResult(null);
+    setSimElapsedSeconds(0);
+    const startTimestamp = Date.now();
+    const interval = setInterval(() => {
+      setSimElapsedSeconds(Math.floor((Date.now() - startTimestamp) / 1000));
+    }, 500);
+
     try {
       const res = await getAiBookRecommendations({
         mood: testMood,
         readingTime: 'medium',
         visualPreference: 'any',
-        customPrompt: testPrompt.trim()
+        customPrompt: testPrompt.trim(),
+        isTest: true,
+        noTimeout: true
       });
       setSimulationResult(res);
     } catch (err: any) {
@@ -318,6 +327,8 @@ export const AdminAiSettingsTab: React.FC = () => {
         message: err.message || 'خطا در شبیه‌سازی'
       });
     } finally {
+      clearInterval(interval);
+      setSimElapsedSeconds(Math.round((Date.now() - startTimestamp) / 1000));
       setIsSimulating(false);
     }
   };
@@ -886,20 +897,22 @@ export const AdminAiSettingsTab: React.FC = () => {
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-slate-700">تایم‌اوت پاسخ (Timeout):</span>
                 <span className="font-mono text-indigo-600 font-bold">
-                  {timeoutSeconds} ثانیه
+                  {timeoutSeconds === 0 ? 'بدون محدودیت (نامحدود)' : `${timeoutSeconds} ثانیه`}
                 </span>
               </div>
               <input
                 type="range"
-                min="15"
-                max="150"
+                min="0"
+                max="300"
                 step="5"
                 value={timeoutSeconds}
-                onChange={(e) => setTimeoutSeconds(parseInt(e.target.value) || 90)}
+                onChange={(e) => setTimeoutSeconds(parseInt(e.target.value) || 0)}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                سقف انتظار پاسخ مدل محلی (پیشنهاد: ۹۰ ثانیه، متناسب با زمان تحلیل مدل‌های محلی).
+                {timeoutSeconds === 0
+                  ? 'بدون محدودیت زمانی (مناسب برای سرورهای بدون GPU یا مدل‌های سنگین).'
+                  : 'سقف انتظار پاسخ مدل محلی در سایت (پیشنهاد: ۱۲۰ تا ۱۸۰ ثانیه یا صفر).'}
               </span>
             </div>
           </div>
@@ -1211,25 +1224,39 @@ export const AdminAiSettingsTab: React.FC = () => {
             </div>
           </div>
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <button
-              type="button"
-              onClick={handleRunSimulation}
-              disabled={isSimulating}
-              className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
-            >
-              {isSimulating ? (
-                <>
-                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>در حال ارسال درخواست و استنتاج مدل...</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
-                  <span>ارسال به هوش مصنوعی و اجرای آزمون</span>
-                </>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={handleRunSimulation}
+                disabled={isSimulating}
+                className="px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black transition flex items-center justify-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+              >
+                {isSimulating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>در حال استنتاج مدل ({simElapsedSeconds} ثانیه)...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-4 h-4 text-yellow-300" />
+                    <span>ارسال به هوش مصنوعی و اجرای آزمون</span>
+                  </>
+                )}
+              </button>
+
+              {/* Real-time Stopwatch Badge */}
+              {isSimulating && (
+                <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-300 text-amber-900 rounded-xl text-xs font-mono font-black animate-pulse">
+                  <Clock className="w-4 h-4 text-amber-600 animate-spin" />
+                  <span>زمان‌سنج زنده: {simElapsedSeconds} ثانیه</span>
+                </div>
               )}
-            </button>
+            </div>
+
+            <span className="text-[11px] text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+              ⚡️ تایم‌اوت در بخش تست <strong>نامحدود</strong> است تا عملکرد واقعی و سرعت پردازش مدل دقیقاً سنجیده شود.
+            </span>
           </div>
 
           {/* Simulation Output and Deep Diagnostic Tabs */}
@@ -1268,14 +1295,15 @@ export const AdminAiSettingsTab: React.FC = () => {
                   </span>
                 </div>
 
-                <div className="flex items-center gap-2 font-mono text-[10px] text-slate-600">
-                  {simulationResult.latencyMs && (
-                    <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
-                      تاخیر: {simulationResult.latencyMs}ms
+                <div className="flex items-center gap-2 font-mono text-[11px] text-slate-700">
+                  <span className="bg-indigo-50 border border-indigo-200 text-indigo-900 px-2.5 py-1 rounded-lg font-bold flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>
+                      مدت زمان پردازش: {simulationResult.latencyMs ? (simulationResult.latencyMs / 1000).toFixed(1) : simElapsedSeconds} ثانیه ({simulationResult.latencyMs || simElapsedSeconds * 1000}ms)
                     </span>
-                  )}
+                  </span>
                   {simulationResult.candidatesCount !== undefined && (
-                    <span className="bg-slate-100 px-2 py-0.5 rounded border border-slate-200">
+                    <span className="bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
                       کاندیداها: {simulationResult.candidatesCount} جلد
                     </span>
                   )}
