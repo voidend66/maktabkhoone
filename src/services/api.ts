@@ -13,7 +13,8 @@ import {
   UserEventProgress,
   LocalAiConfig,
   AiRecommendationRequest,
-  AiRecommendationResult
+  AiRecommendationResult,
+  AiHealthCheckResult
 } from '../types';
 
 const API_BASE = '/api';
@@ -816,6 +817,32 @@ export const api = {
         success: false,
         latencyMs: null,
         message: err.message || 'خطا در برقراری ارتباط با سرور سایت'
+      };
+    }
+  },
+
+  async checkAiHealth(params?: { endpointUrl?: string; modelName?: string }): Promise<AiHealthCheckResult> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/health-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params || {})
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        overallStatus: 'offline',
+        summary: `عدم برقراری ارتباط با سرور سایت: ${err.message}`,
+        timestamp: new Date().toISOString(),
+        timestampFa: '',
+        endpointUrl: params?.endpointUrl || '',
+        targetModel: params?.modelName || '',
+        steps: {
+          ping: { success: false, latencyMs: null, status: null, message: err.message },
+          models: { success: false, targetModelFound: false, installedModels: [], message: 'تست اجرا نشد' },
+          inference: { success: false, latencyMs: null, message: 'تست اجرا نشد' },
+          fallback: { ready: true, booksCount: 0, message: 'موتور پشتیبان آماده است' }
+        }
       };
     }
   },

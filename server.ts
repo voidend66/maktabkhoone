@@ -5425,6 +5425,258 @@ async function startServer() {
     }
   }
 
+  function getOllamaBaseUrl(endpointUrl: string): string {
+    try {
+      const url = new URL(endpointUrl);
+      return `${url.protocol}//${url.host}`;
+    } catch {
+      return endpointUrl.replace(/\/api\/(generate|tags|chat).*$/, '');
+    }
+  }
+
+  function formatBytesToGb(bytes?: number): string {
+    if (!bytes || isNaN(bytes)) return '-';
+    const gb = bytes / (1024 * 1024 * 1024);
+    if (gb >= 1) return `${gb.toFixed(1)} گیگابایت`;
+    const mb = bytes / (1024 * 1024);
+    return `${mb.toFixed(0)} مگابایت`;
+  }
+
+  app.post('/api/ai/health-check', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const config = dbService.getSystemConfig().aiConfig || {
+        enabled: true,
+        endpointUrl: 'http://192.168.100.54:11434/api/generate',
+        modelName: 'qwen2.5:7b',
+        timeoutSeconds: 90
+      };
+
+      const rawEndpoint = (req.body?.endpointUrl || config.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+      const targetModel = (req.body?.modelName || config.modelName || 'qwen2.5:7b').trim();
+      const baseUrl = getOllamaBaseUrl(rawEndpoint);
+      const generateEndpoint = rawEndpoint.endsWith('/api/generate')
+        ? rawEndpoint
+        : `${rawEndpoint.replace(/\/+$/, '')}/api/generate`;
+
+      const now = new Date();
+      const timestampFa = new Intl.DateTimeFormat('fa-IR', {
+        timeZone: 'Asia/Tehran',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      }).format(now);
+
+      // Step 1: Base HTTP Ping
+      let pingSuccess = false;
+      let pingLatencyMs: number | null = null;
+      let pingStatus: number | null = null;
+      let pingMessage = '';
+
+      const pingStart = Date.now();
+      const pingCtrl = new AbortController();
+      const pingTimer = setTimeout(() => pingCtrl.abort(), 6000);
+
+      try {
+        const pingRes = await fetch(baseUrl, { method: 'GET', signal: pingCtrl.signal });
+        clearTimeout(pingTimer);
+        pingLatencyMs = Date.now() - pingStart;
+        pingStatus = pingRes.status;
+        const text = await pingRes.text().catch(() => '');
+
+        if (pingRes.ok || text.includes('Ollama is running') || pingRes.status === 200) {
+          pingSuccess = true;
+          pingMessage = `سرور وب Ollama در پورت ۱۱۴۳۴ پاسخگو است (${pingLatencyMs}ms). سرویس فعال و در دسترس شبکه است.`;
+        } else {
+          pingMessage = `سرور پاسخ داد اما وضعیت غیراستاندارد بود (کد وضعیت: ${pingRes.status}).`;
+        }
+      } catch (pErr: any) {
+        clearTimeout(pingTimer);
+        pingLatencyMs = Date.now() - pingStart;
+        const isTimeout = pErr.name === 'AbortError';
+        pingMessage = isTimeout
+          ? `مهلت ارتباط با ${baseUrl} به پایان رسید (۶ ثانیه). سرور خاموش است یا پورت ۱۱۴۳۴ در فایروال باز نیست.`
+          : `خطای اتصال به سرور: ${pErr.message}`;
+      }
+
+      // Step 2: Tags & Installed Models Inspection
+      let modelsSuccess = false;
+      let targetModelFound = false;
+      let installedModels: any[] = [];
+      let modelsMessage = '';
+
+      if (pingSuccess) {
+        const tagsCtrl = new AbortController();
+        const tagsTimer = setTimeout(() => tagsCtrl.abort(), 8000);
+        try {
+          const tagsRes = await fetch(`${baseUrl}/api/tags`, { method: 'GET', signal: tagsCtrl.signal });
+          clearTimeout(tagsTimer);
+          if (tagsRes.ok) {
+            const tagsData: any = await tagsRes.json().catch(() => ({}));
+            const rawList = Array.isArray(tagsData?.models) ? tagsData.models : [];
+            installedModels = rawList.map((m: any) => ({
+              name: m.name,
+              sizeFormatted: formatBytesToGb(m.size),
+              sizeBytes: m.size,
+              modifiedAt: m.modified_at,
+              parameterSize: m.details?.parameter_size,
+              quantizationLevel: m.details?.quantization_level
+            }));
+
+            modelsSuccess = true;
+            targetModelFound = installedModels.some(
+              (m: any) =>
+                m.name === targetModel ||
+                m.name === `${targetModel}:latest` ||
+                targetModel.startsWith(m.name.split(':')[0])
+            );
+
+            if (targetModelFound) {
+              modelsMessage = `مدل مورد نظر (${targetModel}) در سرور شناسایی شد. تعداد کل مدل‌های نصب‌شده: ${installedModels.length} مدل.`;
+            } else if (installedModels.length > 0) {
+              modelsMessage = `مدل ${targetModel} در سرور یافت نشد، اما ${installedModels.length} مدل دیگر شناسایی شدند (${installedModels.map((m: any) => m.name).join('، ')}).`;
+            } else {
+              modelsMessage = `لیست مدل‌ها دریافت شد اما هیچ مدلی روی سرور دانلود نشده است. دستور 'ollama pull ${targetModel}' را اجرا کنید.`;
+            }
+          } else {
+            modelsMessage = `اندپوینت api/tags پاسخ نداد (کد وضعیت: ${tagsRes.status}).`;
+          }
+        } catch (tErr: any) {
+          clearTimeout(tagsTimer);
+          modelsMessage = `خطا در دریافت لیست مدل‌ها: ${tErr.message}`;
+        }
+      } else {
+        modelsMessage = 'به دلیل عدم برقراری پینگ سرور، مرحله بررسی مدل‌ها متوقف شد.';
+      }
+
+      // Step 3: Fast Inference Check (if ping passed)
+      let infSuccess = false;
+      let infLatencyMs: number | null = null;
+      let infSampleResponse: string | undefined = undefined;
+      let infMessage = '';
+
+      if (pingSuccess && targetModelFound) {
+        const infStart = Date.now();
+        const infCtrl = new AbortController();
+        const infTimer = setTimeout(() => infCtrl.abort(), 45000);
+
+        try {
+          const infRes = await fetch(generateEndpoint, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: targetModel,
+              prompt: 'سلام. پاسخ فقط در یک کلمه:',
+              stream: false,
+              options: {
+                num_predict: 6,
+                temperature: 0.1
+              }
+            }),
+            signal: infCtrl.signal
+          });
+          clearTimeout(infTimer);
+          infLatencyMs = Date.now() - infStart;
+
+          if (infRes.ok) {
+            const infData: any = await infRes.json().catch(() => ({}));
+            infSuccess = true;
+            infSampleResponse = (infData?.response || '').trim();
+            infMessage = `تولید استنتاج هوش مصنوعی با موفقیت انجام شد (زمان اجرا: ${infLatencyMs}ms). نمونه خروجی: "${infSampleResponse.slice(0, 50)}"`;
+          } else {
+            const errTxt = await infRes.text().catch(() => '');
+            infMessage = `خطای سرور در اجرای استنتاج (کد ${infRes.status}): ${errTxt.slice(0, 120)}`;
+          }
+        } catch (iErr: any) {
+          clearTimeout(infTimer);
+          infLatencyMs = Date.now() - infStart;
+          const isTimeout = iErr.name === 'AbortError';
+          infMessage = isTimeout
+            ? 'تست استنتاج بیش از ۴۵ ثانیه طول کشید یا توسط سرور قطع شد.'
+            : `خطای استنتاج: ${iErr.message}`;
+        }
+      } else if (pingSuccess && !targetModelFound) {
+        infMessage = `به دلیل عدم تطابق نام مدل (${targetModel}) با مدل‌های نصب‌شده روی سرور، تست استنتاج رد شد.`;
+      } else {
+        infMessage = 'به دلیل خاموش یا خارج از دسترس بودن سرور، تست استنتاج انجام نشد.';
+      }
+
+      // Step 4: Fallback Engine Check
+      const booksCount = dbService.getAllBooks().length;
+      const fallbackCheck = {
+        ready: true,
+        booksCount,
+        message: `موتور تطبیق پشتیبان مکتب‌خانه فعال و دارای ${booksCount} جلد کتاب آماده برای حالت اضطراری است.`
+      };
+
+      // Calculate Overall Status
+      let overallStatus: 'healthy' | 'degraded' | 'offline' = 'offline';
+      let summary = '';
+
+      if (pingSuccess && targetModelFound && infSuccess) {
+        overallStatus = 'healthy';
+        summary = `🟢 وضعیت عالی: سرور هوش مصنوعی کامپیوتر شما کاملاً متصل و آماده پاسخگویی بلادرنگ است. پینگ سرور: ${pingLatencyMs}ms، زمان استنتاج: ${infLatencyMs}ms.`;
+      } else if (pingSuccess) {
+        overallStatus = 'degraded';
+        if (!targetModelFound) {
+          summary = `🟡 سرور Ollama پاسخگو است، اما مدل ${targetModel} روی سرور نصب نیست یا نام آن متفاوت است.`;
+        } else {
+          summary = `🟡 سرور و مدل شناسایی شدند اما اجرای استنتاج با تاخیر مواجه شد. در صورت سفارش دانش‌آموز، الگوریتم پشتیبان فعال خواهد شد.`;
+        }
+      } else {
+        overallStatus = 'offline';
+        summary = `🔴 سرور هوش مصنوعی خاموش یا خارج از دسترس شبکه است. در این حالت دانش‌آموزان به صورت خودکار از موتور کتابداری مکتب‌خانه استفاده می‌کنند.`;
+      }
+
+      return res.json({
+        success: true,
+        overallStatus,
+        summary,
+        timestamp: now.toISOString(),
+        timestampFa,
+        endpointUrl: rawEndpoint,
+        targetModel,
+        steps: {
+          ping: {
+            success: pingSuccess,
+            latencyMs: pingLatencyMs,
+            status: pingStatus,
+            message: pingMessage
+          },
+          models: {
+            success: modelsSuccess,
+            targetModelFound,
+            installedModels,
+            message: modelsMessage
+          },
+          inference: {
+            success: infSuccess,
+            latencyMs: infLatencyMs,
+            sampleResponse: infSampleResponse,
+            message: infMessage
+          },
+          fallback: fallbackCheck
+        }
+      });
+    } catch (err: any) {
+      console.error('Health check exception:', err);
+      return res.status(500).json({
+        success: false,
+        overallStatus: 'offline',
+        summary: `خطا در اجرای سلامت‌سنجی: ${err.message}`,
+        timestamp: new Date().toISOString(),
+        timestampFa: '',
+        endpointUrl: '',
+        targetModel: '',
+        steps: {
+          ping: { success: false, latencyMs: null, status: null, message: err.message },
+          models: { success: false, targetModelFound: false, installedModels: [], message: 'تست اجرا نشد' },
+          inference: { success: false, latencyMs: null, message: 'تست اجرا نشد' },
+          fallback: { ready: true, booksCount: dbService.getAllBooks().length, message: 'موتور پشتیبان فعال است' }
+        }
+      });
+    }
+  });
+
   app.post('/api/ai/test-connection', async (req: Request, res: Response): Promise<any> => {
     try {
       const config = dbService.getSystemConfig().aiConfig || {
@@ -5434,7 +5686,11 @@ async function startServer() {
         timeoutSeconds: 90
       };
 
-      const endpointUrl = req.body?.endpointUrl || config.endpointUrl || 'http://192.168.100.54:11434/api/generate';
+      const rawEndpoint = (req.body?.endpointUrl || config.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+      const endpointUrl = rawEndpoint.endsWith('/api/generate')
+        ? rawEndpoint
+        : `${rawEndpoint.replace(/\/+$/, '')}/api/generate`;
+
       const modelName = req.body?.modelName || config.modelName || 'qwen2.5:7b';
       const timeoutSec = req.body?.timeoutSeconds || config.timeoutSeconds || 90;
 
@@ -5714,7 +5970,11 @@ ${customPrompt ? `- متن پیام دانش‌آموز: "${customPrompt}"` : ''
         } catch (fetchErr: any) {
           clearTimeout(timer);
           console.warn('Ollama local AI request skipped or failed, using smart algorithmic fallback:', fetchErr.message);
-          reportAiServerOffline(fetchErr.message || 'مهلت زمان اتصال به پایان رسید یا سرور خاموش است', aiConfig.endpointUrl);
+          let errDesc = fetchErr.message || 'خطای اتصال';
+          if (fetchErr.name === 'AbortError' || String(fetchErr.message).toLowerCase().includes('aborted')) {
+            errDesc = `پایان مهلت زمان (۹۰ ثانیه) یا عدم دسترسی به آی‌پی محلی از محیط ابری (${fetchErr.message})`;
+          }
+          reportAiServerOffline(errDesc, aiConfig.endpointUrl);
         }
       }
 

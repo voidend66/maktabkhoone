@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { LocalAiConfig, Book } from '../types';
+import { LocalAiConfig, Book, AiHealthCheckResult, InstalledOllamaModel } from '../types';
 import { getSafeImageUrl, DEFAULT_BOOK_COVER } from '../utils/coverPresets';
 import {
   Bot,
@@ -18,11 +18,18 @@ import {
   BookOpen,
   HelpCircle,
   Layers,
-  Terminal
+  Terminal,
+  Activity,
+  HardDrive,
+  RefreshCw,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 export const AdminAiSettingsTab: React.FC = () => {
-  const { systemConfig, updateSystemConfig, testAiConnection, getAiBookRecommendations } = useApp();
+  const { systemConfig, updateSystemConfig, testAiConnection, checkAiHealth, getAiBookRecommendations } = useApp();
 
   const currentAiConfig = systemConfig?.aiConfig || {
     enabled: true,
@@ -63,11 +70,23 @@ export const AdminAiSettingsTab: React.FC = () => {
     responseSample?: string;
   } | null>(null);
 
+  // Health Check State
+  const [isHealthChecking, setIsHealthChecking] = useState(false);
+  const [healthResult, setHealthResult] = useState<AiHealthCheckResult | null>(null);
+  const [showModelsList, setShowModelsList] = useState(true);
+  const [copiedText, setCopiedText] = useState<string>('');
+
   // Playground / Simulator State
   const [testMood, setTestMood] = useState<string>('laugh');
   const [testPrompt, setTestPrompt] = useState<string>('یک رمان ماجراجویی و طنز مدرسه‌ای');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<any>(null);
+
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedText(text);
+    setTimeout(() => setCopiedText(''), 2500);
+  };
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +137,21 @@ export const AdminAiSettingsTab: React.FC = () => {
     }
   };
 
+  const handleRunHealthCheck = async () => {
+    setIsHealthChecking(true);
+    try {
+      const res = await checkAiHealth({
+        endpointUrl: endpointUrl.trim(),
+        modelName: modelName.trim()
+      });
+      setHealthResult(res);
+    } catch (err: any) {
+      console.error('Health check client error:', err);
+    } finally {
+      setIsHealthChecking(false);
+    }
+  };
+
   const handleRunSimulation = async () => {
     setIsSimulating(true);
     setSimulationResult(null);
@@ -156,7 +190,7 @@ export const AdminAiSettingsTab: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-black text-slate-900 text-lg sm:text-xl">
-                تنظیمات هوش مصنوعی محلی (Ollama & Qwen 7B)
+                تنظیمات و سلامت‌سنجی هوش مصنوعی محلی (Ollama & Qwen 7B)
               </h3>
               <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                 enabled
@@ -167,34 +201,236 @@ export const AdminAiSettingsTab: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              مدیریت اتصال به سرور پروکسموکس داخلی، پارامترهای مدل Qwen 2.5 7B و تنظیمات پرامپت پیشنهاد کتاب
+              مدیریت اتصال به سرور پروکسموکس داخلی، تست سلامت‌سنجی ۴ گانه، پارامترهای مدل Qwen و پشتیبان اضطراری
             </p>
           </div>
         </div>
 
-        {/* Live Ping Button */}
-        <button
-          type="button"
-          onClick={handlePingTest}
-          disabled={isTesting}
-          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
-        >
-          {isTesting ? (
-            <>
+        {/* Live Action Buttons */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Diagnostic Health Check Button */}
+          <button
+            type="button"
+            onClick={handleRunHealthCheck}
+            disabled={isHealthChecking}
+            className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700 text-white rounded-xl text-xs font-black transition flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
+          >
+            {isHealthChecking ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>در حال سلامت‌سنجی ۴ گانه...</span>
+              </>
+            ) : (
+              <>
+                <Activity className="w-4 h-4 text-emerald-300 animate-pulse" />
+                <span>سلامت‌سنجی جامع سرور</span>
+              </>
+            )}
+          </button>
+
+          {/* Quick Ping Button */}
+          <button
+            type="button"
+            onClick={handlePingTest}
+            disabled={isTesting}
+            className="px-3.5 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+          >
+            {isTesting ? (
               <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              <span>در حال ارسال پینگ به سرور...</span>
-            </>
-          ) : (
-            <>
+            ) : (
               <Zap className="w-3.5 h-3.5 text-yellow-400" />
-              <span>تست اتصال زنده (Ping)</span>
-            </>
-          )}
-        </button>
+            )}
+            <span>پینگ سریع</span>
+          </button>
+        </div>
       </div>
 
-      {/* Ping Test Result Banner */}
-      {testResult && (
+      {/* Comprehensive Health Check Suite Banner (if tested) */}
+      {healthResult && (
+        <div className={`p-5 rounded-3xl border text-xs leading-relaxed space-y-4 animate-in fade-in duration-300 ${
+          healthResult.overallStatus === 'healthy'
+            ? 'bg-emerald-50/70 border-emerald-300 text-emerald-950'
+            : healthResult.overallStatus === 'degraded'
+            ? 'bg-amber-50/80 border-amber-300 text-amber-950'
+            : 'bg-rose-50/80 border-rose-300 text-rose-950'
+        }`}>
+          {/* Main Health Status Summary Bar */}
+          <div className="flex items-center justify-between flex-wrap gap-3 pb-3 border-b border-black/10">
+            <div className="flex items-center gap-2.5">
+              <span className={`w-3.5 h-3.5 rounded-full shrink-0 ${
+                healthResult.overallStatus === 'healthy'
+                  ? 'bg-emerald-600 animate-ping'
+                  : healthResult.overallStatus === 'degraded'
+                  ? 'bg-amber-600 animate-ping'
+                  : 'bg-rose-600 animate-ping'
+              }`} />
+              <div>
+                <div className="font-black text-sm sm:text-base flex items-center gap-2 flex-wrap">
+                  <span>
+                    {healthResult.overallStatus === 'healthy' && '✅ وضعیت سرور: کاملاً سالم، آنلاین و متصل (Healthy)'}
+                    {healthResult.overallStatus === 'degraded' && '⚠️ وضعیت سرور: آنلاین با هشدار بررسی مدل (Degraded)'}
+                    {healthResult.overallStatus === 'offline' && '❌ وضعیت سرور: خاموش یا خارج از دسترس شبکه (Offline)'}
+                  </span>
+                  <span className="text-[10px] font-mono opacity-60">
+                    ({healthResult.timestampFa || 'هم‌اکنون'})
+                  </span>
+                </div>
+                <p className="text-xs opacity-90 mt-0.5">{healthResult.summary}</p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleRunHealthCheck}
+              disabled={isHealthChecking}
+              className="px-3 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded-xl text-xs font-bold border border-black/10 transition flex items-center gap-1.5 cursor-pointer shadow-2xs"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isHealthChecking ? 'animate-spin' : ''}`} />
+              <span>تست مجدد</span>
+            </button>
+          </div>
+
+          {/* 4 Pillars Breakdown Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 pt-1">
+            {/* 1. HTTP Web Server Ping */}
+            <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-black/10 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-slate-900">
+                  <Server className="w-4 h-4 text-indigo-600" />
+                  <span>۱. اتصال وب‌سرور و پورت ۱۱۴۳۴</span>
+                </div>
+                {healthResult.steps.ping.success ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>پاسخ داد ({healthResult.steps.ping.latencyMs}ms)</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-rose-100 text-rose-800 font-bold text-[10px] flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-rose-600" />
+                    <span>عدم پاسخ</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                {healthResult.steps.ping.message}
+              </p>
+            </div>
+
+            {/* 2. Models Check */}
+            <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-black/10 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-slate-900">
+                  <HardDrive className="w-4 h-4 text-purple-600" />
+                  <span>۲. مخزن مدل‌ها ({healthResult.targetModel})</span>
+                </div>
+                {healthResult.steps.models.targetModelFound ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>مدل موجود است</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 font-bold text-[10px] flex items-center gap-1">
+                    <AlertCircle className="w-3 h-3 text-amber-600" />
+                    <span>نیاز به بررسی</span>
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                {healthResult.steps.models.message}
+              </p>
+
+              {/* Installed Models Tags Pill List */}
+              {healthResult.steps.models.installedModels?.length > 0 && (
+                <div className="pt-2 border-t border-slate-100">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <span className="text-[10px] font-bold text-slate-500">مدل‌های شناسایی‌شده روی سرور شما:</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowModelsList(!showModelsList)}
+                      className="text-[10px] text-indigo-600 hover:underline flex items-center gap-0.5 cursor-pointer"
+                    >
+                      <span>{showModelsList ? 'بستن لیست' : 'مشاهده لیست'}</span>
+                      {showModelsList ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                    </button>
+                  </div>
+                  {showModelsList && (
+                    <div className="flex flex-wrap gap-1.5 max-h-28 overflow-y-auto pr-1">
+                      {healthResult.steps.models.installedModels.map((m, idx) => (
+                        <button
+                          key={idx}
+                          type="button"
+                          onClick={() => setModelName(m.name)}
+                          title={`کلیک برای انتخاب این مدل (حجم: ${m.sizeFormatted})`}
+                          className={`px-2 py-1 rounded-lg text-[10px] font-mono transition flex items-center gap-1.5 border cursor-pointer ${
+                            modelName === m.name
+                              ? 'bg-indigo-600 text-white border-indigo-700 shadow-xs'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          <Cpu className="w-3 h-3" />
+                          <span>{m.name}</span>
+                          <span className="text-[9px] opacity-75">({m.sizeFormatted})</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* 3. Live Inference Check */}
+            <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-black/10 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-slate-900">
+                  <Cpu className="w-4 h-4 text-sky-600" />
+                  <span>۳. استنتاج و تولید پاسخ زنده</span>
+                </div>
+                {healthResult.steps.inference.success ? (
+                  <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                    <span>موفق ({healthResult.steps.inference.latencyMs}ms)</span>
+                  </span>
+                ) : (
+                  <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 font-bold text-[10px]">
+                    غیرفعال
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                {healthResult.steps.inference.message}
+              </p>
+              {healthResult.steps.inference.sampleResponse && (
+                <div className="text-[10px] font-mono bg-slate-50 p-1.5 rounded-lg border border-slate-200 text-slate-700 truncate">
+                  نمونه تست: {healthResult.steps.inference.sampleResponse}
+                </div>
+              )}
+            </div>
+
+            {/* 4. Resilient Fallback Engine */}
+            <div className="bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-black/10 space-y-1.5 shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 font-black text-slate-900">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
+                  <span>۴. موتور پشتیبان اضطراری مکتب‌خانه</span>
+                </div>
+                <span className="px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px] flex items-center gap-1">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  <span>آماده به خدمت</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 leading-relaxed font-medium">
+                {healthResult.steps.fallback.message}
+              </p>
+              <div className="text-[10px] text-slate-400">
+                در صورت هرگونه خاموشی یا بروز تاخیر، بدون معطلی دانش‌آموز کتاب‌های مرتبط ارائه می‌شود.
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Ping Test Result Banner (Quick Ping) */}
+      {testResult && !healthResult && (
         <div className={`p-4 rounded-2xl border text-xs leading-relaxed animate-in fade-in duration-200 flex items-start gap-3 ${
           testResult.success
             ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
@@ -208,7 +444,7 @@ export const AdminAiSettingsTab: React.FC = () => {
           <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center justify-between flex-wrap gap-2">
               <strong className="font-black text-xs sm:text-sm">
-                {testResult.success ? '✅ اتصال با موفقیت برقرار شد!' : '⚠️ خطا در برقراری اتصال با سرور محلی:'}
+                {testResult.success ? '✅ پینگ با موفقیت برقرار شد!' : '⚠️ خطا در برقراری پینگ با سرور محلی:'}
               </strong>
               {testResult.latencyMs && (
                 <span className="font-mono text-[11px] bg-white/80 px-2 py-0.5 rounded-md border border-emerald-300">
@@ -251,119 +487,112 @@ export const AdminAiSettingsTab: React.FC = () => {
             type="checkbox"
             checked={enabled}
             onChange={(e) => setEnabled(e.target.checked)}
-            className="w-5 h-5 accent-indigo-600 rounded-md cursor-pointer shrink-0"
+            className="w-5 h-5 accent-indigo-600 rounded cursor-pointer"
           />
         </div>
 
-        {/* Section 1: Server Connection */}
-        <div className="space-y-3">
-          <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-2">
-            <Server className="w-4 h-4 text-sky-600" />
-            <span>مشخصات سرور و مدل (Ollama Endpoint):</span>
-          </h4>
+        {/* Server & Model Configuration Inputs */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* endpointUrl */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <Server className="w-4 h-4 text-slate-500" />
+              <span>آدرس اندپوینت Ollama (شبکه محلی یا اینترنت)</span>
+            </label>
+            <input
+              type="text"
+              dir="ltr"
+              value={endpointUrl}
+              onChange={(e) => setEndpointUrl(e.target.value)}
+              placeholder="http://192.168.100.54:11434/api/generate"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+            />
+            <span className="text-[11px] text-slate-400 block">
+              آدرس پیش‌فرض سرور پروکسموکس: <code className="text-slate-600">http://192.168.100.54:11434/api/generate</code>
+            </span>
+          </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-              <label className="block text-xs font-black text-slate-700">
-                آدرس اندپوینت سرور محلی (API URL):
-              </label>
-              <input
-                type="text"
-                dir="ltr"
-                value={endpointUrl}
-                onChange={(e) => setEndpointUrl(e.target.value)}
-                placeholder="http://192.168.100.54:11434/api/generate"
-                className="w-full p-2.5 bg-white rounded-xl border border-slate-300 text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500"
-              />
-              <span className="text-[10px] text-slate-400 block">
-                پیش‌فرض: http://192.168.100.54:11434/api/generate
-              </span>
-            </div>
-
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2">
-              <label className="block text-xs font-black text-slate-700">
-                نام مدل (Model Name):
-              </label>
-              <input
-                type="text"
-                dir="ltr"
-                value={modelName}
-                onChange={(e) => setModelName(e.target.value)}
-                placeholder="qwen2.5:7b"
-                className="w-full p-2.5 bg-white rounded-xl border border-slate-300 text-xs font-mono text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-sky-500"
-              />
-              <span className="text-[10px] text-slate-400 block">
-                پیش‌فرض: qwen2.5:7b (مقیم در رم با تأخیر لود صفر)
-              </span>
-            </div>
+          {/* modelName */}
+          <div className="space-y-1.5">
+            <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <Cpu className="w-4 h-4 text-slate-500" />
+              <span>نام مدل (Model Name)</span>
+            </label>
+            <input
+              type="text"
+              dir="ltr"
+              value={modelName}
+              onChange={(e) => setModelName(e.target.value)}
+              placeholder="qwen2.5:7b"
+              className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs font-mono text-slate-900 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+            />
+            <span className="text-[11px] text-slate-400 block">
+              نام مدل بارگذاری‌شده در Ollama (مثلاً <code className="text-slate-600">qwen2.5:7b</code> یا <code className="text-slate-600">qwen2.5:3b</code>).
+            </span>
           </div>
         </div>
 
-        {/* Section 2: Model Inference Tuning Parameters */}
-        <div className="space-y-3">
-          <h4 className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-2">
+        {/* System Prompt Customizer */}
+        <div className="space-y-1.5">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+              <Bot className="w-4 h-4 text-slate-500" />
+              <span>پرامپت سیستمی مدل (System Prompt)</span>
+            </label>
+            <button
+              type="button"
+              onClick={handleResetDefaultPrompt}
+              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>بازنشانی به پیش‌فرض</span>
+            </button>
+          </div>
+          <textarea
+            rows={3}
+            value={systemPrompt}
+            onChange={(e) => setSystemPrompt(e.target.value)}
+            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 leading-relaxed focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+            placeholder="دستورات سطح بالا به مدل..."
+          />
+          <span className="text-[11px] text-slate-400 block leading-tight">
+            این دستور به مدل یادآوری می‌کند که نقش کتابدار مکتب‌خانه را دارد و باید خروجی را فقط به صورت JSON تولید کند.
+          </span>
+        </div>
+
+        {/* Advanced Hyperparameters Accordion / Section */}
+        <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50/60 space-y-4">
+          <div className="flex items-center gap-2 text-xs font-black text-slate-900">
             <Sliders className="w-4 h-4 text-indigo-600" />
-            <span>پارامترهای تولید متن و بهینه‌سازی توکن‌ها (Options):</span>
-          </h4>
+            <span>تنظیمات پیشرفته هایپرپارامترها (Hyperparameters)</span>
+          </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {/* num_predict */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  سقف توکن خروجی (num_predict):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {numPredict} توکن
-                </span>
-              </div>
-              <input
-                type="range"
-                min="150"
-                max="800"
-                step="25"
-                value={numPredict}
-                onChange={(e) => setNumPredict(parseInt(e.target.value) || 350)}
-                className="w-full accent-indigo-600 cursor-pointer"
-              />
-              <span className="text-[10px] text-slate-400 block leading-tight">
-                پیشنهاد: ۳۰۰ تا ۴۵۰ توکن جهت جلوگیری از قطع ناگهانی ساختار JSON.
-              </span>
-            </div>
-
             {/* temperature */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  دمای خلاقیت (temperature):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {temperature}
-                </span>
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">Temperature (خلاقیت):</span>
+                <span className="font-mono text-indigo-600 font-bold">{temperature}</span>
               </div>
               <input
                 type="range"
                 min="0.1"
-                max="0.9"
+                max="1.0"
                 step="0.05"
                 value={temperature}
-                onChange={(e) => setTemperature(parseFloat(e.target.value) || 0.3)}
+                onChange={(e) => setTemperature(parseFloat(e.target.value))}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                پیشنهاد: ۰.۲ تا ۰.۴ جهت پیشنهاد دقیق و بدون توهم.
+                مقدار کمتر = دقت و التزام بالاتر به فرمت JSON (پیشنهاد: 0.3)
               </span>
             </div>
 
-            {/* top_p */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  تنوع واژگان (top_p):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {topP}
-                </span>
+            {/* topP */}
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">Top-P (تنوع کلمات):</span>
+                <span className="font-mono text-indigo-600 font-bold">{topP}</span>
               </div>
               <input
                 type="range"
@@ -371,23 +600,19 @@ export const AdminAiSettingsTab: React.FC = () => {
                 max="1.0"
                 step="0.05"
                 value={topP}
-                onChange={(e) => setTopP(parseFloat(e.target.value) || 0.9)}
+                onChange={(e) => setTopP(parseFloat(e.target.value))}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                کنترل تنوع کلمات (پیش‌فرض: ۰.۹).
+                کنترل تنوع توکن‌ها (پیشنهاد: 0.9)
               </span>
             </div>
 
-            {/* repeat_penalty */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  جریمه تکرار کلمات (repeat_penalty):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {repeatPenalty}
-                </span>
+            {/* repeatPenalty */}
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">Repeat Penalty:</span>
+                <span className="font-mono text-indigo-600 font-bold">{repeatPenalty}</span>
               </div>
               <input
                 type="range"
@@ -395,45 +620,59 @@ export const AdminAiSettingsTab: React.FC = () => {
                 max="1.5"
                 step="0.05"
                 value={repeatPenalty}
-                onChange={(e) => setRepeatPenalty(parseFloat(e.target.value) || 1.1)}
+                onChange={(e) => setRepeatPenalty(parseFloat(e.target.value))}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                جلوگیری از تکرار عبارات فارسی (پیش‌فرض: ۱.۱).
+                جلوگیری از تکرار کلمات تکراری (پیشنهاد: 1.1)
+              </span>
+            </div>
+
+            {/* numPredict */}
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">حداکثر طول خروجی (Tokens):</span>
+                <span className="font-mono text-indigo-600 font-bold">{numPredict}</span>
+              </div>
+              <input
+                type="range"
+                min="150"
+                max="800"
+                step="50"
+                value={numPredict}
+                onChange={(e) => setNumPredict(parseInt(e.target.value) || 350)}
+                className="w-full accent-indigo-600 cursor-pointer"
+              />
+              <span className="text-[10px] text-slate-400 block leading-tight">
+                سقف طول متن تولیدی (پیشنهاد: ۳۵۰ برای پیشنهاد سریع ۳ کتاب)
               </span>
             </div>
 
             {/* maxCandidates */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  سقف کتاب‌های ارسالی (Pool):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
-                  {maxCandidates} جلد
-                </span>
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">کاندیداهای ارسالی به مدل:</span>
+                <span className="font-mono text-indigo-600 font-bold">{maxCandidates} کتاب</span>
               </div>
               <input
                 type="range"
                 min="6"
-                max="24"
-                step="2"
+                max="25"
+                step="1"
                 value={maxCandidates}
                 onChange={(e) => setMaxCandidates(parseInt(e.target.value) || 14)}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                تعداد کتاب‌های کاندیدای ارسالی به مدل (پیشنهاد: ۱۲ الی ۱۶ جلد).
+                تعداد کتاب‌های برتر قفسه که در قالب پرامپت به هوش مصنوعی داده می‌شود.
               </span>
             </div>
 
             {/* timeoutSeconds */}
-            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-black text-slate-800">
-                  سقف زمان پاسخ (Timeout):
-                </label>
-                <span className="text-xs font-mono font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-200">
+            <div className="space-y-1 bg-white p-3 rounded-xl border border-slate-200">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-700">تایم‌اوت پاسخ (Timeout):</span>
+                <span className="font-mono text-indigo-600 font-bold">
                   {timeoutSeconds} ثانیه
                 </span>
               </div>
@@ -453,88 +692,104 @@ export const AdminAiSettingsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* Section 3: System Prompt */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs sm:text-sm font-black text-slate-800 flex items-center gap-2">
-              <Terminal className="w-4 h-4 text-emerald-600" />
-              <span>دستورالعمل سیستمی مدل (System Prompt):</span>
-            </label>
-            <button
-              type="button"
-              onClick={handleResetDefaultPrompt}
-              className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold transition flex items-center gap-1 cursor-pointer"
-            >
-              <RotateCcw className="w-3 h-3" />
-              <span>بازگردانی به پیش‌فرض</span>
-            </button>
-          </div>
-
-          <textarea
-            rows={3}
-            value={systemPrompt}
-            onChange={(e) => setSystemPrompt(e.target.value)}
-            className="w-full p-3 rounded-2xl border border-slate-300 text-xs text-slate-800 font-mono leading-relaxed focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
-          />
-          <span className="text-[10px] text-slate-400 block">
-            نقش مدل و تأکید بر تولید خروجی الزامی در قالب ساختار JSON.
-          </span>
-        </div>
-
-        {/* Submit Button */}
-        <div className="pt-2">
+        {/* Save Button */}
+        <div className="flex items-center justify-end">
           <button
             type="submit"
             disabled={isSaving}
-            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs sm:text-sm font-black transition shadow-sm cursor-pointer disabled:opacity-50"
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-2 cursor-pointer shadow-md disabled:opacity-50"
           >
-            {isSaving ? 'در حال ذخیره تنظیمات...' : 'ذخیره تنظیمات هوش مصنوعی 💾'}
+            {isSaving ? (
+              <>
+                <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span>در حال ذخیره‌سازی...</span>
+              </>
+            ) : (
+              <>
+                <CheckCircle2 className="w-4 h-4" />
+                <span>ذخیره تنظیمات هوش مصنوعی</span>
+              </>
+            )}
           </button>
         </div>
       </form>
 
-      {/* Simulator / Playground Section */}
-      <div className="pt-8 border-t border-slate-200 space-y-4">
+      {/* Linux / Proxmox Terminal Cheatsheet Helper */}
+      <div className="p-4 bg-slate-900 rounded-3xl text-white space-y-3 shadow-md">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <Terminal className="w-4 h-4 text-emerald-400" />
+            <h4 className="text-xs font-black">جعبه‌ابزار دستورات ترمینال سرور (Proxmox / Armbian)</h4>
+          </div>
+          <span className="text-[10px] text-slate-400">جهت بررسی مستقیم روی سرور لینوکس</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+          {[
+            { label: 'تست پینگ به Ollama از سرور سایت', cmd: 'curl -I http://192.168.100.54:11434' },
+            { label: 'مشاهده لیست مدل‌های نصب‌شده در Ollama', cmd: 'curl -s http://192.168.100.54:11434/api/tags' },
+            { label: 'بررسی وضعیت سرویس Ollama', cmd: 'sudo systemctl status ollama' },
+            { label: 'پایش اشغال پورت 11434 در شبکه', cmd: 'ss -tulpn | grep 11434' }
+          ].map((item, idx) => (
+            <div key={idx} className="bg-slate-800/80 p-2.5 rounded-xl border border-slate-700 flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <span className="text-[10px] text-slate-300 block truncate font-medium">{item.label}</span>
+                <code className="text-[11px] text-emerald-400 font-mono block truncate" dir="ltr">{item.cmd}</code>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCopy(item.cmd)}
+                className="p-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 text-slate-200 transition cursor-pointer shrink-0"
+                title="کپی دستور"
+              >
+                {copiedText === item.cmd ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Simulator Playground (Live Student Testing) */}
+      <div className="pt-6 border-t border-slate-100 space-y-4">
         <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-purple-50 rounded-xl text-purple-700 border border-purple-200">
-            <Play className="w-5 h-5 fill-purple-600" />
+          <div className="p-2 bg-indigo-50 text-indigo-600 rounded-xl">
+            <Play className="w-4 h-4" />
           </div>
           <div>
-            <h4 className="font-black text-slate-900 text-sm sm:text-base">
-              محیط شبیه‌ساز و تست زنده خروجی مدل (Playground)
-            </h4>
+            <h4 className="text-sm font-black text-slate-900">محیط تست زنده خروجی (Simulator Playground)</h4>
             <p className="text-[11px] text-slate-500">
-              یک متن سلیقه امتحانی وارد کنید تا فرآیند کامل انتخاب کاندیداها و پاسخ زنده مدل را همین‌جا مشاهده کنید:
+              یک سناریوی فرضی دانش‌آموز را انتخاب کنید تا رفتار مدل Qwen را قبل از دسترسی عمومی دانش‌آموزان آزمایش کنید.
             </p>
           </div>
         </div>
 
-        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="text-xs font-bold text-slate-700 block mb-1">حس و حال:</label>
+        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Mood selector */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">حس و حال دانش‌آموز:</label>
               <select
                 value={testMood}
                 onChange={(e) => setTestMood(e.target.value)}
-                className="w-full p-2 rounded-xl border border-slate-300 text-xs bg-white"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none cursor-pointer"
               >
-                <option value="laugh">😄 طنز و خنده‌دار</option>
-                <option value="adventure">🚀 ماجراجویی و فانتزی</option>
-                <option value="mystery">🕵️ معمایی و کارآگاهی</option>
-                <option value="thoughtful">💡 انگیزشی و تفکربرانگیز</option>
-                <option value="scientific">🔬 دانستنی‌ها و علمی</option>
-                <option value="thriller">👻 دلهره‌آور</option>
+                <option value="laugh">می‌خواهم از ته دل بخندم (طنز)</option>
+                <option value="curious">کنجکاوم و می‌خواهم معما حل کنم (معمایی)</option>
+                <option value="adventure">دنبال ماجراجویی و هیجان بالام (ماجراجویی)</option>
+                <option value="deep">به دنبال فکر کردن و درس عبرت هستم (آموزنده)</option>
+                <option value="relax">می‌خواهم آرامش بگیرم و قصه گرم بخوانم (آرامش‌بخش)</option>
               </select>
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="text-xs font-bold text-slate-700 block mb-1">متن دلخواه یا کلمات کلیدی:</label>
+            {/* Custom Prompt */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-slate-700">درخواست اختیاری دانش‌آموز:</label>
               <input
                 type="text"
                 value={testPrompt}
                 onChange={(e) => setTestPrompt(e.target.value)}
-                placeholder="مثال: کتابی شبیه تام گیتس یا پرسی جکسون"
-                className="w-full p-2 rounded-xl border border-slate-300 text-xs bg-white"
+                placeholder="مثلاً: کتاب‌های داستان کارآگاهی کوتاه"
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 outline-none"
               />
             </div>
           </div>
@@ -543,7 +798,7 @@ export const AdminAiSettingsTab: React.FC = () => {
             type="button"
             onClick={handleRunSimulation}
             disabled={isSimulating}
-            className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-black transition cursor-pointer flex items-center gap-1.5 shadow-xs disabled:opacity-50"
+            className="w-full sm:w-auto px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-xs disabled:opacity-50"
           >
             {isSimulating ? (
               <>

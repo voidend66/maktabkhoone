@@ -378,6 +378,49 @@ export interface AiRecommendationResult {
   latencyMs?: number;
 }
 
+export interface InstalledOllamaModel {
+  name: string;
+  sizeFormatted: string;
+  sizeBytes?: number;
+  modifiedAt?: string;
+  parameterSize?: string;
+  quantizationLevel?: string;
+}
+
+export interface AiHealthCheckResult {
+  overallStatus: 'healthy' | 'degraded' | 'offline';
+  summary: string;
+  timestamp: string;
+  timestampFa: string;
+  endpointUrl: string;
+  targetModel: string;
+  steps: {
+    ping: {
+      success: boolean;
+      latencyMs: number | null;
+      status: number | null;
+      message: string;
+    };
+    models: {
+      success: boolean;
+      targetModelFound: boolean;
+      installedModels: InstalledOllamaModel[];
+      message: string;
+    };
+    inference: {
+      success: boolean;
+      latencyMs: number | null;
+      sampleResponse?: string;
+      message: string;
+    };
+    fallback: {
+      ready: boolean;
+      booksCount: number;
+      message: string;
+    };
+  };
+}
+
 export interface SystemConfig {
   minBooksForRegistration: number;
   maxBooksForRegistration: number;

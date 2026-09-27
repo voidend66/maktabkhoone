@@ -16,7 +16,8 @@ import {
   UserEventProgress,
   LocalAiConfig,
   AiRecommendationRequest,
-  AiRecommendationResult
+  AiRecommendationResult,
+  AiHealthCheckResult
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -176,6 +177,7 @@ interface AppContextType {
     responseSample?: string;
     message: string;
   }>;
+  checkAiHealth: (params?: { endpointUrl?: string; modelName?: string }) => Promise<AiHealthCheckResult>;
   getAiBookRecommendations: (params: AiRecommendationRequest) => Promise<AiRecommendationResult>;
 }
 
@@ -1585,6 +1587,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return await api.testAiConnection(params);
   };
 
+  const checkAiHealth = async (params?: { endpointUrl?: string; modelName?: string }) => {
+    return await api.checkAiHealth(params);
+  };
+
   const getAiBookRecommendations = async (params: AiRecommendationRequest) => {
     return await api.getAiBookRecommendations(params);
   };
@@ -1661,6 +1667,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         revertBookCover,
         enrichBookFromIranKetab,
         testAiConnection,
+        checkAiHealth,
         getAiBookRecommendations
       }}
     >
