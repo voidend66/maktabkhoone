@@ -6015,7 +6015,8 @@ async function startServer() {
       let greeting = 'سلام کتاب‌خوان پرتلاش مکتب‌خانه! بر اساس سلیقه و علایقت، این کتاب‌های عالی رو برات گلچین کردم:';
       let recommendationsResult: Array<{ book: any; reason: string }> = [];
 
-      let rawEndpointUsed = (aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+      let targetModelName = (req.body?.modelName || aiConfig.modelName || 'qwen2.5:3b').trim();
+      let rawEndpointUsed = (req.body?.endpointUrl || aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
       let targetGenerateUrl = rawEndpointUsed.endsWith('/api/generate')
         ? rawEndpointUsed
         : `${rawEndpointUsed.replace(/\/+$/, '')}/api/generate`;
@@ -6027,7 +6028,7 @@ async function startServer() {
       let fetchErrorStr: string | null = null;
       let httpStatusCode: number | null = null;
 
-      if (aiConfig.enabled !== false && aiConfig.endpointUrl) {
+      if (aiConfig.enabled !== false && rawEndpointUsed) {
         const booksListPrompt = candidates.map((b, idx) => {
           return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | موضوع: ${b.category}]`;
         }).join('\n');
@@ -6058,7 +6059,7 @@ ${booksListPrompt}
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              model: aiConfig.modelName || 'qwen2.5:7b',
+              model: targetModelName,
               system: systemPromptUsed,
               prompt: userPrompt,
               format: 'json',

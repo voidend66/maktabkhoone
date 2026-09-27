@@ -318,7 +318,9 @@ export const AdminAiSettingsTab: React.FC = () => {
         visualPreference: 'any',
         customPrompt: testPrompt.trim(),
         isTest: true,
-        noTimeout: true
+        noTimeout: true,
+        modelName: modelName.trim() || 'qwen2.5:3b',
+        endpointUrl: endpointUrl.trim()
       });
       setSimulationResult(res);
     } catch (err: any) {

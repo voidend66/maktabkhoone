@@ -366,6 +366,8 @@ export interface AiRecommendationRequest {
   customPrompt?: string;
   isTest?: boolean;
   noTimeout?: boolean;
+  modelName?: string;
+  endpointUrl?: string;
 }
 
 export interface AiRecommendationResult {
