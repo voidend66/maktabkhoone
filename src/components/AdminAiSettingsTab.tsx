@@ -729,7 +729,7 @@ export const AdminAiSettingsTab: React.FC = () => {
                 type="button"
                 onClick={() => {
                   setModelName('qwen2.5:3b');
-                  setNumPredict(120);
+                  setNumPredict(280);
                   setMaxCandidates(4);
                 }}
                 className={`text-[10px] px-2 py-0.5 rounded-lg font-mono font-bold border transition cursor-pointer ${

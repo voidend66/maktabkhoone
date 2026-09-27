@@ -5999,16 +5999,51 @@ async function startServer() {
 
     function extractJson(raw: string): any {
       if (!raw) return null;
+      // 1. Direct parse
       try { return JSON.parse(raw); } catch {}
+
+      // 2. Markdown codeblock
       const block = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
       if (block && block[1]) {
         try { return JSON.parse(block[1]); } catch {}
       }
+
+      // 3. Substring between first { and last }
       const first = raw.indexOf('{');
       const last = raw.lastIndexOf('}');
       if (first !== -1 && last !== -1 && last > first) {
         try { return JSON.parse(raw.substring(first, last + 1)); } catch {}
       }
+
+      // 4. Auto-repair truncated JSON
+      try {
+        let repaired = raw.trim();
+        const firstBrace = repaired.indexOf('{');
+        if (firstBrace !== -1) {
+          repaired = repaired.substring(firstBrace);
+          const quotes = (repaired.match(/(?<!\\)"/g) || []).length;
+          if (quotes % 2 !== 0) repaired += '"';
+          if (!repaired.includes(']')) repaired += ']';
+          if (!repaired.endsWith('}')) repaired += '}';
+          return JSON.parse(repaired);
+        }
+      } catch {}
+
+      // 5. Resilient Regex-based extraction of items
+      try {
+        const greetingMatch = raw.match(/"greeting"\s*:\s*"([^"]+)"/);
+        const recMatches = Array.from(raw.matchAll(/\{\s*"bookId"\s*:\s*"([^"]+)"(?:\s*,\s*"reason"\s*:\s*"([^"]*)")?/g));
+        if (recMatches.length > 0) {
+          return {
+            greeting: greetingMatch ? greetingMatch[1] : 'سلام! این کتاب‌های عالی رو برات انتخاب کردم:',
+            recommendations: recMatches.map((m) => ({
+              bookId: m[1],
+              reason: m[2] ? m[2].trim() : 'یک اثر جذاب و متناسب با سلیقه شما.'
+            }))
+          };
+        }
+      } catch {}
+
       return null;
     }
 
@@ -6066,7 +6101,7 @@ ${booksListPrompt}
             format: 'json',
             stream: false,
             options: {
-              num_predict: Math.min(aiConfig.numPredict || 140, 200),
+              num_predict: Math.max(280, Math.min(aiConfig.numPredict || 320, 600)),
               temperature: aiConfig.temperature ?? 0.3,
               top_p: aiConfig.topP ?? 0.9,
               repeat_penalty: aiConfig.repeatPenalty ?? 1.1
