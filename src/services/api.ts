@@ -847,6 +847,36 @@ export const api = {
     }
   },
 
+  async chatWithAi(params: {
+    message: string;
+    messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+    modelName?: string;
+    endpointUrl?: string;
+    systemPrompt?: string;
+    temperature?: number;
+    numPredict?: number;
+  }): Promise<{
+    success: boolean;
+    reply?: string;
+    latencyMs?: number;
+    model?: string;
+    message?: string;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'خطا در برقراری ارتباط با چت‌بات هوش مصنوعی'
+      };
+    }
+  },
+
   async getAiBookRecommendations(params: AiRecommendationRequest): Promise<AiRecommendationResult> {
     try {
       const res = await fetch(`${API_BASE}/ai/recommend-books`, {

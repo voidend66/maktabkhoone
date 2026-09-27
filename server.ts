@@ -5402,8 +5402,8 @@ async function startServer() {
 
   function reportAiServerOffline(errorMessage: string, endpointUrl: string) {
     const now = Date.now();
-    // Alert at most once every 2 minutes for testing phase
-    if (now - lastAiOfflineAlertTimestamp > 2 * 60 * 1000) {
+    // Alert at most once every 10 minutes to avoid spamming Bale
+    if (now - lastAiOfflineAlertTimestamp > 10 * 60 * 1000) {
       lastAiOfflineAlertTimestamp = now;
 
       const alertDetails = `عدم دسترسی به سرور هوش مصنوعی محلی در آدرس [${endpointUrl}]. علت خطا: ${errorMessage}`;
@@ -5748,18 +5748,150 @@ async function startServer() {
     }
   });
 
+  app.post('/api/ai/chat', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const config = dbService.getSystemConfig().aiConfig || {
+        enabled: true,
+        endpointUrl: 'http://192.168.100.54:11434/api/generate',
+        modelName: 'qwen2.5:7b',
+        timeoutSeconds: 90
+      };
+
+      const rawEndpoint = (req.body?.endpointUrl || config.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+      const baseUrl = getOllamaBaseUrl(rawEndpoint);
+      const chatUrl = `${baseUrl}/api/chat`;
+      const generateUrl = `${baseUrl}/api/generate`;
+      const modelName = (req.body?.modelName || config.modelName || 'qwen2.5:7b').trim();
+      const userMessage = (req.body?.message || '').trim();
+      const history = Array.isArray(req.body?.messages) ? req.body.messages : [];
+      const systemPrompt = (req.body?.systemPrompt || 'تو دستیار هوشمند و کتابدار دانا و مهربان مکتب‌خانه هستی. پاسخ‌هایت را به زبان فارسی روان، شیوا، صمیمی و خواندنی برای نوجوانان و مدیران مدرسه ارائه کن.').trim();
+
+      if (!userMessage) {
+        return res.status(400).json({ success: false, message: 'متن پیام ارسال شده خالی است.' });
+      }
+
+      const formattedMessages: any[] = [];
+      if (systemPrompt) {
+        formattedMessages.push({ role: 'system', content: systemPrompt });
+      }
+      for (const m of history) {
+        if (m && m.role && m.content) {
+          formattedMessages.push({ role: m.role, content: m.content });
+        }
+      }
+      formattedMessages.push({ role: 'user', content: userMessage });
+
+      const startTime = Date.now();
+      const controller = new AbortController();
+      const timeoutDuration = (req.body?.timeoutSeconds || config.timeoutSeconds || 90) * 1000;
+      const timer = setTimeout(() => controller.abort(), timeoutDuration);
+
+      try {
+        // Try Ollama native /api/chat first
+        const chatRes = await fetch(chatUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: modelName,
+            messages: formattedMessages,
+            stream: false,
+            options: {
+              temperature: req.body?.temperature ?? 0.6,
+              num_predict: req.body?.numPredict ?? 450,
+              repeat_penalty: 1.1
+            }
+          }),
+          signal: controller.signal
+        });
+
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+
+        if (chatRes.ok) {
+          const chatData: any = await chatRes.json();
+          const reply = chatData?.message?.content || chatData?.response || 'پاسخی دریافت نشد.';
+          return res.json({
+            success: true,
+            reply: reply.trim(),
+            latencyMs,
+            model: modelName
+          });
+        }
+
+        // If /api/chat failed with 404 or method not allowed, fallback to /api/generate
+        const genRes = await fetch(generateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model: modelName,
+            system: systemPrompt,
+            prompt: userMessage,
+            stream: false,
+            options: {
+              temperature: req.body?.temperature ?? 0.6,
+              num_predict: req.body?.numPredict ?? 450
+            }
+          }),
+          signal: controller.signal
+        });
+
+        const genLatencyMs = Date.now() - startTime;
+        if (genRes.ok) {
+          const genData: any = await genRes.json();
+          return res.json({
+            success: true,
+            reply: (genData?.response || '').trim(),
+            latencyMs: genLatencyMs,
+            model: modelName
+          });
+        }
+
+        const errText = await genRes.text().catch(() => '');
+        return res.status(genRes.status).json({
+          success: false,
+          latencyMs: genLatencyMs,
+          message: `خطای سرور هوش مصنوعی (کد ${genRes.status}): ${errText.slice(0, 150)}`
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(timer);
+        const latencyMs = Date.now() - startTime;
+        const isTimeout = fetchErr.name === 'AbortError';
+        return res.status(500).json({
+          success: false,
+          latencyMs,
+          message: isTimeout
+            ? `پایان مهلت زمان انتظار (${timeoutDuration / 1000} ثانیه). مدل در حال پردازش سنگین است یا به کندی پاسخ می‌دهد.`
+            : `خطای اتصال به سرور چت: ${fetchErr.message}`
+        });
+      }
+    } catch (err: any) {
+      return res.status(500).json({
+        success: false,
+        message: `خطای داخلی: ${err.message}`
+      });
+    }
+  });
+
   app.post('/api/ai/recommend-books', async (req: Request, res: Response): Promise<any> => {
     try {
       const sysConfig = dbService.getSystemConfig();
+      const defaultSystemPrompt = `تو «کتابدار هوشمند، خوش‌ذوق و رفیق کتاب‌خوان مکتب‌خانه» هستی. وظیفه تو مشاوره صمیمی، شوق‌انگیز و تخصصی به دانش‌آموزان مدرسه برای انتخاب بهترین کتاب از قفسه کتابخانه است.
+
+قوانین و اصول کلیدی:
+۱. لحن و هویت: بسیار باانرژی، صمیمی، مؤدب، روان و متناسب با روحیات نوجوانان و دانش‌آموزان ایرانی. از اصطلاحات خشک اداری یا جملات کلیشه‌ای مثل «این کتاب برای شما مفید است» کاملاً دوری کن.
+۲. دلیل‌نویسی گیرا و برانگیزاننده (Hook): در بخش دلیل پیشنهاد هر کتاب، دقیقاً به گره داستانی، ماجرا، شخصیت محوری یا زاویه دید جذابی اشاره کن که مستقیم به حس‌وحال دانش‌آموز می‌خورد تا او را بی‌درنگ به مطالعه ترغیب کند.
+۳. انطباق بدون توهم (Zero Hallucination): فقط و فقط کتاب‌هایی را معرفی کن که شناسه‌شان در لیست ارائه‌شده موجود باشد و هرگز کتابی خارج از این لیست ابداع نکن.
+۴. فرمت خروجی: نتیجه را فقط و فقط در قالب شیء استاندارد JSON تولید کن.`;
+
       const aiConfig = sysConfig.aiConfig || {
         enabled: true,
         endpointUrl: 'http://192.168.100.54:11434/api/generate',
         modelName: 'qwen2.5:7b',
-        systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
-        numPredict: 350,
-        temperature: 0.3,
+        systemPrompt: defaultSystemPrompt,
+        numPredict: 400,
+        temperature: 0.35,
         topP: 0.9,
-        repeatPenalty: 1.1,
+        repeatPenalty: 1.15,
         maxCandidates: 14,
         timeoutSeconds: 90
       };
@@ -5890,25 +6022,29 @@ async function startServer() {
           return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | صفحات: ${b.pageCount || 'نامشخص'} | موضوعات: ${tagsStr || b.category} | خلاصه: ${desc}]`;
         }).join('\n');
 
-        const userPrompt = `لیست کتاب‌های موجود در کتابخانه مدرسه:
+        const userPrompt = `📚 قفسه کتاب‌های موجود در کتابخانه مکتب‌خانه:
 ${booksListPrompt}
 
-مشخصات سلیقه دانش‌آموز:
-- حس و حال مورد نظر: ${moodLabel}
-- سرعت و حجم مطالعه: ${timeLabel}
-- سبک ترجیحی: ${visualLabel}
-${gradeLevel ? `- پایه تحصیلی: ${gradeLevel}` : ''}
-${customPrompt ? `- متن پیام دانش‌آموز: "${customPrompt}"` : ''}
+🎯 پروفایل و تمایلات انتخابی دانش‌آموز:
+- حس و حال فعلی: ${moodLabel}
+- ترجیح زمانی و حجم کتاب: ${timeLabel}
+- سبک ترجیحی قالب اثر: ${visualLabel}
+${gradeLevel ? `- مقطع یا پایه تحصیلی: ${gradeLevel}` : ''}
+${customPrompt ? `- یادداشت و خواسته اختصاصی دانش‌آموز: "${customPrompt}"` : ''}
 
-دستور:
-از بین لیست بالا، ۲ یا ۳ کتاب را که بهترین و مناسب‌ترین انتخاب برای این دانش‌آموز هستند انتخاب کن.
-پاسخ را دقیقاً و الزاماً در قالب این ساختار JSON برگردان و هیچ متن اضافه‌ای خارج از JSON ننویس:
+📝 ماموریت شما:
+۱. از بین کتاب‌های فوق، ۲ الی ۳ کتاب که بیشترین پیوند روحی و تناسب داستانی را با حال‌وهوای این دانش‌آموز دارند انتخاب کن.
+۲. یک پیام سلام و شروع اختصاصی (greeting) با لحنی پرانرژی و متناسب با حس‌وحال دانش‌آموز بنویس (حداکثر ۲ جمله).
+۳. برای هر کتاب، یک دلیل گیرا، صمیمی و وسوسه‌کننده (reason) بنویس که به یک ویژگی ناب از داستان یا شخصیت‌های آن اشاره کند و اشتیاق خواندن را در او برانگیزد (حداکثر ۲ جمله).
+۴. توجه خیلی مهم: فقط از کتاب‌های موجود در لیست بالا انتخاب کن و شناسه‌های دقیق را در فیلد bookId بنویس.
+
+خروجی الزاماً باید فقط یک شیء استاندارد JSON به این شکل باشد و هیچ توضیح اضافه یا متنی خارج از JSON ننویس:
 {
-  "greeting": "پیام سلام و احوالپرسی پرانرژی و متناسب با سن دانش‌آموز (حداکثر ۲ جمله)",
+  "greeting": "سلام و احوالپرسی اختصاصی و صمیمی متناسب با حس و حال دانش‌آموز",
   "recommendations": [
     {
-      "bookId": "شناسه دقیق کتاب از لیست بالا مانند b_...",
-      "reason": "دلیل جذاب و صمیمی به زبان فارسی که چرا این کتاب خاص برای او جالب و خواندنی است (حداکثر ۲ جمله)"
+      "bookId": "شناسه دقیق کتاب مانند b_...",
+      "reason": "دلیل جذاب و پرکشش که چرا این کتاب خاص او را به وجد می‌آورد"
     }
   ]
 }`;
@@ -5919,7 +6055,12 @@ ${customPrompt ? `- متن پیام دانش‌آموز: "${customPrompt}"` : ''
         const timer = setTimeout(() => controller.abort(), timeoutDuration);
 
         try {
-          const aiResponse = await fetch(aiConfig.endpointUrl, {
+          const rawEndpoint = (aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
+          const targetGenerateUrl = rawEndpoint.endsWith('/api/generate')
+            ? rawEndpoint
+            : `${rawEndpoint.replace(/\/+$/, '')}/api/generate`;
+
+          const aiResponse = await fetch(targetGenerateUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

@@ -48,11 +48,17 @@ const INITIAL_SYSTEM_CONFIG: SystemConfig = {
     enabled: true,
     endpointUrl: 'http://192.168.100.54:11434/api/generate',
     modelName: 'qwen2.5:7b',
-    systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
-    numPredict: 350,
-    temperature: 0.3,
+    systemPrompt: `تو «کتابدار هوشمند، خوش‌ذوق و رفیق کتاب‌خوان مکتب‌خانه» هستی. وظیفه تو مشاوره صمیمی، شوق‌انگیز و تخصصی به دانش‌آموزان مدرسه برای انتخاب بهترین کتاب از قفسه کتابخانه است.
+
+قوانین و اصول کلیدی:
+۱. لحن و هویت: بسیار باانرژی، صمیمی، مؤدب، روان و متناسب با روحیات نوجوانان و دانش‌آموزان ایرانی. از اصطلاحات خشک اداری یا جملات کلیشه‌ای مثل «این کتاب برای شما مفید است» کاملاً دوری کن.
+۲. دلیل‌نویسی گیرا و برانگیزاننده (Hook): در بخش دلیل پیشنهاد هر کتاب، دقیقاً به گره داستانی، ماجرا، شخصیت محوری یا زاویه دید جذابی اشاره کن که مستقیم به حس‌وحال دانش‌آموز می‌خورد تا او را بی‌درنگ به مطالعه ترغیب کند.
+۳. انطباق بدون توهم (Zero Hallucination): فقط و فقط کتاب‌هایی را معرفی کن که شناسه‌شان در لیست ارائه‌شده موجود باشد و هرگز کتابی خارج از این لیست ابداع نکن.
+۴. فرمت خروجی: نتیجه را فقط و فقط در قالب شیء استاندارد JSON تولید کن.`,
+    numPredict: 400,
+    temperature: 0.35,
     topP: 0.9,
-    repeatPenalty: 1.1,
+    repeatPenalty: 1.15,
     maxCandidates: 14,
     timeoutSeconds: 90
   }
@@ -178,6 +184,21 @@ interface AppContextType {
     message: string;
   }>;
   checkAiHealth: (params?: { endpointUrl?: string; modelName?: string }) => Promise<AiHealthCheckResult>;
+  chatWithAi: (params: {
+    message: string;
+    messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+    modelName?: string;
+    endpointUrl?: string;
+    systemPrompt?: string;
+    temperature?: number;
+    numPredict?: number;
+  }) => Promise<{
+    success: boolean;
+    reply?: string;
+    latencyMs?: number;
+    model?: string;
+    message?: string;
+  }>;
   getAiBookRecommendations: (params: AiRecommendationRequest) => Promise<AiRecommendationResult>;
 }
 
@@ -1591,6 +1612,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return await api.checkAiHealth(params);
   };
 
+  const chatWithAi = async (params: {
+    message: string;
+    messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
+    modelName?: string;
+    endpointUrl?: string;
+    systemPrompt?: string;
+    temperature?: number;
+    numPredict?: number;
+  }) => {
+    return await api.chatWithAi(params);
+  };
+
   const getAiBookRecommendations = async (params: AiRecommendationRequest) => {
     return await api.getAiBookRecommendations(params);
   };
@@ -1668,6 +1701,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         enrichBookFromIranKetab,
         testAiConnection,
         checkAiHealth,
+        chatWithAi,
         getAiBookRecommendations
       }}
     >

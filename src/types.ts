@@ -421,6 +421,14 @@ export interface AiHealthCheckResult {
   };
 }
 
+export interface AiChatMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  latencyMs?: number;
+}
+
 export interface SystemConfig {
   minBooksForRegistration: number;
   maxBooksForRegistration: number;

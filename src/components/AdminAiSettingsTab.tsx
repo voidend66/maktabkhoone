@@ -25,21 +25,63 @@ import {
   Copy,
   Check,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  MessageSquare,
+  Send,
+  Trash2,
+  User,
+  CornerDownLeft
 } from 'lucide-react';
 
+const SYSTEM_PROMPT_PRESETS = [
+  {
+    id: 'friendly',
+    title: 'کتابدار رفیق و انگیزشی (پیش‌فرض هوشمند)',
+    desc: 'لحن صمیمی و پرانرژی متناسب با نوجوانان، با ایجاد قلاب ذهنی و دلایل وسوسه‌کننده برای مطالعه.',
+    prompt: `تو «کتابدار هوشمند، خوش‌ذوق و رفیق کتاب‌خوان مکتب‌خانه» هستی. وظیفه تو مشاوره صمیمی، شوق‌انگیز و تخصصی به دانش‌آموزان مدرسه برای انتخاب بهترین کتاب از قفسه کتابخانه است.
+
+قوانین و اصول کلیدی:
+۱. لحن و هویت: بسیار باانرژی، صمیمی، مؤدب، روان و متناسب با روحیات نوجوانان و دانش‌آموزان ایرانی. از اصطلاحات خشک اداری یا جملات کلیشه‌ای مثل «این کتاب برای شما مفید است» کاملاً دوری کن.
+۲. دلیل‌نویسی گیرا و برانگیزاننده (Hook): در بخش دلیل پیشنهاد هر کتاب، دقیقاً به گره داستانی، ماجرا، شخصیت محوری یا زاویه دید جذابی اشاره کن که مستقیم به حس‌وحال دانش‌آموز می‌خورد تا او را بی‌درنگ به مطالعه ترغیب کند.
+۳. انطباق بدون توهم (Zero Hallucination): فقط و فقط کتاب‌هایی را معرفی کن که شناسه‌شان در لیست ارائه‌شده موجود باشد و هرگز کتابی خارج از این لیست ابداع نکن.
+۴. فرمت خروجی: نتیجه را فقط و فقط در قالب شیء استاندارد JSON تولید کن.`
+  },
+  {
+    id: 'literary',
+    title: 'مشاور ادبی و داستانی عمیق',
+    desc: 'تمرکز بر پیام‌های اخلاقی، درونمایه داستانی و تقویت اندیشه و ذوق ادبی دانش‌آموز.',
+    prompt: `تو «مشاور ادبی و داستانی مکتب‌خانه» هستی. نگاهی عمیق به درونمایه، ارزش‌های تربیتی و گره‌های شخصیتی کتاب‌ها داری.
+
+قوانین و اصول کلیدی:
+۱. لحن: فاخر، صمیمی، دلسوزانه و الهام‌بخش.
+۲. دلیل‌نویسی: در دلیل معرفی هر کتاب، به جهان‌بینی اثر، رشد شخصیتی قهرمان داستان و درسی که برای زندگی دارد تأکید کن.
+۳. انطباق داده: تنها از کتاب‌های قفسه ارائه‌شده انتخاب کن و هرگز کتابی بیرون از لیست ابداع نکن.
+۴. فرمت: خروجی را صرفاً در قالب شیء معتبر JSON تحویل بده.`
+  },
+  {
+    id: 'minimal',
+    title: 'سریع، کوتاه و گزیده (مینیمال)',
+    desc: 'پاسخ‌های فشرده و ضربتی برای سریع‌ترین زمان استنتاج و خروجی کوتاه.',
+    prompt: `تو مشاور سریع کتاب مکتب‌خانه هستی.
+۱. برای هر کتاب، دلیلی کوتاه، ضربتی و در حد یک جمله بنویس که روی هیجان‌انگیزترین نکته کتاب دست بگذارد.
+۲. لحن صمیمی و دوستانه باشد.
+۳. فقط کتاب‌های موجود در لیست ارسالی را معرفی کن.
+۴. خروجی را دقیقاً و الزاماً در قالب JSON معتبر ارائه بده.`
+  }
+];
+
 export const AdminAiSettingsTab: React.FC = () => {
-  const { systemConfig, updateSystemConfig, testAiConnection, checkAiHealth, getAiBookRecommendations } = useApp();
+  const { systemConfig, updateSystemConfig, testAiConnection, checkAiHealth, chatWithAi, getAiBookRecommendations } = useApp();
 
   const currentAiConfig = systemConfig?.aiConfig || {
     enabled: true,
     endpointUrl: 'http://192.168.100.54:11434/api/generate',
     modelName: 'qwen2.5:7b',
-    systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
-    numPredict: 350,
-    temperature: 0.3,
+    systemPrompt: SYSTEM_PROMPT_PRESETS[0].prompt,
+    numPredict: 400,
+    temperature: 0.35,
     topP: 0.9,
-    repeatPenalty: 1.1,
+    repeatPenalty: 1.15,
     maxCandidates: 14,
     timeoutSeconds: 90
   };
@@ -48,13 +90,12 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [endpointUrl, setEndpointUrl] = useState<string>(currentAiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate');
   const [modelName, setModelName] = useState<string>(currentAiConfig.modelName || 'qwen2.5:7b');
   const [systemPrompt, setSystemPrompt] = useState<string>(
-    currentAiConfig.systemPrompt ||
-    'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.'
+    currentAiConfig.systemPrompt || SYSTEM_PROMPT_PRESETS[0].prompt
   );
-  const [numPredict, setNumPredict] = useState<number>(currentAiConfig.numPredict || 350);
-  const [temperature, setTemperature] = useState<number>(currentAiConfig.temperature ?? 0.3);
+  const [numPredict, setNumPredict] = useState<number>(currentAiConfig.numPredict || 400);
+  const [temperature, setTemperature] = useState<number>(currentAiConfig.temperature ?? 0.35);
   const [topP, setTopP] = useState<number>(currentAiConfig.topP ?? 0.9);
-  const [repeatPenalty, setRepeatPenalty] = useState<number>(currentAiConfig.repeatPenalty ?? 1.1);
+  const [repeatPenalty, setRepeatPenalty] = useState<number>(currentAiConfig.repeatPenalty ?? 1.15);
   const [maxCandidates, setMaxCandidates] = useState<number>(currentAiConfig.maxCandidates || 14);
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(currentAiConfig.timeoutSeconds || 90);
 
@@ -81,6 +122,110 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [testPrompt, setTestPrompt] = useState<string>('یک رمان ماجراجویی و طنز مدرسه‌ای');
   const [isSimulating, setIsSimulating] = useState(false);
   const [simulationResult, setSimulationResult] = useState<any>(null);
+
+  // Live Chatbot State
+  const [chatMessages, setChatMessages] = useState<Array<{
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: string;
+    latencyMs?: number;
+  }>>([
+    {
+      id: 'init-1',
+      role: 'assistant',
+      content: 'سلام جناب مدیر مکتب‌خانه! من مدل هوش مصنوعی محلی Qwen 2.5 (نسخه ۷ میلیارد پارامتر) هستم که مستقیماً روی سرور شما در حال اجرا می‌باشم. هر سوال یا متنی دارید بفرمایید تا توانایی گفتگو و سرعت مرا بسنجید!',
+      timestamp: 'هم‌اکنون'
+    }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [isChatLoading, setIsChatLoading] = useState(false);
+  const [chatElapsedSec, setChatElapsedSec] = useState(0);
+  const [chatError, setChatError] = useState('');
+
+  const handleSendMessage = async (textToSend?: string) => {
+    const message = (textToSend !== undefined ? textToSend : chatInput).trim();
+    if (!message || isChatLoading) return;
+
+    const now = new Date();
+    const timeStr = new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit' }).format(now);
+    const userMsgId = 'msg-' + Date.now();
+
+    const updatedHistory = [
+      ...chatMessages,
+      {
+        id: userMsgId,
+        role: 'user' as const,
+        content: message,
+        timestamp: timeStr
+      }
+    ];
+
+    setChatMessages(updatedHistory);
+    setChatInput('');
+    setIsChatLoading(true);
+    setChatError('');
+    setChatElapsedSec(0);
+
+    const timer = setInterval(() => {
+      setChatElapsedSec((prev) => prev + 1);
+    }, 1000);
+
+    try {
+      const messagesForApi = updatedHistory
+        .filter((m) => m.id !== 'init-1')
+        .slice(-8)
+        .map((m) => ({
+          role: m.role,
+          content: m.content
+        }));
+
+      const res = await chatWithAi({
+        message,
+        messages: messagesForApi,
+        modelName: modelName.trim(),
+        endpointUrl: endpointUrl.trim(),
+        systemPrompt: 'تو کتابدار دانا، باادب، صمیمی، دلسوز و باهوش مکتب‌خانه هستی. پاسخ‌هایت را به زبان فارسی سلیس، شیوا و دلنشین بنویس.',
+        temperature: 0.6,
+        numPredict: 500
+      });
+
+      clearInterval(timer);
+
+      if (res.success && res.reply) {
+        setChatMessages((prev) => [
+          ...prev,
+          {
+            id: 'reply-' + Date.now(),
+            role: 'assistant',
+            content: res.reply!,
+            timestamp: new Intl.DateTimeFormat('fa-IR', { hour: '2-digit', minute: '2-digit' }).format(new Date()),
+            latencyMs: res.latencyMs
+          }
+        ]);
+      } else {
+        setChatError(res.message || 'پاسخی از مدل دریافت نشد.');
+      }
+    } catch (err: any) {
+      clearInterval(timer);
+      setChatError(err.message || 'خطا در برقراری ارتباط با چت‌بات');
+    } finally {
+      clearInterval(timer);
+      setIsChatLoading(false);
+    }
+  };
+
+  const handleClearChat = () => {
+    setChatMessages([
+      {
+        id: 'init-' + Date.now(),
+        role: 'assistant',
+        content: 'تاریخچه گفتگو پاکسازی شد. چطور می‌توانم کمکتان کنم؟',
+        timestamp: 'هم‌اکنون'
+      }
+    ]);
+    setChatError('');
+  };
 
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text);
@@ -174,9 +319,7 @@ export const AdminAiSettingsTab: React.FC = () => {
   };
 
   const handleResetDefaultPrompt = () => {
-    setSystemPrompt(
-      'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.'
-    );
+    setSystemPrompt(SYSTEM_PROMPT_PRESETS[0].prompt);
   };
 
   return (
@@ -532,12 +675,12 @@ export const AdminAiSettingsTab: React.FC = () => {
           </div>
         </div>
 
-        {/* System Prompt Customizer */}
-        <div className="space-y-1.5">
-          <div className="flex items-center justify-between">
+        {/* System Prompt Customizer with Presets */}
+        <div className="space-y-3">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
-              <Bot className="w-4 h-4 text-slate-500" />
-              <span>پرامپت سیستمی مدل (System Prompt)</span>
+              <Bot className="w-4 h-4 text-indigo-600" />
+              <span>شخصیت و پرامپت سیستمی مدل (System Prompt & Persona)</span>
             </label>
             <button
               type="button"
@@ -545,19 +688,48 @@ export const AdminAiSettingsTab: React.FC = () => {
               className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
             >
               <RotateCcw className="w-3 h-3" />
-              <span>بازنشانی به پیش‌فرض</span>
+              <span>بازنشانی به الگوی پیش‌فرض</span>
             </button>
           </div>
+
+          {/* Preset Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {SYSTEM_PROMPT_PRESETS.map((preset) => {
+              const isActive = systemPrompt === preset.prompt;
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => setSystemPrompt(preset.prompt)}
+                  className={`p-2.5 rounded-2xl border text-right transition cursor-pointer flex flex-col justify-between ${
+                    isActive
+                      ? 'bg-indigo-50 border-indigo-300 ring-2 ring-indigo-500/20 text-indigo-950'
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-1 mb-1">
+                    <span className="text-[11px] font-black">{preset.title}</span>
+                    {isActive && <Check className="w-3.5 h-3.5 text-indigo-600" />}
+                  </div>
+                  <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed font-normal">
+                    {preset.desc}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+
           <textarea
-            rows={3}
+            rows={7}
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
-            className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 leading-relaxed focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+            className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 leading-relaxed font-mono focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none"
             placeholder="دستورات سطح بالا به مدل..."
           />
-          <span className="text-[11px] text-slate-400 block leading-tight">
-            این دستور به مدل یادآوری می‌کند که نقش کتابدار مکتب‌خانه را دارد و باید خروجی را فقط به صورت JSON تولید کند.
-          </span>
+          <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <span>این متن شخصیت، لحن فارسی، تکنیک قلاب ذهنی (Hook) و ممنوعیت خروج از لیست کتاب‌ها را به مدل دیکته می‌کند.</span>
+            <span className="font-mono">{systemPrompt.length} کاراکتر</span>
+          </div>
         </div>
 
         {/* Advanced Hyperparameters Accordion / Section */}
@@ -746,6 +918,192 @@ export const AdminAiSettingsTab: React.FC = () => {
               </button>
             </div>
           ))}
+        </div>
+      </div>
+
+      {/* Interactive Admin AI Chatbot Console */}
+      <div className="pt-6 border-t border-slate-100 space-y-4">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-purple-600 text-white rounded-2xl shadow-sm">
+              <MessageSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-black text-slate-900">چت‌بات و کنسول گفتگوی زنده با مدل محلی ({modelName})</h4>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  <span>آماده گفتگو</span>
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                با ارسال پیام‌های دلخواه، دقت، لحن فارسی و سرعت پاسخ‌دهی پردازنده و کارت گرافیک سرور خود را بسنجید.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleClearChat}
+            className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+            title="پاکسازی تاریخچه گفتگو"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>پاک کردن چت</span>
+          </button>
+        </div>
+
+        {/* Quick Prompt Chips */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[10px] font-bold text-slate-400">پیشنهاد سریع:</span>
+          {[
+            'سلام! خودت رو معرفی کن و توانایی‌هات رو بگو.',
+            '۳ کتاب جذاب برای دانش‌آموز نوجوان معرفی کن با دلیل.',
+            'یک خلاصه کوتاه و دلنشین از کتاب شازده کوچولو بنویس.',
+            'چرا مطالعه کتاب کاغذی بهتر از فضای مجازیه؟'
+          ].map((promptText, pIdx) => (
+            <button
+              key={pIdx}
+              type="button"
+              disabled={isChatLoading}
+              onClick={() => handleSendMessage(promptText)}
+              className="px-2.5 py-1 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-[11px] font-medium transition cursor-pointer disabled:opacity-50"
+            >
+              {promptText}
+            </button>
+          ))}
+        </div>
+
+        {/* Chat Messages Box */}
+        <div className="bg-slate-50 border border-slate-200 rounded-3xl overflow-hidden flex flex-col shadow-inner">
+          <div className="p-4 sm:p-5 space-y-4 max-h-[420px] min-h-[220px] overflow-y-auto">
+            {chatMessages.map((msg) => (
+              <div
+                key={msg.id}
+                className={`flex gap-3 text-xs ${
+                  msg.role === 'user' ? 'justify-end' : 'justify-start'
+                }`}
+              >
+                {msg.role === 'assistant' && (
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                    <Bot className="w-4 h-4" />
+                  </div>
+                )}
+
+                <div
+                  className={`max-w-[85%] sm:max-w-[75%] p-3.5 rounded-2xl space-y-1.5 shadow-xs ${
+                    msg.role === 'user'
+                      ? 'bg-slate-900 text-white rounded-tr-xs'
+                      : 'bg-white text-slate-800 border border-slate-200/80 rounded-tl-xs'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3 text-[10px] opacity-70 pb-1 border-b border-black/5">
+                    <span className="font-bold">
+                      {msg.role === 'user' ? 'شما (مدیر)' : `دستیار مکتب‌خانه (${modelName})`}
+                    </span>
+                    <div className="flex items-center gap-1.5 font-mono">
+                      {msg.latencyMs && (
+                        <span className="text-emerald-600 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                          {(msg.latencyMs / 1000).toFixed(1)} ثانیه
+                        </span>
+                      )}
+                      <span>{msg.timestamp}</span>
+                    </div>
+                  </div>
+
+                  <p className="leading-relaxed whitespace-pre-wrap font-medium">
+                    {msg.content}
+                  </p>
+
+                  {msg.role === 'assistant' && (
+                    <div className="pt-1 flex items-center justify-end">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(msg.content)}
+                        className="text-[10px] text-slate-400 hover:text-indigo-600 flex items-center gap-1 transition cursor-pointer"
+                        title="کپی پاسخ"
+                      >
+                        {copiedText === msg.content ? (
+                          <>
+                            <Check className="w-3 h-3 text-emerald-500" />
+                            <span className="text-emerald-500">کپی شد</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>کپی متن</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {msg.role === 'user' && (
+                  <div className="w-8 h-8 rounded-xl bg-slate-800 text-slate-300 flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                    <User className="w-4 h-4" />
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {isChatLoading && (
+              <div className="flex gap-3 text-xs justify-start animate-in fade-in">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                  <Bot className="w-4 h-4 animate-bounce" />
+                </div>
+                <div className="bg-white p-3.5 rounded-2xl rounded-tl-xs border border-indigo-200 space-y-1.5 shadow-xs max-w-[80%]">
+                  <div className="flex items-center gap-2 text-indigo-700 font-bold text-[11px]">
+                    <div className="w-3.5 h-3.5 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+                    <span>در حال تفکر و پردازش پاسخ در سرور محلی ({chatElapsedSec} ثانیه)...</span>
+                  </div>
+                  <div className="flex gap-1 py-1">
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-2 h-2 rounded-full bg-indigo-500 animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {chatError && (
+              <div className="p-3 bg-rose-50 border border-rose-200 rounded-2xl text-rose-800 text-xs flex items-start gap-2 animate-in fade-in">
+                <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <strong className="block font-bold">خطا در دریافت پاسخ:</strong>
+                  <span>{chatError}</span>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Chat Input Bar */}
+          <div className="p-3 bg-white border-t border-slate-200 flex items-center gap-2">
+            <input
+              type="text"
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              disabled={isChatLoading}
+              placeholder="پیام یا سوال خود را اینجا بنویسید (مثلاً: یک خلاصه جذاب از کتاب شازده کوچولو بگو)..."
+              className="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder-slate-400 focus:bg-white focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition outline-none disabled:opacity-60"
+            />
+
+            <button
+              type="button"
+              disabled={isChatLoading || !chatInput.trim()}
+              onClick={() => handleSendMessage()}
+              className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-40"
+            >
+              <Send className="w-4 h-4 -scale-x-100" />
+              <span>ارسال</span>
+            </button>
+          </div>
         </div>
       </div>
 
