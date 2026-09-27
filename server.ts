@@ -5395,6 +5395,366 @@ async function startServer() {
 
   /**
    * --------------------------------------------------------------------------
+   * API: هوش مصنوعی و مشاور پیشنهاد کتاب محلی (Local Ollama Qwen 7B)
+   * --------------------------------------------------------------------------
+   */
+  let lastAiOfflineAlertTimestamp = 0;
+
+  function reportAiServerOffline(errorMessage: string, endpointUrl: string) {
+    const now = Date.now();
+    // Alert at most once every 2 minutes for testing phase
+    if (now - lastAiOfflineAlertTimestamp > 2 * 60 * 1000) {
+      lastAiOfflineAlertTimestamp = now;
+
+      const alertDetails = `عدم دسترسی به سرور هوش مصنوعی محلی در آدرس [${endpointUrl}]. علت خطا: ${errorMessage}`;
+
+      dbService.addSystemLog(
+        'warn',
+        '⚠️ سرور هوش مصنوعی محلی مکتب‌خانه خاموش یا خارج از دسترس است',
+        alertDetails
+      );
+
+      const baleText =
+        `🤖⚠️ <b>هشدار سرور هوش مصنوعی مکتب‌خانه</b>\n\n` +
+        `❌ <b>وضعیت:</b> سرور مدل هوش مصنوعی در شبکه پاسخ نمی‌دهد یا خاموش است.\n` +
+        `🌐 <b>آدرس اندپوینت:</b> <code>${endpointUrl}</code>\n` +
+        `📝 <b>پیام خطا:</b> ${errorMessage}\n\n` +
+        `💡 <i>جهت جلوگیری از معطلی دانش‌آموزان، سیستم به صورت خودکار به الگوریتم پشتیبان کتابخانه سوییچ کرد. لطفاً وضعیت ماشین مجازی یا سرویس Ollama را بررسی کنید.</i>`;
+
+      notifyAdminsGeneralOnBale(baleText);
+    }
+  }
+
+  app.post('/api/ai/test-connection', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const config = dbService.getSystemConfig().aiConfig || {
+        enabled: true,
+        endpointUrl: 'http://192.168.100.54:11434/api/generate',
+        modelName: 'qwen2.5:7b',
+        timeoutSeconds: 90
+      };
+
+      const endpointUrl = req.body?.endpointUrl || config.endpointUrl || 'http://192.168.100.54:11434/api/generate';
+      const modelName = req.body?.modelName || config.modelName || 'qwen2.5:7b';
+      const timeoutSec = req.body?.timeoutSeconds || config.timeoutSeconds || 90;
+
+      const startTime = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutSec * 1000);
+
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: modelName,
+          prompt: 'سلام، آماده‌ای؟ یک کلمه بگو.',
+          stream: false,
+          options: {
+            num_predict: 10,
+            temperature: 0.1
+          }
+        }),
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+      const latencyMs = Date.now() - startTime;
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        return res.status(response.status).json({
+          success: false,
+          latencyMs,
+          message: `پاسخ ناموفق از سرور مدل (کد ${response.status}): ${errorText.slice(0, 150)}`
+        });
+      }
+
+      const data: any = await response.json();
+      return res.json({
+        success: true,
+        latencyMs,
+        modelName,
+        endpointUrl,
+        responseSample: data?.response || 'پاسخ دریافت شد.',
+        message: `اتصال به سرور هوش مصنوعی (${endpointUrl}) و مدل ${modelName} با موفقیت برقرار شد. زمان پاسخ: ${latencyMs} میلی‌ثانیه`
+      });
+    } catch (err: any) {
+      const isTimeout = err.name === 'AbortError';
+      const errorMsg = isTimeout
+        ? 'مهلت زمان اتصال به پایان رسید (Timeout). بررسی کنید سرور روشن و در دسترس شبکه باشد.'
+        : (err.message || 'خطا در برقراری ارتباط');
+
+      return res.json({
+        success: false,
+        latencyMs: null,
+        message: `عدم برقراری ارتباط با سرور هوش مصنوعی: ${errorMsg}`
+      });
+    }
+  });
+
+  app.post('/api/ai/recommend-books', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const sysConfig = dbService.getSystemConfig();
+      const aiConfig = sysConfig.aiConfig || {
+        enabled: true,
+        endpointUrl: 'http://192.168.100.54:11434/api/generate',
+        modelName: 'qwen2.5:7b',
+        systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+        numPredict: 350,
+        temperature: 0.3,
+        topP: 0.9,
+        repeatPenalty: 1.1,
+        maxCandidates: 14,
+        timeoutSeconds: 90
+      };
+
+      const {
+        mood,
+        readingTime,
+        visualPreference,
+        gradeLevel,
+        customPrompt
+      } = req.body || {};
+
+      // 1. Fetch all available books
+      const allBooks = dbService.getAllBooks();
+      let availableBooks = allBooks.filter((b) => b.status === 'available');
+
+      if (availableBooks.length === 0) {
+        availableBooks = allBooks.slice(0, 15);
+      }
+
+      if (availableBooks.length === 0) {
+        return res.json({
+          success: true,
+          message: 'هنوز کتابی در سیستم ثبت نشده است.',
+          recommendedBooks: [],
+          candidatesCount: 0,
+          isAiGenerated: false
+        });
+      }
+
+      const moodMap: Record<string, string> = {
+        laugh: 'طنز، خنده‌دار و سرگرم‌کننده',
+        adventure: 'ماجراجویی، فانتزی و هیجان‌انگیز',
+        mystery: 'معمایی، کارآگاهی و رمزآلود',
+        thoughtful: 'تفکربرانگیز، انگیزشی و داستان‌های واقعی/رشد فردی',
+        scientific: 'علمی، دانستنی‌ها و اطلاعات عمومی',
+        thriller: 'دلهره‌آور و پرحادثه'
+      };
+
+      const timeMap: Record<string, string> = {
+        quick: 'سریع و کم‌حجم (زیر ۱۲۰ صفحه)',
+        medium: 'متوسط و خوش‌خوان (۱۲۰ تا ۲۵۰ صفحه)',
+        deep: 'رمان کامل و مفصل (بیش از ۲۵۰ صفحه)',
+        any: 'فرقی نمی‌کند، هر حجمی'
+      };
+
+      const visualMap: Record<string, string> = {
+        illustrations: 'پر از تصویرگری و نقاشی (کمیک / تصویردار)',
+        text: 'متن داستانی پیوسته و ادبی',
+        any: 'فرقی نمی‌کند'
+      };
+
+      const moodLabel = moodMap[mood] || 'متنوع و جذاب';
+      const timeLabel = timeMap[readingTime] || 'متوسط';
+      const visualLabel = visualMap[visualPreference] || 'آزاد';
+
+      // 2. Score books to select top candidates
+      const scored = availableBooks.map((b) => {
+        let score = 2;
+        const corpus = `${b.title} ${b.author} ${b.category} ${(b.tags || []).join(' ')} ${(b.extraCategories || []).join(' ')} ${b.description || ''}`.toLowerCase();
+
+        // Mood scoring
+        if (mood === 'laugh') {
+          if (corpus.includes('طنز') || corpus.includes('خنده') || corpus.includes('کمیک') || corpus.includes('شوخی') || corpus.includes('بامزه')) score += 6;
+        } else if (mood === 'adventure') {
+          if (corpus.includes('ماجرا') || corpus.includes('فانتزی') || corpus.includes('سفر') || corpus.includes('خیال') || corpus.includes('پژوهش')) score += 6;
+        } else if (mood === 'mystery') {
+          if (corpus.includes('معما') || corpus.includes('کارآگاه') || corpus.includes('پلیس') || corpus.includes('راز') || corpus.includes('جنایی')) score += 6;
+        } else if (mood === 'thoughtful') {
+          if (corpus.includes('داستان زندگی') || corpus.includes('انگیزشی') || corpus.includes('فلسفی') || corpus.includes('اجتماعی') || corpus.includes('امید')) score += 6;
+        } else if (mood === 'scientific') {
+          if (corpus.includes('علمی') || corpus.includes('دانستنی') || corpus.includes('فضا') || corpus.includes('طبیعت') || corpus.includes('حیوان')) score += 6;
+        } else if (mood === 'thriller') {
+          if (corpus.includes('ترسناک') || corpus.includes('هیجان') || corpus.includes('وحشت') || corpus.includes('شبح')) score += 6;
+        }
+
+        // Reading time scoring
+        const pageCountNum = typeof b.pageCount === 'number' ? b.pageCount : parseInt(String(b.pageCount || '0'), 10);
+        if (readingTime === 'quick' && pageCountNum > 0 && pageCountNum < 130) score += 4;
+        if (readingTime === 'medium' && pageCountNum >= 130 && pageCountNum <= 260) score += 4;
+        if (readingTime === 'deep' && pageCountNum > 250) score += 4;
+
+        // Visual preference scoring
+        if (visualPreference === 'illustrations' && (corpus.includes('مصور') || corpus.includes('تصویر') || corpus.includes('کمیک'))) score += 4;
+
+        // Custom free-text matching
+        if (customPrompt && customPrompt.trim()) {
+          const words = customPrompt.trim().split(/\s+/).filter((w: string) => w.length > 2);
+          for (const w of words) {
+            if (corpus.includes(w.toLowerCase())) score += 5;
+          }
+        }
+
+        // Slight bonus for rated books
+        if (b.rating && b.rating > 0) score += (b.rating - 3);
+
+        return { book: b, score };
+      });
+
+      scored.sort((a, b) => b.score - a.score);
+      const maxCands = Math.max(6, Math.min(25, aiConfig.maxCandidates || 14));
+      const candidates = scored.slice(0, maxCands).map((s) => s.book);
+
+      function extractJson(raw: string): any {
+        if (!raw) return null;
+        try { return JSON.parse(raw); } catch {}
+        const block = raw.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+        if (block && block[1]) {
+          try { return JSON.parse(block[1]); } catch {}
+        }
+        const first = raw.indexOf('{');
+        const last = raw.lastIndexOf('}');
+        if (first !== -1 && last !== -1 && last > first) {
+          try { return JSON.parse(raw.substring(first, last + 1)); } catch {}
+        }
+        return null;
+      }
+
+      let isAiGenerated = false;
+      let latencyMs = 0;
+      let greeting = 'سلام کتاب‌خوان پرتلاش مکتب‌خانه! بر اساس سلیقه و علایقت، این کتاب‌های عالی رو برات گلچین کردم:';
+      let recommendationsResult: Array<{ book: any; reason: string }> = [];
+
+      if (aiConfig.enabled !== false && aiConfig.endpointUrl) {
+        const booksListPrompt = candidates.map((b, idx) => {
+          const tagsStr = (b.tags || []).slice(0, 5).join('، ');
+          const desc = b.description ? b.description.slice(0, 150).replace(/[\r\n]+/g, ' ') : 'بدون خلاصه';
+          return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | صفحات: ${b.pageCount || 'نامشخص'} | موضوعات: ${tagsStr || b.category} | خلاصه: ${desc}]`;
+        }).join('\n');
+
+        const userPrompt = `لیست کتاب‌های موجود در کتابخانه مدرسه:
+${booksListPrompt}
+
+مشخصات سلیقه دانش‌آموز:
+- حس و حال مورد نظر: ${moodLabel}
+- سرعت و حجم مطالعه: ${timeLabel}
+- سبک ترجیحی: ${visualLabel}
+${gradeLevel ? `- پایه تحصیلی: ${gradeLevel}` : ''}
+${customPrompt ? `- متن پیام دانش‌آموز: "${customPrompt}"` : ''}
+
+دستور:
+از بین لیست بالا، ۲ یا ۳ کتاب را که بهترین و مناسب‌ترین انتخاب برای این دانش‌آموز هستند انتخاب کن.
+پاسخ را دقیقاً و الزاماً در قالب این ساختار JSON برگردان و هیچ متن اضافه‌ای خارج از JSON ننویس:
+{
+  "greeting": "پیام سلام و احوالپرسی پرانرژی و متناسب با سن دانش‌آموز (حداکثر ۲ جمله)",
+  "recommendations": [
+    {
+      "bookId": "شناسه دقیق کتاب از لیست بالا مانند b_...",
+      "reason": "دلیل جذاب و صمیمی به زبان فارسی که چرا این کتاب خاص برای او جالب و خواندنی است (حداکثر ۲ جمله)"
+    }
+  ]
+}`;
+
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const timeoutDuration = (aiConfig.timeoutSeconds || 90) * 1000;
+        const timer = setTimeout(() => controller.abort(), timeoutDuration);
+
+        try {
+          const aiResponse = await fetch(aiConfig.endpointUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: aiConfig.modelName || 'qwen2.5:7b',
+              system: aiConfig.systemPrompt || 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+              prompt: userPrompt,
+              format: 'json',
+              stream: false,
+              options: {
+                num_predict: aiConfig.numPredict || 350,
+                temperature: aiConfig.temperature ?? 0.3,
+                top_p: aiConfig.topP ?? 0.9,
+                repeat_penalty: aiConfig.repeatPenalty ?? 1.1
+              }
+            }),
+            signal: controller.signal
+          });
+
+          clearTimeout(timer);
+          latencyMs = Date.now() - startTime;
+
+          if (aiResponse.ok) {
+            const aiData: any = await aiResponse.json();
+            const parsedOutput = extractJson(aiData?.response);
+
+            if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {
+              if (parsedOutput.greeting && typeof parsedOutput.greeting === 'string') {
+                greeting = parsedOutput.greeting;
+              }
+
+              for (const rec of parsedOutput.recommendations) {
+                const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
+                if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
+                  recommendationsResult.push({
+                    book: foundBook,
+                    reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
+                  });
+                }
+              }
+
+              if (recommendationsResult.length > 0) {
+                isAiGenerated = true;
+              }
+            }
+          } else {
+            reportAiServerOffline(`پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status})`, aiConfig.endpointUrl);
+          }
+        } catch (fetchErr: any) {
+          clearTimeout(timer);
+          console.warn('Ollama local AI request skipped or failed, using smart algorithmic fallback:', fetchErr.message);
+          reportAiServerOffline(fetchErr.message || 'مهلت زمان اتصال به پایان رسید یا سرور خاموش است', aiConfig.endpointUrl);
+        }
+      }
+
+      // 4. Fallback if AI was offline or produced empty result:
+      if (recommendationsResult.length === 0) {
+        const topBooks = candidates.slice(0, 3);
+        recommendationsResult = topBooks.map((b) => {
+          let reason = `کتاب «${b.title}» نوشته ${b.author} با دسته‌بندی ${b.category} تطابق بسیار خوبی با سلیقه انتخابی شما دارد.`;
+          if (mood === 'laugh') {
+            reason = `یک ماجرای طنز و پر از شوخی‌های بامزه که مطمئناً خنده به لب‌هایت می‌آورد!`;
+          } else if (mood === 'adventure') {
+            reason = `سفری پر از ماجراجویی و رویدادهای غیرمنتظره که از صفحه اول شما را با خود همراه می‌کند.`;
+          } else if (mood === 'mystery') {
+            reason = `داستانی معمایی و پرپیچ‌وخم که تا صفحه آخر رازهایش شما را کنجکاو نگه می‌دارد.`;
+          } else if (mood === 'thoughtful') {
+            reason = `کتابی عمیق و تفکربرانگیز که تجربیات ارزشمندی از نگاه نویسنده به اشتراک می‌گذارد.`;
+          }
+          return { book: b, reason };
+        });
+      }
+
+      return res.json({
+        success: true,
+        message: isAiGenerated
+          ? 'پیشنهادهای هوش مصنوعی با موفقیت تولید شدند.'
+          : 'پیشنهادهای هوشمند مکتب‌خانه بر اساس تطابق موضوعی آماده شد.',
+        greeting,
+        recommendedBooks: recommendationsResult,
+        candidatesCount: candidates.length,
+        isAiGenerated,
+        latencyMs: latencyMs > 0 ? latencyMs : undefined
+      });
+    } catch (err: any) {
+      console.error('Error in /api/ai/recommend-books:', err);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
    * API: مدیریت رویدادها و ایونت‌های ویژه (Events & Missions)
    * --------------------------------------------------------------------------
    */

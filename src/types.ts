@@ -343,6 +343,41 @@ export interface GoogleDriveConfig {
   maxDbSnapshotsToKeep?: number;
 }
 
+export interface LocalAiConfig {
+  enabled: boolean;
+  endpointUrl: string; // e.g. "http://192.168.100.54:11434/api/generate"
+  modelName: string; // e.g. "qwen2.5:7b"
+  systemPrompt?: string;
+  numPredict: number; // e.g. 350
+  temperature: number; // e.g. 0.3
+  topP: number; // e.g. 0.9
+  repeatPenalty: number; // e.g. 1.1
+  maxCandidates: number; // e.g. 14
+  timeoutSeconds: number; // e.g. 20
+}
+
+export interface AiRecommendationRequest {
+  mood?: string;
+  readingTime?: string;
+  visualPreference?: string;
+  gradeLevel?: string;
+  favoriteTopics?: string[];
+  customPrompt?: string;
+}
+
+export interface AiRecommendationResult {
+  success: boolean;
+  message: string;
+  greeting?: string;
+  recommendedBooks: Array<{
+    book: Book;
+    reason: string;
+  }>;
+  candidatesCount: number;
+  isAiGenerated: boolean;
+  latencyMs?: number;
+}
+
 export interface SystemConfig {
   minBooksForRegistration: number;
   maxBooksForRegistration: number;
@@ -365,6 +400,7 @@ export interface SystemConfig {
   birthdayRewardFreeLoans?: number;
   birthdayCustomMessage?: string;
   birthdaySendBaleMessage?: boolean;
+  aiConfig?: LocalAiConfig;
 }
 
 export interface CustomAvatar {

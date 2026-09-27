@@ -10,7 +10,10 @@ import {
   SystemConfig,
   CustomAvatar,
   SystemEvent,
-  UserEventProgress
+  UserEventProgress,
+  LocalAiConfig,
+  AiRecommendationRequest,
+  AiRecommendationResult
 } from '../types';
 
 const API_BASE = '/api';
@@ -789,6 +792,50 @@ export const api = {
       return await res.json();
     } catch (err: any) {
       return { success: false };
+    }
+  },
+
+  // Local AI (Ollama Qwen 7B) APIs
+  async testAiConnection(params?: Partial<LocalAiConfig>): Promise<{
+    success: boolean;
+    latencyMs?: number | null;
+    modelName?: string;
+    endpointUrl?: string;
+    responseSample?: string;
+    message: string;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/test-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params || {})
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        latencyMs: null,
+        message: err.message || 'خطا در برقراری ارتباط با سرور سایت'
+      };
+    }
+  },
+
+  async getAiBookRecommendations(params: AiRecommendationRequest): Promise<AiRecommendationResult> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/recommend-books`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'خطا در دریافت پیشنهادات هوش مصنوعی',
+        recommendedBooks: [],
+        candidatesCount: 0,
+        isAiGenerated: false
+      };
     }
   }
 };

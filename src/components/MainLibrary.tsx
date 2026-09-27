@@ -23,8 +23,10 @@ import {
   SlidersHorizontal,
   Backpack,
   Lightbulb,
-  Compass
+  Compass,
+  Bot
 } from 'lucide-react';
+import { AiBookAdvisorModal } from './AiBookAdvisorModal';
 
 interface MainLibraryProps {
   onSelectBook: (book: Book) => void;
@@ -44,6 +46,7 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
   const [selectedCategory, setSelectedCategory] = useState('همه تصنیف‌ها');
   const [onlyAvailable, setOnlyAvailable] = useState(false);
   const [sortBy, setSortBy] = useState<'newest' | 'rating' | 'reviews'>('newest');
+  const [showAiModal, setShowAiModal] = useState(false);
 
   useEffect(() => {
     if (!searchQuery || searchQuery.trim().length < 2) return;
@@ -229,6 +232,41 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
         )}
       </div>
 
+      {/* AI Book Advisor Interactive Hero Callout */}
+      {systemConfig?.aiConfig?.enabled !== false && (
+        <div className="relative rounded-3xl bg-gradient-to-r from-indigo-950 via-slate-900 to-sky-950 p-5 sm:p-6 text-white shadow-xl overflow-hidden border-2 border-sky-400/40 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="absolute -left-12 -bottom-12 w-44 h-44 bg-sky-500/20 rounded-full blur-2xl pointer-events-none" />
+          <div className="flex items-center gap-3.5 relative z-10">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-sky-400 to-indigo-500 flex items-center justify-center text-slate-950 shadow-md shrink-0">
+              <Bot className="w-7 h-7 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="font-black text-base sm:text-lg text-white flex items-center gap-1.5">
+                  <span>کتابدار هوشمند مکتب‌خانه</span>
+                  <Sparkles className="w-4 h-4 text-sky-400 animate-pulse" />
+                </h3>
+                <span className="text-[10px] font-bold bg-sky-400/20 text-sky-200 border border-sky-400/30 px-2.5 py-0.5 rounded-full">
+                  راهنمای هوشمند
+                </span>
+              </div>
+              <p className="text-xs text-sky-100/90 mt-1 leading-relaxed">
+                نمی‌دانی چه کتابی بخوانی؟ با ۳ سوال کوتاه، بهترین کتاب قفسه را بر اساس سلیقه و سن‌ات پیدا کن!
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setShowAiModal(true)}
+            className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-r from-sky-400 via-sky-300 to-indigo-300 hover:from-sky-300 hover:to-indigo-200 text-slate-950 font-black text-xs sm:text-sm shadow-lg transition-all flex items-center justify-center gap-2 shrink-0 cursor-pointer relative z-10 hover:scale-102"
+          >
+            <Sparkles className="w-4 h-4 text-indigo-900" />
+            <span>پیشنهاد کتاب به من 🪄🤖</span>
+          </button>
+        </div>
+      )}
+
       {/* Controls Bar: Search & Filters */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200 shadow-xs space-y-4">
         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
@@ -383,6 +421,14 @@ export const MainLibrary: React.FC<MainLibraryProps> = ({
           ))}
         </div>
       )}
+
+      {/* AI Book Advisor Modal */}
+      <AiBookAdvisorModal
+        isOpen={showAiModal}
+        onClose={() => setShowAiModal(false)}
+        onSelectBook={onSelectBook}
+        onRequestLoan={onRequestLoan}
+      />
     </div>
   );
 };

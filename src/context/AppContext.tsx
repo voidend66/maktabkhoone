@@ -13,7 +13,10 @@ import {
   CustomAvatar,
   AppNotification,
   SystemEvent,
-  UserEventProgress
+  UserEventProgress,
+  LocalAiConfig,
+  AiRecommendationRequest,
+  AiRecommendationResult
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -39,7 +42,19 @@ const INITIAL_SYSTEM_CONFIG: SystemConfig = {
   supportHours: 'شنبه تا چهارشنبه - ساعت ۷:۳۰ الی ۱۴:۰۰',
   baleChannelUsername: '@maktabkhune_books',
   autoPublishBooksToBale: true,
-  websiteBaseUrl: ''
+  websiteBaseUrl: '',
+  aiConfig: {
+    enabled: true,
+    endpointUrl: 'http://192.168.100.54:11434/api/generate',
+    modelName: 'qwen2.5:7b',
+    systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+    numPredict: 350,
+    temperature: 0.3,
+    topP: 0.9,
+    repeatPenalty: 1.1,
+    maxCandidates: 14,
+    timeoutSeconds: 90
+  }
 };
 
 const LOCAL_STORAGE_KEY_CURRENT_USER = 'school_lib_curr_user_v3';
@@ -153,6 +168,15 @@ interface AppContextType {
     bookId: string,
     options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
   ) => Promise<{ success: boolean; message: string; needBooks?: boolean }>;
+  testAiConnection: (params?: Partial<LocalAiConfig>) => Promise<{
+    success: boolean;
+    latencyMs?: number | null;
+    modelName?: string;
+    endpointUrl?: string;
+    responseSample?: string;
+    message: string;
+  }>;
+  getAiBookRecommendations: (params: AiRecommendationRequest) => Promise<AiRecommendationResult>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1557,6 +1581,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  const testAiConnection = async (params?: Partial<LocalAiConfig>) => {
+    return await api.testAiConnection(params);
+  };
+
+  const getAiBookRecommendations = async (params: AiRecommendationRequest) => {
+    return await api.getAiBookRecommendations(params);
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1627,7 +1659,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         claimBirthdayReward,
         updateBook,
         revertBookCover,
-        enrichBookFromIranKetab
+        enrichBookFromIranKetab,
+        testAiConnection,
+        getAiBookRecommendations
       }}
     >
       {children}

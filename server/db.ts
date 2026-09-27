@@ -1176,6 +1176,18 @@ export const dbService = {
             scheduledHour: 2,
             autoPruneOldDbSnapshots: true,
             maxDbSnapshotsToKeep: 30
+          },
+          aiConfig: parsed.aiConfig ?? {
+            enabled: true,
+            endpointUrl: 'http://192.168.100.54:11434/api/generate',
+            modelName: 'qwen2.5:7b',
+            systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+            numPredict: 350,
+            temperature: 0.3,
+            topP: 0.9,
+            repeatPenalty: 1.1,
+            maxCandidates: 14,
+            timeoutSeconds: 20
           }
         };
       } catch (e) {
@@ -1204,6 +1216,18 @@ export const dbService = {
         scheduledHour: 2,
         autoPruneOldDbSnapshots: true,
         maxDbSnapshotsToKeep: 30
+      },
+      aiConfig: {
+        enabled: true,
+        endpointUrl: 'http://192.168.100.54:11434/api/generate',
+        modelName: 'qwen2.5:7b',
+        systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+        numPredict: 350,
+        temperature: 0.3,
+        topP: 0.9,
+        repeatPenalty: 1.1,
+        maxCandidates: 14,
+        timeoutSeconds: 20
       }
     };
   },
