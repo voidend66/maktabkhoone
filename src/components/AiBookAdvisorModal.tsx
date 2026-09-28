@@ -159,6 +159,15 @@ export const AiBookAdvisorModal: React.FC<AiBookAdvisorModalProps> = ({
     setErrorMsg('');
     try {
       const res = await getAiBookRecommendations({
+        userId: currentUser?.id,
+        user: currentUser
+          ? {
+              id: currentUser.id,
+              name: currentUser.name,
+              role: currentUser.role,
+              className: currentUser.className
+            }
+          : undefined,
         mood,
         readingTime,
         visualPreference,

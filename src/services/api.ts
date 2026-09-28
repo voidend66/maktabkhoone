@@ -910,6 +910,8 @@ export const api = {
     geminiApiKey?: string;
     geminiModel?: string;
     proxyUrl?: string;
+    userId?: string;
+    user?: { id: string; name: string; role?: string; className?: string };
   }): Promise<{
     success: boolean;
     reply?: string;

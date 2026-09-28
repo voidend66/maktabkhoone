@@ -5878,6 +5878,12 @@ async function startServer() {
       const history = Array.isArray(req.body?.messages) ? req.body.messages : [];
       const systemPrompt = (req.body?.systemPrompt || 'تو دستیار هوشمند و کتابدار دانا و مهربان مکتب‌خانه هستی. پاسخ‌هایت را به زبان فارسی روان، شیوا، صمیمی و خواندنی برای نوجوانان و مدیران مدرسه ارائه کن.').trim();
 
+      const chatUserId = req.body?.userId || req.body?.user?.id;
+      let chatUser = chatUserId ? dbService.getUserById(chatUserId) : null;
+      if (!chatUser && req.body?.user && req.body.user.name) {
+        chatUser = req.body.user;
+      }
+
       if (!userMessage) {
         return res.status(400).json({ success: false, message: 'متن پیام ارسال شده خالی است.' });
       }
@@ -5919,6 +5925,10 @@ async function startServer() {
           // Record Chatbot interaction log to DB
           try {
             dbService.addAiLog({
+              userId: chatUser?.id || chatUserId,
+              userName: chatUser ? chatUser.name : 'کاربر مهمان',
+              userRole: chatUser?.role || 'user',
+              userClass: chatUser?.className,
               feature: 'chat',
               featureTitle: 'چت‌بات زنده کتابدار',
               engine: 'gemini',
@@ -5977,6 +5987,10 @@ async function startServer() {
 
           try {
             dbService.addAiLog({
+              userId: chatUser?.id || chatUserId,
+              userName: chatUser ? chatUser.name : 'کاربر مهمان',
+              userRole: chatUser?.role || 'user',
+              userClass: chatUser?.className,
               feature: 'chat',
               featureTitle: 'چت‌بات زنده کتابدار',
               engine: 'ollama',
@@ -6173,7 +6187,15 @@ async function startServer() {
     const visualLabel = visualMap[visualPreference] || 'آزاد';
 
     const userId = body?.userId || body?.user?.id;
-    const currentUser = userId ? dbService.getUserById(userId) : null;
+    let currentUser = userId ? dbService.getUserById(userId) : null;
+    if (!currentUser && body?.user && body.user.name) {
+      currentUser = {
+        id: body.user.id || userId || 'user_custom',
+        name: body.user.name,
+        role: body.user.role || 'user',
+        className: body.user.className || ''
+      } as any;
+    }
     const allRequests = dbService.getAllRequests();
     const allFeedbacks = dbService.getAllFeedbacks();
     const allUsers = dbService.getAllUsers();
@@ -6389,9 +6411,12 @@ async function startServer() {
       const booksListPrompt = candidates.map((b, idx) => {
         const isClassFav = classmateBookCounts[b.id] ? ` ⭐️[محبوب در کلاس]` : '';
         const pages = b.pageCount ? ` | ${b.pageCount} صفحه` : '';
-        const rating = (b.rating && b.rating > 0) ? ` | امتیاز: ${b.rating}⭐️` : '';
-        const descSnippet = b.description ? ` | خلاصه: "${b.description.replace(/[\r\n]+/g, ' ').slice(0, 110)}..."` : '';
-        const tags = (b.tags && b.tags.length > 0) ? ` | تگ‌ها: [${b.tags.slice(0, 4).join(', ')}]` : '';
+        const rating = (b.rating && b.rating > 0) ? ` | امتیاز: ${b.rating}⭐️` : ' | امتیاز: هنوز نظری ثبت نشده';
+        const descClean = b.description ? b.description.replace(/[\r\n]+/g, ' ').trim() : '';
+        const descSnippet = descClean
+          ? ` | خلاصه: "${descClean.length > 600 ? descClean.slice(0, 600) + '...' : descClean}"`
+          : '';
+        const tags = (b.tags && b.tags.length > 0) ? ` | تگ‌ها: [${b.tags.slice(0, 6).join(', ')}]` : '';
         return `${idx + 1}. [شناسه: "${b.id}"] «${b.title}» اثر ${b.author} | موضوع: ${b.category}${pages}${rating}${isClassFav}${tags}${descSnippet}`;
       }).join('\n');
 
@@ -6564,8 +6589,9 @@ ${userContextList}
         author: c.author,
         category: c.category,
         tags: c.tags || [],
+        rating: c.rating,
         pageCount: typeof c.pageCount === 'number' ? c.pageCount : parseInt(String(c.pageCount || '0'), 10) || undefined,
-        description: c.description ? c.description.slice(0, 200) : undefined
+        description: c.description ? (c.description.length > 600 ? c.description.slice(0, 600) + '...' : c.description) : undefined
       })),
       rawAiResponse: rawAiResponseText,
       parsedJson: parsedOutput,

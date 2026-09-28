@@ -381,6 +381,14 @@ export interface RecommendedBook {
 }
 
 export interface AiRecommendationRequest {
+  userId?: string;
+  user?: {
+    id: string;
+    name: string;
+    role?: string;
+    className?: string;
+  };
+  bookIdForSimilar?: string;
   mood?: string;
   readingTime?: string;
   visualPreference?: string;
@@ -418,6 +426,7 @@ export interface AiRecommendationResult {
       author: string;
       category: string;
       tags: string[];
+      rating?: number;
       pageCount?: number;
       description?: string;
     }>;

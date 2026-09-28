@@ -1857,6 +1857,9 @@ export const AdminAiSettingsTab: React.FC = () => {
                             <span>نویسنده: <strong>{c.author}</strong></span>
                             <span>دسته‌بندی: <strong className="text-indigo-700">{c.category}</strong></span>
                             {c.pageCount ? <span>صفحات: {c.pageCount}</span> : null}
+                            <span className={c.rating && c.rating > 0 ? 'text-amber-700 font-bold' : 'text-slate-400 italic'}>
+                              {c.rating && c.rating > 0 ? `امتیاز: ${c.rating}⭐️` : 'هنوز نظری ثبت نشده'}
+                            </span>
                           </div>
 
                           {c.tags && c.tags.length > 0 && (
@@ -1870,7 +1873,8 @@ export const AdminAiSettingsTab: React.FC = () => {
                           )}
 
                           {c.description && (
-                            <p className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed bg-white/70 p-1.5 rounded border border-slate-100">
+                            <p className="text-[11px] text-slate-600 leading-relaxed bg-white/80 p-2 rounded-lg border border-slate-100">
+                              <span className="font-bold text-slate-700 block mb-0.5">خلاصه داستان و معرفی:</span>
                               {c.description}
                             </p>
                           )}

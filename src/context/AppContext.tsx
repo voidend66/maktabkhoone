@@ -1666,16 +1666,44 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     geminiApiKey?: string;
     geminiModel?: string;
     proxyUrl?: string;
+    targetEngine?: 'gemini' | 'ollama';
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    userId?: string;
+    user?: { id: string; name: string; role?: string; className?: string };
   }) => {
-    return await api.chatWithAi(params);
+    return await api.chatWithAi({
+      ...params,
+      userId: params.userId || currentUser?.id,
+      user: currentUser
+        ? {
+            id: currentUser.id,
+            name: currentUser.name,
+            role: currentUser.role,
+            className: currentUser.className
+          }
+        : undefined
+    });
   };
 
   const getAiBookRecommendations = async (params: AiRecommendationRequest) => {
-    return await api.getAiBookRecommendations(params);
+    return await api.getAiBookRecommendations({
+      ...params,
+      userId: params.userId || currentUser?.id,
+      user: currentUser
+        ? {
+            id: currentUser.id,
+            name: currentUser.name,
+            role: currentUser.role,
+            className: currentUser.className
+          }
+        : undefined,
+      gradeLevel: params.gradeLevel || currentUser?.className
+    });
   };
 
   const getAiSimilarBooks = async (bookId: string, userId?: string) => {
-    return await api.getAiSimilarBooks(bookId, userId);
+    return await api.getAiSimilarBooks(bookId, userId || currentUser?.id);
   };
 
   return (
