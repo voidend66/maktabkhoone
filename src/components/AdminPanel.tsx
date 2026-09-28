@@ -3751,41 +3751,81 @@ export const AdminPanel: React.FC = () => {
                           {(() => {
                             const hasExtracted = Boolean(
                               (book.tags && book.tags.length > 0) ||
-                              book.rawMetadata ||
+                              (book.rawMetadata && Object.keys(book.rawMetadata).length > 0) ||
                               book.publisher ||
                               book.translator ||
                               book.originalTitle ||
                               book.isbn
                             );
 
-                            return hasExtracted ? (
-                              <button
-                                onClick={() => setSelectedExtractedBook(book)}
-                                className="px-2 py-1 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition cursor-pointer flex items-center gap-1 font-bold text-[10px] sm:text-xs shrink-0 shadow-2xs"
-                                title="مشاهده شناسنامه کامل و تمام اطلاعات استخراج شده از ایران‌کتاب"
-                              >
-                                <FileText className="w-3.5 h-3.5 text-emerald-600" />
-                                <span className="whitespace-nowrap">اطلاعات استخراج‌شده</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={async () => {
-                                  setEnrichingBookId(book.id);
-                                  const res = await enrichBookFromIranKetab(book.id);
-                                  setEnrichingBookId(null);
-                                  if (res && res.success && res.book) {
-                                    setSelectedExtractedBook(res.book);
-                                  } else {
-                                    alert(res?.message || 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.');
-                                  }
-                                }}
-                                disabled={enrichingBookId === book.id}
-                                className="px-2 py-1 rounded-lg border bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1 font-bold text-[10px] sm:text-xs shrink-0 shadow-2xs"
-                                title="استعلام و استخراج هشتگ‌ها و شناسنامه کتاب از ایران‌کتاب"
-                              >
-                                <Sparkles className={`w-3.5 h-3.5 ${enrichingBookId === book.id ? 'animate-spin text-indigo-600' : 'text-indigo-700'}`} />
-                                <span className="whitespace-nowrap">{enrichingBookId === book.id ? 'در حال استعلام...' : 'استعلام ایران‌کتاب'}</span>
-                              </button>
+                            return (
+                              <div className="flex items-center gap-1">
+                                {hasExtracted ? (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedExtractedBook(book)}
+                                      className="px-2 py-1 rounded-lg border bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 transition cursor-pointer flex items-center gap-1 font-bold text-[10px] sm:text-xs shrink-0 shadow-2xs"
+                                      title="مشاهده و ویرایش شناسنامه کامل و هشتگ‌های کتاب"
+                                    >
+                                      <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                                      <span className="whitespace-nowrap">
+                                        شناسنامه {book.tags && book.tags.length > 0 ? `(${book.tags.length})` : ''}
+                                      </span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setEnrichingBookId(book.id);
+                                        const res = await enrichBookFromIranKetab(book.id);
+                                        setEnrichingBookId(null);
+                                        if (res && res.success && res.book) {
+                                          setSelectedExtractedBook(res.book);
+                                        } else {
+                                          alert(res?.message || 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.');
+                                        }
+                                      }}
+                                      disabled={enrichingBookId === book.id}
+                                      className="p-1 rounded-lg border bg-sky-50 text-sky-800 border-sky-200 hover:bg-sky-100 transition cursor-pointer flex items-center justify-center shrink-0 shadow-2xs disabled:opacity-50"
+                                      title="استعلام مجدد از ایران‌کتاب و به‌روزرسانی آنلاین"
+                                    >
+                                      <Sparkles className={`w-3.5 h-3.5 ${enrichingBookId === book.id ? 'animate-spin text-sky-600' : 'text-sky-600'}`} />
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        setEnrichingBookId(book.id);
+                                        const res = await enrichBookFromIranKetab(book.id);
+                                        setEnrichingBookId(null);
+                                        if (res && res.success && res.book) {
+                                          setSelectedExtractedBook(res.book);
+                                        } else {
+                                          alert(res?.message || 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.');
+                                        }
+                                      }}
+                                      disabled={enrichingBookId === book.id}
+                                      className="px-2 py-1 rounded-lg border bg-indigo-50 text-indigo-800 border-indigo-200 hover:bg-indigo-100 transition cursor-pointer flex items-center gap-1 font-bold text-[10px] sm:text-xs shrink-0 shadow-2xs disabled:opacity-50"
+                                      title="استعلام و استخراج هشتگ‌ها و شناسنامه کتاب از ایران‌کتاب"
+                                    >
+                                      <Sparkles className={`w-3.5 h-3.5 ${enrichingBookId === book.id ? 'animate-spin text-indigo-600' : 'text-indigo-700'}`} />
+                                      <span className="whitespace-nowrap">{enrichingBookId === book.id ? 'در حال استعلام...' : 'استعلام ایران‌کتاب'}</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setSelectedExtractedBook(book)}
+                                      className="p-1 rounded-lg border bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 transition cursor-pointer flex items-center justify-center shrink-0 shadow-2xs"
+                                      title="ثبت یا ویرایش دستی شناسنامه و هشتگ‌ها بدون استعلام"
+                                    >
+                                      <Edit2 className="w-3.5 h-3.5 text-slate-600" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             );
                           })()}
 

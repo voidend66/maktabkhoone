@@ -3297,7 +3297,16 @@ async function startServer() {
         status: 'available',
         rating: 5.0,
         reviewsCount: 0,
-        reviews: []
+        reviews: [],
+        tags: bookData.tags || [],
+        extraCategories: bookData.extraCategories || [],
+        rawMetadata: bookData.rawMetadata || {},
+        sourceUrl: bookData.sourceUrl || undefined,
+        publisher: bookData.publisher || undefined,
+        translator: bookData.translator || undefined,
+        originalTitle: bookData.originalTitle || undefined,
+        isbn: bookData.isbn || undefined,
+        pageCount: bookData.pageCount || undefined
       };
 
       const created = dbService.createBook(newBook);
@@ -3409,35 +3418,36 @@ async function startServer() {
     }
   });
 
-  // Admin endpoint to auto-enrich book metadata, tags, and categories from IranKetab
-  app.post('/api/admin/books/:id/enrich-iranketab', async (req: Request, res: Response): Promise<any> => {
+  // Helper function to auto-enrich book metadata, tags, and categories from IranKetab
+  async function enrichBookWithIranKetabData(bookId: string): Promise<Book | null> {
     try {
-      const book = dbService.getBookById(req.params.id);
-      if (!book) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+      const book = dbService.getBookById(bookId);
+      if (!book) return null;
 
       // Try search queries in sequence: 1. ISBN (if present), 2. Title + Author, 3. Title only
       let ikData = null;
 
       if (book.isbn && book.isbn.length >= 9) {
-        console.log(`[Admin Enrich] Attempt 1: Fetching by ISBN (${book.isbn})...`);
+        console.log(`[Auto Enrich] Attempt 1: Fetching by ISBN (${book.isbn}) for "${book.title}"...`);
         ikData = await lookupIranKetab(book.isbn);
       }
 
       if (!ikData && book.title) {
         const cleanTitle = book.title.replace(/کتاب/g, '').trim();
         const fullQuery = book.author ? `${cleanTitle} ${book.author}` : cleanTitle;
-        console.log(`[Admin Enrich] Attempt 2: Fetching by Title + Author (${fullQuery})...`);
+        console.log(`[Auto Enrich] Attempt 2: Fetching by Title + Author (${fullQuery})...`);
         ikData = await lookupIranKetab(fullQuery);
       }
 
       if (!ikData && book.title) {
         const cleanTitle = book.title.replace(/کتاب/g, '').trim();
-        console.log(`[Admin Enrich] Attempt 3: Fetching by Title (${cleanTitle})...`);
+        console.log(`[Auto Enrich] Attempt 3: Fetching by Title (${cleanTitle})...`);
         ikData = await lookupIranKetab(cleanTitle);
       }
 
       if (!ikData) {
-        return res.status(404).json({ success: false, message: 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.' });
+        console.log(`[Auto Enrich] No IranKetab metadata found for book "${book.title}" (ID: ${book.id})`);
+        return null;
       }
 
       const updates: Partial<Book> = {
@@ -3446,9 +3456,9 @@ async function startServer() {
         originalTitle: ikData.originalTitle || book.originalTitle,
         isbn: ikData.isbn || book.isbn,
         pageCount: ikData.pageCount || book.pageCount,
-        tags: ikData.tags || book.tags,
-        extraCategories: ikData.extraCategories || book.extraCategories,
-        rawMetadata: ikData.rawMetadata || book.rawMetadata,
+        tags: (ikData.tags && ikData.tags.length > 0) ? ikData.tags : book.tags,
+        extraCategories: (ikData.extraCategories && ikData.extraCategories.length > 0) ? ikData.extraCategories : book.extraCategories,
+        rawMetadata: (ikData.rawMetadata && Object.keys(ikData.rawMetadata).length > 0) ? ikData.rawMetadata : book.rawMetadata,
         sourceUrl: ikData.url || book.sourceUrl,
         description: (book.description && book.description.length > 50) ? book.description : (ikData.description || book.description)
       };
@@ -3457,14 +3467,59 @@ async function startServer() {
 
       dbService.addSystemLog(
         'info',
-        'تکمیل و استعلام شناسنامه از ایران‌کتاب',
-        `شناسنامه، هشتگ‌ها و دسته‌بندی‌های غنی کتاب «${book.title}» بر اساس ایران‌کتاب به‌روزرسانی شد.`
+        'تکمیل خودکار شناسنامه از ایران‌کتاب',
+        `شناسنامه، هشتگ‌ها و دسته‌بندی‌های ثانویه کتاب «${book.title}» به صورت خودکار در دیتابیس ذخیره شد.`
       );
+
+      console.log(`[Auto Enrich] Successfully enriched metadata for book "${book.title}" with ${updates.tags?.length || 0} tags and specs.`);
+      return updated;
+    } catch (err: any) {
+      console.error('[Auto Enrich] Error:', err?.message);
+      return null;
+    }
+  }
+
+  // Admin endpoint to auto-enrich book metadata, tags, and categories from IranKetab
+  app.post('/api/admin/books/:id/enrich-iranketab', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const book = dbService.getBookById(req.params.id);
+      if (!book) return res.status(404).json({ success: false, message: 'کتاب یافت نشد.' });
+
+      const updated = await enrichBookWithIranKetabData(book.id);
+      if (!updated) {
+        return res.status(404).json({ success: false, message: 'اطلاعاتی برای این کتاب در ایران‌کتاب یافت نشد.' });
+      }
 
       res.json({ success: true, message: 'اطلاعات و هشتگ‌های کتاب با موفقیت از ایران‌کتاب استخراج و ثبت گردید.', book: updated });
     } catch (err: any) {
       console.error('Enrich IranKetab Error:', err);
       res.status(500).json({ success: false, message: 'خطا در استعلام اطلاعات از ایران‌کتاب.' });
+    }
+  });
+
+  // Bulk auto-enrich endpoint for all books in database missing metadata
+  app.post('/api/admin/books/auto-enrich-all', async (_req: Request, res: Response): Promise<any> => {
+    try {
+      const allBooks = dbService.getAllBooks();
+      const unenriched = allBooks.filter((b) => (!b.tags || b.tags.length === 0 || !b.rawMetadata || Object.keys(b.rawMetadata).length === 0) && (b.isbn || b.title));
+      
+      // Fire background worker
+      (async () => {
+        for (const book of unenriched) {
+          try {
+            await enrichBookWithIranKetabData(book.id);
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          } catch (e) {}
+        }
+      })();
+
+      res.json({
+        success: true,
+        message: `استعلام خودکار شناسنامه و هشتگ‌ها برای ${unenriched.length} کتاب در پس‌زمینه آغاز شد.`,
+        count: unenriched.length
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'خطا در اجرای استعلام گروهی.' });
     }
   });
 

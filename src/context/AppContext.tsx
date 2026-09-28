@@ -731,6 +731,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     condition: BookCondition;
     coverImage: string;
     description: string;
+    publisher?: string;
+    translator?: string;
+    originalTitle?: string;
+    isbn?: string;
+    pageCount?: string | number;
+    tags?: string[];
+    extraCategories?: string[];
+    rawMetadata?: Record<string, any>;
+    sourceUrl?: string;
   }) => {
     if (!currentUser) throw new Error('باید وارد حساب کاربری خود شوید.');
 
@@ -746,6 +755,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       category: bookData.category,
       condition: bookData.condition,
       description: bookData.description,
+      publisher: bookData.publisher,
+      translator: bookData.translator,
+      originalTitle: bookData.originalTitle,
+      isbn: bookData.isbn,
+      pageCount: bookData.pageCount,
+      tags: bookData.tags || [],
+      extraCategories: bookData.extraCategories || [],
+      rawMetadata: bookData.rawMetadata || {},
+      sourceUrl: bookData.sourceUrl,
       status: 'available',
       rating: 5.0,
       reviewsCount: 0,

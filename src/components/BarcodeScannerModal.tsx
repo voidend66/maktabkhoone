@@ -24,9 +24,16 @@ export interface ScannedBookData {
   title: string;
   author: string;
   publisher?: string;
+  translator?: string;
+  originalTitle?: string;
   category?: string;
   description?: string;
   coverImage?: string;
+  pageCount?: string | number;
+  tags?: string[];
+  extraCategories?: string[];
+  rawMetadata?: Record<string, any>;
+  sourceUrl?: string;
   source?: string;
   url?: string;
 }
@@ -571,6 +578,15 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   {foundBook.category && (
                     <div className="inline-block text-[11px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded-lg mt-1">
                       {foundBook.category}
+                    </div>
+                  )}
+
+                  {foundBook.tags && foundBook.tags.length > 0 && (
+                    <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md font-bold flex items-center gap-1">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-400" />
+                        <span>{foundBook.tags.length} هشتگ و متادیتای ثانویه استخراج شد ✓</span>
+                      </span>
                     </div>
                   )}
 
