@@ -176,15 +176,17 @@ interface AppContextType {
     bookId: string,
     options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
   ) => Promise<{ success: boolean; message: string; needBooks?: boolean }>;
-  testAiConnection: (params?: Partial<LocalAiConfig>) => Promise<{
+  testAiConnection: (params?: Partial<LocalAiConfig> & { testTarget?: 'gemini' | 'ollama' }) => Promise<{
     success: boolean;
     latencyMs?: number | null;
     modelName?: string;
     endpointUrl?: string;
     responseSample?: string;
     message: string;
+    engine?: string;
+    proxyUsed?: string | null;
   }>;
-  checkAiHealth: (params?: { endpointUrl?: string; modelName?: string }) => Promise<AiHealthCheckResult>;
+  checkAiHealth: (params?: Partial<LocalAiConfig>) => Promise<AiHealthCheckResult>;
   chatWithAi: (params: {
     message: string;
     messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
@@ -193,14 +195,20 @@ interface AppContextType {
     systemPrompt?: string;
     temperature?: number;
     numPredict?: number;
+    engineMode?: 'hybrid' | 'cloud_only' | 'local_only';
+    geminiApiKey?: string;
+    geminiModel?: string;
+    proxyUrl?: string;
   }) => Promise<{
     success: boolean;
     reply?: string;
     latencyMs?: number;
     model?: string;
+    engineUsed?: string;
     message?: string;
   }>;
   getAiBookRecommendations: (params: AiRecommendationRequest) => Promise<AiRecommendationResult>;
+  getAiSimilarBooks: (bookId: string, userId?: string) => Promise<AiRecommendationResult>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -1605,11 +1613,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const testAiConnection = async (params?: Partial<LocalAiConfig>) => {
+  const testAiConnection = async (params?: Partial<LocalAiConfig> & { testTarget?: 'gemini' | 'ollama' }) => {
     return await api.testAiConnection(params);
   };
 
-  const checkAiHealth = async (params?: { endpointUrl?: string; modelName?: string }) => {
+  const checkAiHealth = async (params?: Partial<LocalAiConfig>) => {
     return await api.checkAiHealth(params);
   };
 
@@ -1621,12 +1629,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     systemPrompt?: string;
     temperature?: number;
     numPredict?: number;
+    engineMode?: 'hybrid' | 'cloud_only' | 'local_only';
+    geminiApiKey?: string;
+    geminiModel?: string;
+    proxyUrl?: string;
   }) => {
     return await api.chatWithAi(params);
   };
 
   const getAiBookRecommendations = async (params: AiRecommendationRequest) => {
     return await api.getAiBookRecommendations(params);
+  };
+
+  const getAiSimilarBooks = async (bookId: string, userId?: string) => {
+    return await api.getAiSimilarBooks(bookId, userId);
   };
 
   return (
@@ -1703,7 +1719,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         testAiConnection,
         checkAiHealth,
         chatWithAi,
-        getAiBookRecommendations
+        getAiBookRecommendations,
+        getAiSimilarBooks
       }}
     >
       {children}

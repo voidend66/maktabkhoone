@@ -797,13 +797,15 @@ export const api = {
   },
 
   // Local AI (Ollama Qwen 7B) APIs
-  async testAiConnection(params?: Partial<LocalAiConfig>): Promise<{
+  async testAiConnection(params?: Partial<LocalAiConfig> & { testTarget?: 'gemini' | 'ollama' }): Promise<{
     success: boolean;
     latencyMs?: number | null;
     modelName?: string;
     endpointUrl?: string;
     responseSample?: string;
     message: string;
+    engine?: string;
+    proxyUsed?: string | null;
   }> {
     try {
       const res = await fetch(`${API_BASE}/ai/test-connection`, {
@@ -821,7 +823,7 @@ export const api = {
     }
   },
 
-  async checkAiHealth(params?: { endpointUrl?: string; modelName?: string }): Promise<AiHealthCheckResult> {
+  async checkAiHealth(params?: Partial<LocalAiConfig>): Promise<AiHealthCheckResult> {
     try {
       const res = await fetch(`${API_BASE}/ai/health-check`, {
         method: 'POST',
@@ -855,11 +857,16 @@ export const api = {
     systemPrompt?: string;
     temperature?: number;
     numPredict?: number;
+    engineMode?: 'hybrid' | 'cloud_only' | 'local_only';
+    geminiApiKey?: string;
+    geminiModel?: string;
+    proxyUrl?: string;
   }): Promise<{
     success: boolean;
     reply?: string;
     latencyMs?: number;
     model?: string;
+    engineUsed?: string;
     message?: string;
   }> {
     try {
@@ -936,6 +943,23 @@ export const api = {
       return {
         success: false,
         message: err.message || 'خطا در دریافت پیشنهادات هوش مصنوعی',
+        recommendedBooks: [],
+        candidatesCount: 0,
+        isAiGenerated: false
+      };
+    }
+  },
+
+  async getAiSimilarBooks(bookId: string, userId?: string): Promise<AiRecommendationResult> {
+    try {
+      return await this.getAiBookRecommendations({
+        bookIdForSimilar: bookId,
+        userId
+      });
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'خطا در دریافت کتاب‌های مشابه',
         recommendedBooks: [],
         candidatesCount: 0,
         isAiGenerated: false

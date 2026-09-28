@@ -29,6 +29,7 @@ function createZipArchive(options?: any): archiverModule.Archiver {
   throw new Error('کتابخانه ساخت فایل فشرده (archiver) در دسترس نیست.');
 }
 import { dbService, addSystemLogListener, DB_PATH, isExternalPath } from './server/db';
+import { isGeminiConfigured, generateGeminiText } from './server/gemini';
 import { analytics } from './server/analytics';
 import { GoogleDriveBackupService } from './server/googleDriveService';
 import { isAdminPhone } from './src/data/mockData';
@@ -2014,6 +2015,51 @@ async function startServer() {
     } catch (err: any) {
       console.error('Bootstrap error:', err);
       res.status(500).json({ success: false, message: 'خطا در خواندن داده‌ها از دیتابیس' });
+    }
+  });
+
+  /**
+   * --------------------------------------------------------------------------
+   * API: Gemini AI Status & Generic Endpoint
+   * --------------------------------------------------------------------------
+   */
+  app.get('/api/gemini/status', (_req: Request, res: Response) => {
+    try {
+      const configured = isGeminiConfigured();
+      res.json({
+        success: true,
+        configured,
+        message: configured
+          ? 'سرویس Gemini API با کلید اختصاصی در سیستم فعال و آماده استفاده است.'
+          : 'کلید GEMINI_API_KEY در کلیدهای سیستم (Secrets) هنوز مقداردهی نشده است.'
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, message: 'خطا در بررسی وضعیت Gemini API' });
+    }
+  });
+
+  app.post('/api/gemini/generate', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { prompt, systemInstruction } = req.body || {};
+      if (!prompt || typeof prompt !== 'string' || !prompt.trim()) {
+        return res.status(400).json({ success: false, message: 'متن درخواست (prompt) الزامی است.' });
+      }
+
+      if (!isGeminiConfigured()) {
+        return res.status(503).json({
+          success: false,
+          message: 'کلید GEMINI_API_KEY در بخش Secrets تنظیم نشده است.'
+        });
+      }
+
+      const responseText = await generateGeminiText(prompt.trim(), systemInstruction);
+      return res.json({ success: true, text: responseText });
+    } catch (err: any) {
+      console.error('Gemini Generate Error:', err);
+      return res.status(500).json({
+        success: false,
+        message: err?.message || 'خطا در ارتباط با هوش مصنوعی Gemini'
+      });
     }
   });
 
@@ -5955,8 +6001,62 @@ async function startServer() {
     const timeLabel = timeMap[readingTime] || 'متوسط';
     const visualLabel = visualMap[visualPreference] || 'آزاد';
 
-    // 2. Score books to select top candidates
-    const scored = availableBooks.map((b) => {
+    const userId = body?.userId || body?.user?.id;
+    const currentUser = userId ? dbService.getUserById(userId) : null;
+    const allRequests = dbService.getAllRequests();
+    const allFeedbacks = dbService.getAllFeedbacks();
+    const allUsers = dbService.getAllUsers();
+
+    // 1. Personalized Reading History & Read Books Exclusions
+    const userRequests = userId ? allRequests.filter((r) => r.borrowerId === userId) : [];
+    const readBookIds = new Set(userRequests.map((r) => r.bookId));
+
+    const userCategoryCounts: Record<string, number> = {};
+    for (const req of userRequests) {
+      const b = allBooks.find((x) => x.id === req.bookId);
+      if (b && b.category) {
+        userCategoryCounts[b.category] = (userCategoryCounts[b.category] || 0) + 1;
+      }
+    }
+
+    // 2. Post-Read Feedback Loop Analysis
+    const categoryRatingSum: Record<string, { sum: number; count: number }> = {};
+    if (userId) {
+      const userFeedbacks = allFeedbacks.filter((f) => f.fromUserId === userId);
+      for (const fb of userFeedbacks) {
+        const req = allRequests.find((r) => r.id === fb.requestId);
+        if (req) {
+          const b = allBooks.find((x) => x.id === req.bookId);
+          const avgScore = (fb.punctualityScore + fb.conditionScore + fb.behaviorScore + fb.reliabilityScore) / 4;
+          if (b && b.category) {
+            if (!categoryRatingSum[b.category]) categoryRatingSum[b.category] = { sum: 0, count: 0 };
+            categoryRatingSum[b.category].sum += avgScore;
+            categoryRatingSum[b.category].count += 1;
+          }
+        }
+      }
+    }
+
+    // 3. Collaborative Filtering (Classmate Patterns)
+    const classmates = currentUser ? allUsers.filter((u) => u.className === currentUser.className && u.id !== currentUser.id) : [];
+    const classmateUserIds = new Set(classmates.map((u) => u.id));
+    const classmateRequests = allRequests.filter((r) => classmateUserIds.has(r.borrowerId));
+    const classmateBookCounts: Record<string, number> = {};
+    for (const req of classmateRequests) {
+      classmateBookCounts[req.bookId] = (classmateBookCounts[req.bookId] || 0) + 1;
+    }
+
+    // Filter available books (exclude already read if option is enabled)
+    let availableForCandidate = availableBooks;
+    if (aiConfig.excludeAlreadyRead !== false && readBookIds.size > 0) {
+      const filtered = availableBooks.filter((b) => !readBookIds.has(b.id));
+      if (filtered.length >= 2) {
+        availableForCandidate = filtered;
+      }
+    }
+
+    // 4. Hybrid Scoring Logic
+    const scored = availableForCandidate.map((b) => {
       let score = 2;
       const corpus = `${b.title} ${b.author} ${b.category} ${(b.tags || []).join(' ')} ${(b.extraCategories || []).join(' ')} ${b.description || ''}`.toLowerCase();
 
@@ -5988,6 +6088,24 @@ async function startServer() {
         }
       }
 
+      // Feature A: Reading history affinity boost
+      if (aiConfig.useReadingHistory !== false && b.category && userCategoryCounts[b.category]) {
+        score += Math.min(6, userCategoryCounts[b.category] * 2);
+      }
+
+      // Feature B: Post-read feedback loop boost/penalty
+      if (aiConfig.usePostReadFeedback !== false && b.category && categoryRatingSum[b.category]) {
+        const stats = categoryRatingSum[b.category];
+        const avg = stats.sum / stats.count;
+        if (avg >= 4) score += 5;
+        else if (avg < 3) score -= 4;
+      }
+
+      // Feature C: Collaborative filtering boost (classmates preference)
+      if (aiConfig.useCollaborativeFiltering !== false && classmateBookCounts[b.id]) {
+        score += Math.min(8, classmateBookCounts[b.id] * 3);
+      }
+
       if (b.rating && b.rating > 0) score += (b.rating - 3);
 
       return { book: b, score };
@@ -5995,7 +6113,20 @@ async function startServer() {
 
     scored.sort((a, b) => b.score - a.score);
     const maxCands = Math.max(2, Math.min(12, aiConfig.maxCandidates !== undefined ? aiConfig.maxCandidates : 4));
-    const candidates = scored.slice(0, maxCands).map((s) => s.book);
+    let candidates = scored.slice(0, maxCands).map((s) => s.book);
+
+    // Feature D: Serendipity / Diversity Injector (prevents over-canalization)
+    const diversityFactor = typeof aiConfig.diversityFactor === 'number' ? aiConfig.diversityFactor : 25;
+    if (diversityFactor > 0 && availableForCandidate.length > maxCands) {
+      const primaryCategories = new Set(candidates.map((b) => b.category));
+      const serendipityPool = availableForCandidate.filter((b) => !primaryCategories.has(b.category) && (!b.rating || b.rating >= 4));
+      if (serendipityPool.length > 0) {
+        const wildcard = serendipityPool[Math.floor(Math.random() * serendipityPool.length)];
+        if (candidates.length >= 2) {
+          candidates[candidates.length - 1] = wildcard;
+        }
+      }
+    }
 
     function extractJson(raw: string): any {
       if (!raw) return null;
@@ -6065,101 +6196,153 @@ async function startServer() {
     let fetchErrorStr: string | null = null;
     let httpStatusCode: number | null = null;
 
-    if (aiConfig.enabled !== false && rawEndpointUsed) {
+    if (aiConfig.enabled !== false) {
       const booksListPrompt = candidates.map((b, idx) => {
         return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | موضوع: ${b.category}]`;
       }).join('\n');
 
-      userPrompt = `📚 قفسه کتاب‌ها:
+      const userFeedbacks = userId ? allFeedbacks.filter((f) => f.fromUserId === userId) : [];
+
+      const userContextList = [
+        `🎯 سلیقه و حس‌وحال انتخابی: ${moodLabel}${customPrompt ? ` (خواسته: ${customPrompt})` : ''}`,
+        currentUser ? `👤 دانش‌آموز: ${currentUser.name} (کلاس ${currentUser.className})` : '',
+        userRequests.length > 0 ? `📚 تاریخچه امانت: ${userRequests.length} کتاب قبلاً امانت گرفته شده است.` : '',
+        Object.keys(classmateBookCounts).length > 0 ? `👥 محبوبیت در هم‌کلاسی‌ها: کتاب‌های این قفسه قبلاً مورد استقبال دانش‌آموزان کلاس ${currentUser?.className || ''} قرار گرفته‌اند.` : '',
+        userFeedbacks.length > 0 ? `⭐️ میانگین امتیازدهی‌های قبلی دانش‌آموز: ${userFeedbacks.length} نظر ثبت شده است.` : '',
+        `🌟 عامل تنوع‌بخشی (Serendipity): ضریب تنوع ${diversityFactor}% فعال است تا کتاب‌ها بیش از حد کانالیزه نشوند و گزینه‌ای برای تجربه و کشف افق جدید وجود داشته باشد.`
+      ].filter(Boolean).join('\n');
+
+      userPrompt = `📚 قفسه کتاب‌های کاندیدا:
 ${booksListPrompt}
 
-🎯 سلیقه دانش‌آموز: ${moodLabel}${customPrompt ? ` (خواسته: ${customPrompt})` : ''}
+📌 اطلاعات زمینه دانش‌آموز و رفتار واقعی:
+${userContextList}
 
-ماموریت: ۲ کتاب از لیست انتخاب کن و خروجی را فقط در قالب شیء JSON با greeting (یک جمله کوتاه) و recommendations (شامل bookId و reason در یک جمله جذاب) تولید کن:
+ماموریت: از میان لیست ارائه‌شده، ۲ کتاب برتر (ترجیحاً ۱ کتاب با تطابق کامل با سلیقه اصلی و ۱ کتاب عالی برای کشف تجربه جدید و تنوع‌بخشی) انتخاب کن و خروجی را فقط در قالب شیء JSON با greeting (یک جمله کوتاه و صمیمی) و recommendations (شامل bookId و reason ترغیب‌کننده) تولید کن:
 {"greeting":"...","recommendations":[{"bookId":"...","reason":"..."}]}`;
 
-      const startTime = Date.now();
-      const controller = new AbortController();
-      const isTestMode = body?.isTest === true || body?.noTimeout === true;
-      const cfgTimeoutSec = typeof aiConfig.timeoutSeconds === 'number' ? aiConfig.timeoutSeconds : 120;
-      const shouldDisableTimeout = isTestMode || cfgTimeoutSec <= 0;
-      const timeoutDurationMs = shouldDisableTimeout ? 0 : Math.max(cfgTimeoutSec, 5) * 1000;
+      // 1. Primary: Gemini 3.5 Flash Lite
+      try {
+        const startTime = Date.now();
+        console.log('🤖 [AI Recommendation] در حال درخواست پیشنهاد کتاب از Gemini 3.5 Flash Lite...');
+        rawAiResponseText = await generateGeminiText(userPrompt, systemPromptUsed);
+        latencyMs = Date.now() - startTime;
+        httpStatusCode = 200;
+        targetModelName = 'gemini-3.5-flash-lite';
+        targetGenerateUrl = process.env.CUSTOM_GEMINI_ENDPOINT || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent';
 
-      let timer: NodeJS.Timeout | null = null;
-      if (timeoutDurationMs > 0) {
-        timer = setTimeout(() => controller.abort(), timeoutDurationMs);
+        parsedOutput = extractJson(rawAiResponseText);
+        if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {
+          parseSuccess = true;
+          if (parsedOutput.greeting && typeof parsedOutput.greeting === 'string') {
+            greeting = parsedOutput.greeting;
+          }
+
+          for (const rec of parsedOutput.recommendations) {
+            const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
+            if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
+              recommendationsResult.push({
+                book: foundBook,
+                reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
+              });
+            }
+          }
+
+          if (recommendationsResult.length > 0) {
+            isAiGenerated = true;
+          }
+        }
+      } catch (geminiErr: any) {
+        console.warn('⚠️ Gemini 3.5 Flash Lite primary recommendation failed:', geminiErr?.message);
+        fetchErrorStr = geminiErr?.message;
       }
 
-      try {
-        const aiResponse = await fetch(targetGenerateUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            model: targetModelName,
-            system: systemPromptUsed,
-            prompt: userPrompt,
-            format: 'json',
-            stream: false,
-            options: {
-              num_predict: Math.max(280, Math.min(aiConfig.numPredict || 320, 600)),
-              temperature: aiConfig.temperature ?? 0.3,
-              top_p: aiConfig.topP ?? 0.9,
-              repeat_penalty: aiConfig.repeatPenalty ?? 1.1
-            }
-          }),
-          signal: controller.signal
-        });
+      // 2. Secondary Fallback: Ollama / Local AI endpoint
+      if (recommendationsResult.length === 0 && rawEndpointUsed) {
+        console.log('🔄 [AI Recommendation] تلاش با سرور محلی Ollama (Fallback دوم)...');
+        const startTime = Date.now();
+        const controller = new AbortController();
+        const isTestMode = body?.isTest === true || body?.noTimeout === true;
+        const cfgTimeoutSec = typeof aiConfig.timeoutSeconds === 'number' ? aiConfig.timeoutSeconds : 120;
+        const shouldDisableTimeout = isTestMode || cfgTimeoutSec <= 0;
+        const timeoutDurationMs = shouldDisableTimeout ? 0 : Math.max(cfgTimeoutSec, 5) * 1000;
 
-        if (timer) clearTimeout(timer);
-        latencyMs = Date.now() - startTime;
-        httpStatusCode = aiResponse.status;
+        let timer: NodeJS.Timeout | null = null;
+        if (timeoutDurationMs > 0) {
+          timer = setTimeout(() => controller.abort(), timeoutDurationMs);
+        }
 
-        if (aiResponse.ok) {
-          const aiData: any = await aiResponse.json();
-          rawAiResponseText = aiData?.response || JSON.stringify(aiData);
-          parsedOutput = extractJson(aiData?.response);
-
-          if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {
-            parseSuccess = true;
-            if (parsedOutput.greeting && typeof parsedOutput.greeting === 'string') {
-              greeting = parsedOutput.greeting;
-            }
-
-            for (const rec of parsedOutput.recommendations) {
-              const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
-              if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
-                recommendationsResult.push({
-                  book: foundBook,
-                  reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
-                });
+        try {
+          const aiResponse = await fetch(targetGenerateUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              model: targetModelName,
+              system: systemPromptUsed,
+              prompt: userPrompt,
+              format: 'json',
+              stream: false,
+              options: {
+                num_predict: Math.max(280, Math.min(aiConfig.numPredict || 320, 600)),
+                temperature: aiConfig.temperature ?? 0.3,
+                top_p: aiConfig.topP ?? 0.9,
+                repeat_penalty: aiConfig.repeatPenalty ?? 1.1
               }
-            }
+            }),
+            signal: controller.signal
+          });
 
-            if (recommendationsResult.length > 0) {
-              isAiGenerated = true;
+          if (timer) clearTimeout(timer);
+          latencyMs = Date.now() - startTime;
+          httpStatusCode = aiResponse.status;
+
+          if (aiResponse.ok) {
+            const aiData: any = await aiResponse.json();
+            rawAiResponseText = aiData?.response || JSON.stringify(aiData);
+            parsedOutput = extractJson(aiData?.response);
+
+            if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {
+              parseSuccess = true;
+              if (parsedOutput.greeting && typeof parsedOutput.greeting === 'string') {
+                greeting = parsedOutput.greeting;
+              }
+
+              for (const rec of parsedOutput.recommendations) {
+                const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
+                if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
+                  recommendationsResult.push({
+                    book: foundBook,
+                    reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
+                  });
+                }
+              }
+
+              if (recommendationsResult.length > 0) {
+                isAiGenerated = true;
+              }
+            } else {
+              parseSuccess = false;
+              fetchErrorStr = 'فرمت خروجی مدل JSON معتبر یا دارای لیست پیشنهادات (recommendations) نبود.';
             }
           } else {
-            parseSuccess = false;
-            fetchErrorStr = 'فرمت خروجی مدل JSON معتبر یا دارای لیست پیشنهادات (recommendations) نبود.';
+            const errText = await aiResponse.text().catch(() => '');
+            rawAiResponseText = errText;
+            fetchErrorStr = `پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status}): ${errText.slice(0, 200)}`;
+            reportAiServerOffline(`پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status})`, aiConfig.endpointUrl);
           }
-        } else {
-          const errText = await aiResponse.text().catch(() => '');
-          rawAiResponseText = errText;
-          fetchErrorStr = `پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status}): ${errText.slice(0, 200)}`;
-          reportAiServerOffline(`پاسخ ناموفق از سرور مدل (کد وضعیت ${aiResponse.status})`, aiConfig.endpointUrl);
+        } catch (fetchErr: any) {
+          if (timer) clearTimeout(timer);
+          latencyMs = Date.now() - startTime;
+          console.warn('Ollama local AI request skipped or failed:', fetchErr.message);
+          let errDesc = fetchErr.message || 'خطای اتصال به سرور هوش مصنوعی';
+          if (fetchErr.name === 'AbortError' || String(fetchErr.message).toLowerCase().includes('aborted')) {
+            errDesc = timeoutDurationMs > 0
+              ? `پایان مهلت زمان (${Math.round(timeoutDurationMs / 1000)} ثانیه) یا عدم دسترسی به آی‌پی محلی (${fetchErr.message})`
+              : `قطع ارتباط با سرور هوش مصنوعی (${fetchErr.message})`;
+          }
+          fetchErrorStr = errDesc;
+          reportAiServerOffline(errDesc, aiConfig.endpointUrl);
         }
-      } catch (fetchErr: any) {
-        if (timer) clearTimeout(timer);
-        latencyMs = Date.now() - startTime;
-        console.warn('Ollama local AI request skipped or failed:', fetchErr.message);
-        let errDesc = fetchErr.message || 'خطای اتصال به سرور هوش مصنوعی';
-        if (fetchErr.name === 'AbortError' || String(fetchErr.message).toLowerCase().includes('aborted')) {
-          errDesc = timeoutDurationMs > 0
-            ? `پایان مهلت زمان (${Math.round(timeoutDurationMs / 1000)} ثانیه) یا عدم دسترسی به آی‌پی محلی (${fetchErr.message})`
-            : `قطع ارتباط با سرور هوش مصنوعی (${fetchErr.message})`;
-        }
-        fetchErrorStr = errDesc;
-        reportAiServerOffline(errDesc, aiConfig.endpointUrl);
       }
     }
 

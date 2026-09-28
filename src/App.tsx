@@ -662,6 +662,7 @@ function MainAppContent() {
           book={selectedBookForDetail}
           onClose={() => setSelectedBookForDetail(null)}
           onRequestLoan={handleRequestLoan}
+          onSelectBook={(newBook) => setSelectedBookForDetail(newBook)}
         />
       )}
 

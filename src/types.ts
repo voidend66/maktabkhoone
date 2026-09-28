@@ -355,6 +355,11 @@ export interface LocalAiConfig {
   maxCandidates: number; // e.g. 14
   timeoutSeconds: number; // e.g. 20
   fallbackEnabled?: boolean; // When false, fallback algorithm is disabled to allow pure AI testing & debugging
+  useReadingHistory?: boolean; // Personalized reading history
+  excludeAlreadyRead?: boolean; // Don't recommend already read books
+  useCollaborativeFiltering?: boolean; // Classmate collaborative filtering
+  usePostReadFeedback?: boolean; // Post-read rating feedback loop
+  diversityFactor?: number; // Serendipity factor (0 to 50%)
 }
 
 export interface AiRecommendationRequest {

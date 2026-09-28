@@ -1219,15 +1219,26 @@ export const dbService = {
       },
       aiConfig: {
         enabled: true,
+        engineMode: 'hybrid',
+        geminiApiKey: process.env.GEMINI_API_KEY || '',
+        geminiModel: 'gemini-3.5-flash-lite',
+        proxyUrl: 'http://192.168.100.54:10808',
+        cloudTimeoutSeconds: 8,
         endpointUrl: 'http://192.168.100.54:11434/api/generate',
-        modelName: 'qwen2.5:7b',
-        systemPrompt: 'تو پیشنهاددهنده کتاب مکتبخانه هستی. فقط بر اساس دیتای ارائه شده پیشنهاد بده و خروجی را الزاماً به صورت یک شیء معتبر JSON تولید کن.',
+        modelName: 'qwen2.5:3b',
+        systemPrompt: 'تو «کتابدار هوشمند، خوش‌ذوق و رفیق کتاب‌خوان مکتب‌خانه» هستی. وظیفه تو مشاوره صمیمی، شوق‌انگیز و تخصصی به دانش‌آموزان برای انتخاب کتاب از قفسه است. فقط از کتاب‌های لیست ارائه‌شده انتخاب کن و خروجی را فقط به صورت JSON تولید کن.',
         numPredict: 350,
-        temperature: 0.3,
+        temperature: 0.35,
         topP: 0.9,
-        repeatPenalty: 1.1,
-        maxCandidates: 14,
-        timeoutSeconds: 20
+        repeatPenalty: 1.15,
+        maxCandidates: 6,
+        timeoutSeconds: 120,
+        fallbackEnabled: true,
+        enableHistoryAnalysis: true,
+        enableCollaborativeFiltering: true,
+        serendipityFactor: 0.25,
+        enablePostReturnReviewPrompt: true,
+        enableSimilarBooksDiscovery: true
       }
     };
   },

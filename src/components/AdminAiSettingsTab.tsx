@@ -100,6 +100,11 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [repeatPenalty, setRepeatPenalty] = useState<number>(currentAiConfig.repeatPenalty ?? 1.15);
   const [maxCandidates, setMaxCandidates] = useState<number>(currentAiConfig.maxCandidates || 14);
   const [timeoutSeconds, setTimeoutSeconds] = useState<number>(currentAiConfig.timeoutSeconds || 15);
+  const [useReadingHistory, setUseReadingHistory] = useState<boolean>(currentAiConfig.useReadingHistory ?? true);
+  const [excludeAlreadyRead, setExcludeAlreadyRead] = useState<boolean>(currentAiConfig.excludeAlreadyRead ?? true);
+  const [useCollaborativeFiltering, setUseCollaborativeFiltering] = useState<boolean>(currentAiConfig.useCollaborativeFiltering ?? true);
+  const [usePostReadFeedback, setUsePostReadFeedback] = useState<boolean>(currentAiConfig.usePostReadFeedback ?? true);
+  const [diversityFactor, setDiversityFactor] = useState<number>(currentAiConfig.diversityFactor ?? 25);
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
@@ -252,8 +257,13 @@ export const AdminAiSettingsTab: React.FC = () => {
       topP: Number(topP),
       repeatPenalty: Number(repeatPenalty),
       maxCandidates: Math.max(4, Math.min(30, maxCandidates)),
-      timeoutSeconds: Math.max(5, Math.min(60, timeoutSeconds)),
-      fallbackEnabled: Boolean(fallbackEnabled)
+      timeoutSeconds: Math.max(0, Math.min(300, timeoutSeconds)),
+      fallbackEnabled: Boolean(fallbackEnabled),
+      useReadingHistory,
+      excludeAlreadyRead,
+      useCollaborativeFiltering,
+      usePostReadFeedback,
+      diversityFactor: Number(diversityFactor)
     };
 
     try {
@@ -957,6 +967,107 @@ export const AdminAiSettingsTab: React.FC = () => {
                   ? 'بدون محدودیت زمانی (مناسب برای سرورهای بدون GPU یا مدل‌های سنگین).'
                   : 'سقف انتظار پاسخ مدل محلی در سایت (پیشنهاد: ۱۲۰ تا ۱۸۰ ثانیه یا صفر).'}
               </span>
+            </div>
+          </div>
+
+          {/* الگوریتم‌های هوشمند ترکیبی و شخصی‌سازی */}
+          <div className="bg-slate-50/80 p-4 rounded-2xl border border-slate-200 space-y-3 mt-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-indigo-600" />
+              <h4 className="text-xs font-bold text-slate-800">تنظیمات موتور الگوریتم ترکیبی و شخصی‌سازی (Hybrid Engine)</h4>
+            </div>
+            <p className="text-[11px] text-slate-500 leading-relaxed">
+              تنظیم هوشمندی براساس رفتار واقعی کاربر، الگوی هم‌کلاسی‌ها، بازخورد نظرات پس از مطالعه و ضریب تنوع‌بخشی (کشف ژانرهای تازه):
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+              {/* useReadingHistory */}
+              <label className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-indigo-200 transition">
+                <input
+                  type="checkbox"
+                  checked={useReadingHistory}
+                  onChange={(e) => setUseReadingHistory(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">تحلیل تاریخچه امانت دانش‌آموز</span>
+                  <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">
+                    ارزیابی ژانرهای قبلی امانت گرفته شده برای ارتقای وزن کتاب‌های هم‌سبک.
+                  </span>
+                </div>
+              </label>
+
+              {/* excludeAlreadyRead */}
+              <label className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-indigo-200 transition">
+                <input
+                  type="checkbox"
+                  checked={excludeAlreadyRead}
+                  onChange={(e) => setExcludeAlreadyRead(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">عدم پیشنهاد تکراری کتاب‌های خوانده‌شده</span>
+                  <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">
+                    حذف خودکار کتاب‌هایی که کاربر قبلاً امانت گرفته است از لیست کاندیداها.
+                  </span>
+                </div>
+              </label>
+
+              {/* useCollaborativeFiltering */}
+              <label className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-indigo-200 transition">
+                <input
+                  type="checkbox"
+                  checked={useCollaborativeFiltering}
+                  onChange={(e) => setUseCollaborativeFiltering(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">الگوی هم‌کلاسی‌ها (Collaborative Filtering)</span>
+                  <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">
+                    اولویت‌دهی به کتاب‌های پرطرفدار و موردپسند هم‌کلاسی‌های هم‌کلاس/هم‌پایه.
+                  </span>
+                </div>
+              </label>
+
+              {/* usePostReadFeedback */}
+              <label className="flex items-start gap-2.5 bg-white p-3 rounded-xl border border-slate-200 cursor-pointer hover:border-indigo-200 transition">
+                <input
+                  type="checkbox"
+                  checked={usePostReadFeedback}
+                  onChange={(e) => setUsePostReadFeedback(e.target.checked)}
+                  className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                />
+                <div>
+                  <span className="text-xs font-bold text-slate-800 block">اصلاح سلیقه بر اساس نظرات پس از مطالعه (Post-Read Loop)</span>
+                  <span className="text-[10px] text-slate-500 leading-tight block mt-0.5">
+                    اعمال خودکار امتیازها و نظرات ثبت‌شده دانش‌آموز بر روی سلیقه آینده.
+                  </span>
+                </div>
+              </label>
+            </div>
+
+            {/* diversityFactor slider */}
+            <div className="bg-white p-3 rounded-xl border border-slate-200 space-y-1">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-slate-800 flex items-center gap-1.5">
+                  <span>ضریب تنوع‌بخشی و کشف ژانرهای جدید (Serendipity Factor):</span>
+                </span>
+                <span className="font-mono text-indigo-600 font-bold">{diversityFactor}%</span>
+              </div>
+              <input
+                type="range"
+                min="0"
+                max="50"
+                step="5"
+                value={diversityFactor}
+                onChange={(e) => setDiversityFactor(parseInt(e.target.value) || 0)}
+                className="w-full accent-indigo-600 cursor-pointer"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400">
+                <span>۰٪ (کاملاً کانالیزه و متمرکز)</span>
+                <span>۲۵٪ (متعادل و جذاب)</span>
+                <span>۵۰٪ (تنوع حداکثری و غیرمنتظره)</span>
+              </div>
             </div>
           </div>
         </div>

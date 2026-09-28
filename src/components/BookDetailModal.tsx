@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Book } from '../types';
+import { Book, RecommendedBook } from '../types';
 import { useApp } from '../context/AppContext';
 import { getSafeImageUrl, DEFAULT_BOOK_COVER, DEFAULT_AVATARS } from '../utils/coverPresets';
 import {
@@ -19,7 +19,12 @@ import {
   Gift,
   Sparkles,
   Crop,
-  Undo2
+  Undo2,
+  Loader2,
+  BookOpen,
+  ArrowLeft,
+  Flame,
+  Zap
 } from 'lucide-react';
 import { CamScannerModal } from './CamScannerModal';
 import { ExtractedMetadataModal } from './ExtractedMetadataModal';
@@ -28,14 +33,27 @@ interface BookDetailModalProps {
   book: Book | null;
   onClose: () => void;
   onRequestLoan: (bookId: string, options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }) => void;
+  onSelectBook?: (book: Book) => void;
 }
 
 export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   book,
   onClose,
-  onRequestLoan
+  onRequestLoan,
+  onSelectBook
 }) => {
-  const { currentUser, addBookReview, deleteBookReview, users, activeEvents, updateBook, revertBookCover, enrichBookFromIranKetab } = useApp();
+  const {
+    currentUser,
+    addBookReview,
+    deleteBookReview,
+    users,
+    books,
+    activeEvents,
+    updateBook,
+    revertBookCover,
+    enrichBookFromIranKetab,
+    getAiSimilarBooks
+  } = useApp();
   
   const existingUserReview = book?.reviews?.find((r) => r.userId === currentUser?.id);
 
@@ -50,10 +68,17 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
   const [showExtractedModal, setShowExtractedModal] = useState(false);
   const [isEnriching, setIsEnriching] = useState(false);
 
+  // Similar Books (Hybrid Collaborative & Content-Based) State
+  const [similarBooks, setSimilarBooks] = useState<RecommendedBook[]>([]);
+  const [isLoadingSimilar, setIsLoadingSimilar] = useState(false);
+  const [similarAiMessage, setSimilarAiMessage] = useState('');
+  const [similarEngineUsed, setSimilarEngineUsed] = useState<string | null>(null);
+  const [hasFetchedSimilar, setHasFetchedSimilar] = useState(false);
+
   const hasFreeQuota = (currentUser?.freeLoanQuota || 0) > 0;
   const activeEvent = activeEvents[0];
 
-  // Sync state if existing review changes
+  // Sync state if existing review changes or book changes
   React.useEffect(() => {
     if (existingUserReview) {
       setNewRating(existingUserReview.rating);
@@ -62,7 +87,32 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
       setNewRating(5);
       setNewComment('');
     }
+    setSimilarBooks([]);
+    setSimilarAiMessage('');
+    setSimilarEngineUsed(null);
+    setHasFetchedSimilar(false);
   }, [book?.id, currentUser?.id]);
+
+  const handleFetchSimilarBooks = async () => {
+    if (!book) return;
+    setIsLoadingSimilar(true);
+    setHasFetchedSimilar(true);
+    try {
+      const res = await getAiSimilarBooks(book.id, currentUser?.id);
+      if (res.success) {
+        const list = res.recommendedBooks || res.recommendations || [];
+        setSimilarBooks(list);
+        setSimilarAiMessage(res.message || '');
+        setSimilarEngineUsed(res.engineNameFormatted || res.engineUsed || 'Google Gemini ⚡️');
+      } else {
+        setSimilarAiMessage(res.message || 'پیشنهادهای هوشمند در حال حاضر در دسترس نیست.');
+      }
+    } catch (err: any) {
+      setSimilarAiMessage('خطا در پردازش کتاب‌های مشابه.');
+    } finally {
+      setIsLoadingSimilar(false);
+    }
+  };
 
   if (!book) return null;
 
@@ -390,6 +440,144 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
                     {m.icon}
                   </span>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* AI Similar Books Discovery Section (Hybrid Collaborative & Content-Based) */}
+          <div className="bg-gradient-to-br from-indigo-50/70 via-white to-amber-50/40 text-slate-800 rounded-3xl p-5 border border-indigo-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-amber-400 to-orange-400 text-amber-950 flex items-center justify-center shrink-0 shadow-xs border border-amber-300/40">
+                  <Sparkles className="w-5 h-5 text-amber-950" />
+                </div>
+                <div>
+                  <h3 className="font-black text-sm text-slate-900">
+                    کتاب‌های مشابه و خواندنی
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    اگر از این کتاب خوشت آمده، این پیشنهادها هم احتمالا برایت جذاب خواهند بود ✨
+                  </p>
+                </div>
+              </div>
+
+              {!hasFetchedSimilar && (
+                <button
+                  type="button"
+                  onClick={handleFetchSimilarBooks}
+                  disabled={isLoadingSimilar}
+                  className="px-4 py-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800 text-white font-bold text-xs rounded-xl shadow-sm transition flex items-center gap-1.5 cursor-pointer active:scale-95 disabled:opacity-50"
+                >
+                  {isLoadingSimilar ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>در حال جستجو...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4 fill-amber-300 text-amber-300" />
+                      <span>مشاهده کتاب‌های مشابه</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {isLoadingSimilar && (
+              <div className="py-6 text-center space-y-2 animate-in fade-in bg-white/60 rounded-2xl border border-indigo-50">
+                <Loader2 className="w-8 h-8 text-indigo-600 animate-spin mx-auto" />
+                <p className="text-xs text-slate-600 font-medium">
+                  در حال یافتن جذاب‌ترین کتاب‌های مشابه در کتابخانه...
+                </p>
+              </div>
+            )}
+
+            {hasFetchedSimilar && !isLoadingSimilar && (
+              <div className="space-y-3 animate-in fade-in">
+                {similarAiMessage && (
+                  <div className="p-3 bg-indigo-50/80 rounded-2xl text-xs text-indigo-950 border border-indigo-100 flex items-center justify-between">
+                    <span>{similarAiMessage}</span>
+                    {similarEngineUsed && (
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full font-bold">
+                        ⚡️ {similarEngineUsed}
+                      </span>
+                    )}
+                  </div>
+                )}
+
+                {similarBooks.length === 0 ? (
+                  <p className="text-xs text-slate-500 text-center py-3 bg-white/60 rounded-2xl border border-slate-100">
+                    کتاب مشابه دیگری در حال حاضر در کتابخانه ثبت نشده است.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {similarBooks.map((sim, idx) => {
+                      const bookData = sim.book || (sim as any);
+                      const targetId = bookData.id || (sim as any).bookId;
+                      const targetTitle = bookData.title;
+                      const targetAuthor = bookData.author;
+                      const targetCategory = bookData.category;
+                      const targetCover = bookData.coverImage;
+                      const targetStatus = bookData.status || 'available';
+                      const matchPct = sim.matchScore || (sim as any).matchPercentage || 90;
+                      const matchedBook = books.find((b) => b.id === targetId) || bookData;
+
+                      return (
+                        <div
+                          key={targetId || idx}
+                          className="bg-white hover:bg-slate-50/90 border border-slate-200/80 hover:border-indigo-300 shadow-2xs hover:shadow-xs rounded-2xl p-3 flex gap-3 transition group"
+                        >
+                          <img
+                            src={getSafeImageUrl(targetCover, 'book')}
+                            alt={targetTitle}
+                            className="w-14 h-20 object-cover rounded-xl shrink-0 shadow-2xs group-hover:scale-105 transition border border-slate-100"
+                          />
+                          <div className="flex-1 flex flex-col justify-between min-w-0">
+                            <div>
+                              <div className="flex items-center justify-between gap-1">
+                                <h4 className="font-bold text-xs text-slate-900 truncate">
+                                  {targetTitle}
+                                </h4>
+                                <span className="text-[10px] bg-amber-100 text-amber-900 border border-amber-300 font-bold px-1.5 py-0.5 rounded-md shrink-0">
+                                  %{matchPct}
+                                </span>
+                              </div>
+                              <p className="text-[10px] text-slate-500 truncate mt-0.5">
+                                {targetAuthor} • {targetCategory}
+                              </p>
+                              <p className="text-[10px] text-slate-600 line-clamp-2 mt-1 leading-relaxed">
+                                {sim.reason}
+                              </p>
+                            </div>
+
+                            <div className="pt-2 flex items-center justify-between">
+                              <span
+                                className={`text-[9px] font-bold px-2 py-0.5 rounded-md ${
+                                  targetStatus === 'available'
+                                    ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                    : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}
+                              >
+                                {targetStatus === 'available' ? 'آماده امانت' : 'امانت داده شده'}
+                              </span>
+
+                              {matchedBook && onSelectBook && (
+                                <button
+                                  type="button"
+                                  onClick={() => onSelectBook(matchedBook)}
+                                  className="text-[11px] text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 cursor-pointer"
+                                >
+                                  <span>مشاهده</span>
+                                  <ArrowLeft className="w-3 h-3" />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
           </div>
