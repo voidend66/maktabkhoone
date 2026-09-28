@@ -5916,6 +5916,22 @@ async function startServer() {
           const replyText = await generateGeminiText(promptForGemini, systemPrompt, geminiEndpointUrl, geminiTimeoutMs);
           const latencyMs = Date.now() - chatStartTime;
 
+          // Record Chatbot interaction log to DB
+          try {
+            dbService.addAiLog({
+              feature: 'chat',
+              featureTitle: 'چت‌بات زنده کتابدار',
+              engine: 'gemini',
+              modelName: geminiModel,
+              endpointUrl: geminiEndpointUrl,
+              prompt: promptForGemini,
+              systemInstruction: systemPrompt,
+              rawResponse: replyText,
+              latencyMs,
+              success: true
+            });
+          } catch {}
+
           return res.json({
             success: true,
             reply: replyText.trim(),
@@ -5958,6 +5974,22 @@ async function startServer() {
         if (chatRes.ok) {
           const chatData: any = await chatRes.json();
           const reply = chatData?.message?.content || chatData?.response || 'پاسخی دریافت نشد.';
+
+          try {
+            dbService.addAiLog({
+              feature: 'chat',
+              featureTitle: 'چت‌بات زنده کتابدار',
+              engine: 'ollama',
+              modelName,
+              endpointUrl: chatUrl,
+              prompt: userMessage,
+              systemInstruction: systemPrompt,
+              rawResponse: reply,
+              latencyMs,
+              success: true
+            });
+          } catch {}
+
           return res.json({
             success: true,
             reply: reply.trim(),
@@ -5986,9 +6018,26 @@ async function startServer() {
         const genLatencyMs = Date.now() - startTime;
         if (genRes.ok) {
           const genData: any = await genRes.json();
+          const reply = (genData?.response || '').trim();
+
+          try {
+            dbService.addAiLog({
+              feature: 'chat',
+              featureTitle: 'چت‌بات زنده کتابدار',
+              engine: 'ollama',
+              modelName,
+              endpointUrl: generateUrl,
+              prompt: userMessage,
+              systemInstruction: systemPrompt,
+              rawResponse: reply,
+              latencyMs: genLatencyMs,
+              success: true
+            });
+          } catch {}
+
           return res.json({
             success: true,
-            reply: (genData?.response || '').trim(),
+            reply,
             latencyMs: genLatencyMs,
             model: modelName
           });
@@ -6017,6 +6066,26 @@ async function startServer() {
         success: false,
         message: `خطای داخلی: ${err.message}`
       });
+    }
+  });
+
+  // AI Interaction Logs endpoints for Admin
+  app.get('/api/ai/logs', (req: Request, res: Response) => {
+    try {
+      const limit = Number(req.query?.limit) || 150;
+      const logs = dbService.getAiLogs(limit);
+      return res.json({ success: true, logs });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message, logs: [] });
+    }
+  });
+
+  app.delete('/api/ai/logs', (req: Request, res: Response) => {
+    try {
+      dbService.clearAiLogs();
+      return res.json({ success: true, message: 'تمام لاگ‌های تعاملات هوش مصنوعی پاکسازی شدند.' });
+    } catch (err: any) {
+      return res.status(500).json({ success: false, message: err.message });
     }
   });
 
@@ -6214,7 +6283,11 @@ async function startServer() {
     });
 
     scored.sort((a, b) => b.score - a.score);
-    const maxCands = Math.max(2, Math.min(12, aiConfig.maxCandidates !== undefined ? aiConfig.maxCandidates : 4));
+    // Allow Gemini to process a wide shelf of books (up to 50 books)
+    const isGeminiEngine = !body?.targetEngine || body?.targetEngine === 'gemini';
+    const defaultCandidatesCount = isGeminiEngine ? 35 : 10;
+    const configuredLimit = typeof aiConfig.maxCandidates === 'number' ? aiConfig.maxCandidates : defaultCandidatesCount;
+    const maxCands = Math.max(4, Math.min(60, configuredLimit));
     let candidates = scored.slice(0, maxCands).map((s) => s.book);
 
     // Feature D: Serendipity / Diversity Injector (prevents over-canalization)
@@ -6299,29 +6372,57 @@ async function startServer() {
     let httpStatusCode: number | null = null;
 
     if (aiConfig.enabled !== false) {
+      const readBooks = userRequests
+        .map((r) => allBooks.find((b) => b.id === r.bookId))
+        .filter(Boolean) as any[];
+      const readTitles = readBooks.map((b) => b.title).filter(Boolean);
+      const readTitlesSnippet = readTitles.length > 0
+        ? ` (از جمله: «${readTitles.slice(0, 6).join('»، «')}»)`
+        : '';
+
+      const topCategoriesList = Object.entries(userCategoryCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 4)
+        .map(([cat, cnt]) => `${cat} (${cnt} بار)`)
+        .join('، ');
+
       const booksListPrompt = candidates.map((b, idx) => {
-        return `${idx + 1}. [شناسه: "${b.id}" | عنوان: "${b.title}" | نویسنده: "${b.author}" | موضوع: ${b.category}]`;
+        const isClassFav = classmateBookCounts[b.id] ? ` ⭐️[محبوب در کلاس]` : '';
+        const pages = b.pageCount ? ` | ${b.pageCount} صفحه` : '';
+        const rating = (b.rating && b.rating > 0) ? ` | امتیاز: ${b.rating}⭐️` : '';
+        const descSnippet = b.description ? ` | خلاصه: "${b.description.replace(/[\r\n]+/g, ' ').slice(0, 110)}..."` : '';
+        const tags = (b.tags && b.tags.length > 0) ? ` | تگ‌ها: [${b.tags.slice(0, 4).join(', ')}]` : '';
+        return `${idx + 1}. [شناسه: "${b.id}"] «${b.title}» اثر ${b.author} | موضوع: ${b.category}${pages}${rating}${isClassFav}${tags}${descSnippet}`;
       }).join('\n');
 
       const userFeedbacks = userId ? allFeedbacks.filter((f) => f.fromUserId === userId) : [];
 
       const userContextList = [
-        `🎯 سلیقه و حس‌وحال انتخابی: ${moodLabel}${customPrompt ? ` (خواسته: ${customPrompt})` : ''}`,
-        currentUser ? `👤 دانش‌آموز: ${currentUser.name} (کلاس ${currentUser.className})` : '',
-        userRequests.length > 0 ? `📚 تاریخچه امانت: ${userRequests.length} کتاب قبلاً امانت گرفته شده است.` : '',
-        Object.keys(classmateBookCounts).length > 0 ? `👥 محبوبیت در هم‌کلاسی‌ها: کتاب‌های این قفسه قبلاً مورد استقبال دانش‌آموزان کلاس ${currentUser?.className || ''} قرار گرفته‌اند.` : '',
-        userFeedbacks.length > 0 ? `⭐️ میانگین امتیازدهی‌های قبلی دانش‌آموز: ${userFeedbacks.length} نظر ثبت شده است.` : '',
-        `🌟 عامل تنوع‌بخشی (Serendipity): ضریب تنوع ${diversityFactor}% فعال است تا کتاب‌ها بیش از حد کانالیزه نشوند و گزینه‌ای برای تجربه و کشف افق جدید وجود داشته باشد.`
+        `🎯 سلیقه، مود و سبک انتخابی: ${moodLabel}${customPrompt ? ` | خواسته ویژه کاربر: "${customPrompt}"` : ''}`,
+        currentUser ? `👤 مشخصات دانش‌آموز: ${currentUser.name} (کلاس ${currentUser.className})` : '👤 مشخصات کاربر: مهمان کتابخانه',
+        userRequests.length > 0 ? `📚 سابقه امانت کتاب: ${userRequests.length} کتاب قبلاً امانت گرفته شده${readTitlesSnippet}.` : '📚 سابقه امانت: عضو تازه‌وارد کتابخانه',
+        topCategoriesList ? `❤️ ژانرهای پرتکرار در سابقه دانش‌آموز: ${topCategoriesList}` : '',
+        Object.keys(classmateBookCounts).length > 0 ? `👥 الگوی هم‌کلاسی‌ها: کتاب‌های دارای علامت ⭐️[محبوب در کلاس] قبلاً توسط هم‌کلاسی‌های کلاس ${currentUser?.className || ''} بارها خوانده و پسندیده شده‌اند.` : '',
+        userFeedbacks.length > 0 ? `📝 بازخورد پس از مطالعه: دانش‌آموز برای کتاب‌های پیشین ${userFeedbacks.length} نقد و امتیاز ثبت کرده است.` : '',
+        `🌟 پالایش ترکیبی و ضریب تنوع (${diversityFactor}%): برای حفظ تعادل و جلوگیری از کانالیزه شدن، علاوه بر کتاب منطبق بر سلیقه اصلی، ۱ کتاب جذاب و تحسین‌شده از ژانری دیگر را برای کشف افق تازه و گسترش دایره مطالعاتی پیشنهاد بده.`
       ].filter(Boolean).join('\n');
 
-      userPrompt = `📚 قفسه کتاب‌های کاندیدا:
+      userPrompt = `📚 قفسه کتاب‌های کاندیدا در کتابخانه (${candidates.length} عنوان کتاب):
 ${booksListPrompt}
 
-📌 اطلاعات زمینه دانش‌آموز و رفتار واقعی:
+📌 پروفایل دانش‌آموز، سوابق واقعی و الگوهای یادگیری:
 ${userContextList}
 
-ماموریت: از میان لیست ارائه‌شده، ۲ کتاب برتر (ترجیحاً ۱ کتاب با تطابق کامل با سلیقه اصلی و ۱ کتاب عالی برای کشف تجربه جدید و تنوع‌بخشی) انتخاب کن و خروجی را فقط در قالب شیء JSON با greeting (یک جمله کوتاه و صمیمی) و recommendations (شامل bookId و reason ترغیب‌کننده) تولید کن:
-{"greeting":"...","recommendations":[{"bookId":"...","reason":"..."}]}`;
+ماموریت: از میان لیست ارائه‌شده، ۲ الی ۳ کتاب برتر را با تحلیل دقیق سوابق و تنوع‌بخشی انتخاب کن و خروجی را فقط و فقط به صورت یک شیء JSON معتبر به شکل زیر تولید کن:
+{
+  "greeting": "سلام صمیمی و پرانرژی فارسی به دانش‌آموز...",
+  "recommendations": [
+    {
+      "bookId": "شناسه دقیق کتاب از قفسه",
+      "reason": "دلیل شیوا و انگیزه‌بخش فارسی که چرا این کتاب خاص را برای او انتخاب کرده‌ای."
+    }
+  ]
+}`;
 
       // 1. Primary: Gemini 3.5 Flash Lite
       try {
@@ -6503,6 +6604,37 @@ ${userContextList}
         }
         return { book: b, reason };
       });
+    }
+
+    // Persist complete AI interaction log to database
+    try {
+      dbService.addAiLog({
+        userId: currentUser?.id,
+        userName: currentUser ? currentUser.name : (body?.isTest ? 'مدیر (تست)' : 'کاربر مهمان'),
+        userRole: currentUser?.role || 'user',
+        userClass: currentUser?.className,
+        feature: body?.bookIdForSimilar ? 'similar_books' : (body?.isTest ? 'playground' : 'recommendation'),
+        featureTitle: body?.bookIdForSimilar ? 'کتاب‌های مشابه' : (body?.isTest ? 'شبیه‌ساز هوش مصنوعی' : 'پیشنهاد کتابدار هوشمند'),
+        engine: targetModelName.includes('gemini') ? 'gemini' : (isAiGenerated ? 'ollama' : 'hybrid_fallback'),
+        modelName: targetModelName,
+        endpointUrl: targetGenerateUrl,
+        prompt: userPrompt,
+        systemInstruction: systemPromptUsed,
+        rawResponse: rawAiResponseText || (parseSuccess ? JSON.stringify(parsedOutput) : undefined),
+        recommendationsCount: recommendationsResult.length,
+        recommendedBooks: recommendationsResult.map((r) => ({
+          id: r.book.id,
+          title: r.book.title,
+          author: r.book.author,
+          reason: r.reason
+        })),
+        candidatesCount: candidates.length,
+        latencyMs,
+        success: recommendationsResult.length > 0 && (isAiGenerated || fallbackEnabled),
+        errorMessage: fetchErrorStr || undefined
+      });
+    } catch (logErr) {
+      console.warn('Failed to persist AI interaction log:', logErr);
     }
 
     return {

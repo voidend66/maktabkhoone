@@ -14,7 +14,8 @@ import {
   LocalAiConfig,
   AiRecommendationRequest,
   AiRecommendationResult,
-  AiHealthCheckResult
+  AiHealthCheckResult,
+  AiInteractionLog
 } from '../types';
 
 const API_BASE = '/api';
@@ -847,6 +848,24 @@ export const api = {
         latencyMs: null,
         message: err.message || 'خطا در برقراری ارتباط با سرور سایت'
       };
+    }
+  },
+
+  async getAiLogs(limit: number = 100): Promise<{ success: boolean; logs: AiInteractionLog[] }> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/logs?limit=${limit}`);
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, logs: [] };
+    }
+  },
+
+  async clearAiLogs(): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/logs`, { method: 'DELETE' });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در پاکسازی لاگ‌ها' };
     }
   },
 

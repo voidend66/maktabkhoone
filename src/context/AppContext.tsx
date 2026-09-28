@@ -17,7 +17,8 @@ import {
   LocalAiConfig,
   AiRecommendationRequest,
   AiRecommendationResult,
-  AiHealthCheckResult
+  AiHealthCheckResult,
+  AiInteractionLog
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
@@ -198,6 +199,8 @@ interface AppContextType {
     message: string;
   }>;
   checkAiHealth: (params?: Partial<LocalAiConfig>) => Promise<AiHealthCheckResult>;
+  getAiLogs: (limit?: number) => Promise<{ success: boolean; logs: AiInteractionLog[] }>;
+  clearAiLogs: () => Promise<{ success: boolean; message: string }>;
   chatWithAi: (params: {
     message: string;
     messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
@@ -1643,6 +1646,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return await api.checkAiHealth(params);
   };
 
+  const getAiLogs = async (limit?: number) => {
+    return await api.getAiLogs(limit);
+  };
+
+  const clearAiLogs = async () => {
+    return await api.clearAiLogs();
+  };
+
   const chatWithAi = async (params: {
     message: string;
     messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
@@ -1741,6 +1752,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         testAiConnection,
         testGeminiConnection,
         checkAiHealth,
+        getAiLogs,
+        clearAiLogs,
         chatWithAi,
         getAiBookRecommendations,
         getAiSimilarBooks

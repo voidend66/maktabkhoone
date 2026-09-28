@@ -430,6 +430,30 @@ export interface AiRecommendationResult {
   };
 }
 
+export interface AiInteractionLog {
+  id: string;
+  timestamp: string; // ISO string
+  timestampFa: string; // Persian formatted date and time
+  userId?: string;
+  userName?: string;
+  userRole?: string;
+  userClass?: string;
+  feature: 'recommendation' | 'chat' | 'playground' | 'similar_books';
+  featureTitle: string; // e.g. "پیشنهاد کتابدار هوشمند" | "چت‌بات زنده" | "آزمون شبیه‌ساز" | "کتاب‌های مشابه"
+  engine: 'gemini' | 'ollama' | 'hybrid_fallback';
+  modelName: string; // e.g. "gemini-3.5-flash-lite"
+  endpointUrl: string;
+  prompt: string;
+  systemInstruction?: string;
+  rawResponse?: string;
+  recommendationsCount?: number;
+  recommendedBooks?: Array<{ id: string; title: string; author: string; reason?: string }>;
+  candidatesCount?: number;
+  latencyMs: number;
+  success: boolean;
+  errorMessage?: string;
+}
+
 export interface InstalledOllamaModel {
   name: string;
   sizeFormatted: string;

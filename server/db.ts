@@ -13,7 +13,8 @@ import {
   CustomAvatar,
   AppNotification,
   SystemEvent,
-  UserEventProgress
+  UserEventProgress,
+  AiInteractionLog
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
 
@@ -102,6 +103,7 @@ interface DatabaseSchema {
   systemLogs?: SystemLog[];
   notifications?: AppNotification[];
   events?: SystemEvent[];
+  aiLogs?: AiInteractionLog[];
   analytics?: any;
 }
 
@@ -117,6 +119,7 @@ let memoryDb: DatabaseSchema = {
   systemLogs: [],
   notifications: [],
   events: [],
+  aiLogs: [],
   analytics: null
 };
 
@@ -203,6 +206,7 @@ function loadFromDisk(): boolean {
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
           events: Array.isArray(parsed.events) ? parsed.events : [],
+          aiLogs: Array.isArray(parsed.aiLogs) ? parsed.aiLogs : [],
           analytics: parsed.analytics || null
         };
         return true;
@@ -225,6 +229,7 @@ function loadFromDisk(): boolean {
           systemLogs: Array.isArray(parsed.systemLogs) ? parsed.systemLogs : [],
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
           events: Array.isArray(parsed.events) ? parsed.events : [],
+          aiLogs: Array.isArray(parsed.aiLogs) ? parsed.aiLogs : [],
           analytics: parsed.analytics || null
         };
         return true;
@@ -1954,5 +1959,37 @@ export const dbService = {
       user: updatedUser,
       events: claimedEventTitles
     };
+  },
+
+  // ==========================================
+  // ---- AI INTERACTION LOGS & AUDIT TRAIL ----
+  // ==========================================
+  addAiLog(logData: Omit<AiInteractionLog, 'id' | 'timestamp' | 'timestampFa'>): AiInteractionLog {
+    if (!memoryDb.aiLogs) memoryDb.aiLogs = [];
+    const now = new Date();
+    const newLog: AiInteractionLog = {
+      id: `ailog_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      timestamp: now.toISOString(),
+      timestampFa: `${now.toLocaleDateString('fa-IR')} ${now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+      ...logData
+    };
+    memoryDb.aiLogs.unshift(newLog);
+    // Keep max 350 AI interaction records
+    if (memoryDb.aiLogs.length > 350) {
+      memoryDb.aiLogs = memoryDb.aiLogs.slice(0, 350);
+    }
+    saveToDisk();
+    return newLog;
+  },
+
+  getAiLogs(limit: number = 100): AiInteractionLog[] {
+    if (!memoryDb.aiLogs) memoryDb.aiLogs = [];
+    return memoryDb.aiLogs.slice(0, Math.max(1, Math.min(350, limit)));
+  },
+
+  clearAiLogs(): boolean {
+    memoryDb.aiLogs = [];
+    saveToDisk();
+    return true;
   }
 };

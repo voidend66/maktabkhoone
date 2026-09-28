@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { LocalAiConfig, Book, AiHealthCheckResult, InstalledOllamaModel } from '../types';
+import { LocalAiConfig, Book, AiHealthCheckResult, InstalledOllamaModel, AiInteractionLog } from '../types';
 import { getSafeImageUrl, DEFAULT_BOOK_COVER } from '../utils/coverPresets';
 import {
   Bot,
@@ -30,7 +30,13 @@ import {
   Send,
   Trash2,
   User,
-  CornerDownLeft
+  CornerDownLeft,
+  History,
+  FileText,
+  Search,
+  Filter,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 const SYSTEM_PROMPT_PRESETS = [
@@ -71,7 +77,17 @@ const SYSTEM_PROMPT_PRESETS = [
 ];
 
 export const AdminAiSettingsTab: React.FC = () => {
-  const { systemConfig, updateSystemConfig, testAiConnection, testGeminiConnection, checkAiHealth, chatWithAi, getAiBookRecommendations } = useApp();
+  const {
+    systemConfig,
+    updateSystemConfig,
+    testAiConnection,
+    testGeminiConnection,
+    checkAiHealth,
+    chatWithAi,
+    getAiBookRecommendations,
+    getAiLogs,
+    clearAiLogs
+  } = useApp();
 
   const currentAiConfig = systemConfig?.aiConfig || {
     enabled: true,
@@ -174,6 +190,39 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [isChatLoading, setIsChatLoading] = useState(false);
   const [chatElapsedSec, setChatElapsedSec] = useState(0);
   const [chatError, setChatError] = useState('');
+
+  // AI Interaction Logs State
+  const [aiLogs, setAiLogs] = useState<AiInteractionLog[]>([]);
+  const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+  const [selectedLog, setSelectedLog] = useState<AiInteractionLog | null>(null);
+  const [logFilterFeature, setLogFilterFeature] = useState<string>('all');
+  const [logFilterStatus, setLogFilterStatus] = useState<string>('all');
+  const [logSearchQuery, setLogSearchQuery] = useState<string>('');
+
+  const loadAiLogs = async () => {
+    setIsLoadingLogs(true);
+    try {
+      const res = await getAiLogs(150);
+      if (res && res.success && Array.isArray(res.logs)) {
+        setAiLogs(res.logs);
+      }
+    } finally {
+      setIsLoadingLogs(false);
+    }
+  };
+
+  useEffect(() => {
+    loadAiLogs();
+  }, []);
+
+  const handleClearAiLogs = async () => {
+    if (!window.confirm('آیا از پاکسازی تمام تاریخچه و لاگ‌های تعاملات هوش مصنوعی اطمینان دارید؟')) return;
+    const res = await clearAiLogs();
+    if (res && res.success) {
+      setAiLogs([]);
+      setSelectedLog(null);
+    }
+  };
 
   const handleSendMessage = async (textToSend?: string) => {
     const message = (textToSend !== undefined ? textToSend : chatInput).trim();
@@ -285,7 +334,7 @@ export const AdminAiSettingsTab: React.FC = () => {
       temperature: Number(temperature),
       topP: Number(topP),
       repeatPenalty: Number(repeatPenalty),
-      maxCandidates: Math.max(4, Math.min(30, maxCandidates)),
+      maxCandidates: Math.max(4, Math.min(60, maxCandidates)),
       timeoutSeconds: Math.max(0, Math.min(300, timeoutSeconds)),
       fallbackEnabled: Boolean(fallbackEnabled),
       useReadingHistory,
@@ -1107,14 +1156,14 @@ export const AdminAiSettingsTab: React.FC = () => {
               <input
                 type="range"
                 min="6"
-                max="25"
-                step="1"
+                max="60"
+                step="2"
                 value={maxCandidates}
-                onChange={(e) => setMaxCandidates(parseInt(e.target.value) || 14)}
+                onChange={(e) => setMaxCandidates(parseInt(e.target.value) || 20)}
                 className="w-full accent-indigo-600 cursor-pointer"
               />
               <span className="text-[10px] text-slate-400 block leading-tight">
-                تعداد کتاب‌های برتر قفسه که در قالب پرامپت به هوش مصنوعی داده می‌شود.
+                تعداد کتاب‌های برتر قفسه (با توجه به پنجره پردازش وسیع Gemini 3.5، پیشنهاد: ۳۰ الی ۵۰ کتاب).
               </span>
             </div>
 
@@ -1968,6 +2017,378 @@ export const AdminAiSettingsTab: React.FC = () => {
             </div>
           )}
         </div>
+      </div>
+
+      {/* ======================================================== */}
+      {/* ۵. تاریخچه و لاگ کامل تعاملات هوش مصنوعی (AI Interaction Logs) */}
+      {/* ======================================================== */}
+      <div className="pt-8 border-t-2 border-slate-200/80 space-y-4">
+        {/* Header & Controls */}
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-amber-500 to-indigo-600 text-white rounded-2xl shadow-sm">
+              <History className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h4 className="text-base font-black text-slate-900">
+                  تاریخچه و لاگ تعاملات هوش مصنوعی (AI Interaction Logs)
+                </h4>
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                  {aiLogs.length} تعامل ثبت‌شده
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500">
+                مشاهده تمام درخواست‌های ارسالی دانش‌آموزان به هوش مصنوعی، پرامپت ارسالی، پاسخ خام دریافتی، کتاب‌های پیشنهادی و سرعت پاسخگویی
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              onClick={loadAiLogs}
+              disabled={isLoadingLogs}
+              className="px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer shadow-xs disabled:opacity-50"
+              title="بارگذاری مجدد لاگ‌ها"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-indigo-600 ${isLoadingLogs ? 'animate-spin' : ''}`} />
+              <span>بروزرسانی لاگ‌ها</span>
+            </button>
+
+            {aiLogs.length > 0 && (
+              <button
+                type="button"
+                onClick={handleClearAiLogs}
+                className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+                title="پاکسازی تاریخچه لاگ‌ها"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>پاکسازی تاریخچه</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Stats Strip */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold block">کل درخواست‌ها</span>
+            <span className="text-lg font-black text-slate-900 font-mono mt-0.5 block">{aiLogs.length}</span>
+          </div>
+
+          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold block">پردازش‌شده توسط Gemini ابری</span>
+            <span className="text-lg font-black text-indigo-600 font-mono mt-0.5 block">
+              {aiLogs.filter((l) => l.engine === 'gemini' || l.modelName.includes('gemini')).length}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold block">موفقیت‌آمیز</span>
+            <span className="text-lg font-black text-emerald-600 font-mono mt-0.5 block">
+              {aiLogs.filter((l) => l.success).length}
+            </span>
+          </div>
+
+          <div className="p-3 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+            <span className="text-[10px] text-slate-500 font-bold block">میانگین سرعت پاسخ</span>
+            <span className="text-lg font-black text-slate-900 font-mono mt-0.5 block">
+              {aiLogs.length > 0
+                ? `${Math.round(aiLogs.reduce((acc, l) => acc + (l.latencyMs || 0), 0) / aiLogs.length)}ms`
+                : '-'}
+            </span>
+          </div>
+        </div>
+
+        {/* Search & Filter Controls */}
+        <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 flex items-center justify-between flex-wrap gap-2.5">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="w-4 h-4 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={logSearchQuery}
+              onChange={(e) => setLogSearchQuery(e.target.value)}
+              placeholder="جستجو بر اساس نام دانش‌آموز، عنوان کتاب یا کلمات پرامپت..."
+              className="w-full pr-9 pl-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap text-xs">
+            {/* Filter by Feature */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 text-[11px] font-bold">بخش:</span>
+              <select
+                value={logFilterFeature}
+                onChange={(e) => setLogFilterFeature(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none"
+              >
+                <option value="all">همه بخش‌ها</option>
+                <option value="recommendation">پیشنهاد کتابدار هوشمند</option>
+                <option value="chat">چت‌بات زنده</option>
+                <option value="playground">شبیه‌ساز / آزمون</option>
+                <option value="similar_books">کتاب‌های مشابه</option>
+              </select>
+            </div>
+
+            {/* Filter by Status */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-500 text-[11px] font-bold">وضعیت:</span>
+              <select
+                value={logFilterStatus}
+                onChange={(e) => setLogFilterStatus(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs text-slate-800 font-bold focus:outline-none"
+              >
+                <option value="all">همه وضعیت‌ها</option>
+                <option value="success">فقط موفق</option>
+                <option value="error">فقط دارای خطا</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Logs List */}
+        {isLoadingLogs ? (
+          <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 space-y-2">
+            <div className="w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="text-xs text-slate-500 font-bold">در حال فراخوانی تاریخچه تعاملات...</p>
+          </div>
+        ) : aiLogs.length === 0 ? (
+          <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 space-y-2">
+            <FileText className="w-8 h-8 text-slate-300 mx-auto" />
+            <p className="text-xs font-bold text-slate-700">هنوز تعاملی در دیتابیس هوش مصنوعی ثبت نشده است.</p>
+            <p className="text-[11px] text-slate-400">
+              به محض استفاده دانش‌آموزان از کتابدار هوشمند یا اجرای آزمون در شبیه‌ساز و چت‌بات، تمام جزئیات در اینجا لاگ می‌شود.
+            </p>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {aiLogs
+              .filter((log) => {
+                if (logFilterFeature !== 'all' && log.feature !== logFilterFeature) return false;
+                if (logFilterStatus === 'success' && !log.success) return false;
+                if (logFilterStatus === 'error' && log.success) return false;
+                if (logSearchQuery.trim()) {
+                  const q = logSearchQuery.trim().toLowerCase();
+                  const matchUser = (log.userName || '').toLowerCase().includes(q);
+                  const matchClass = (log.userClass || '').toLowerCase().includes(q);
+                  const matchPrompt = (log.prompt || '').toLowerCase().includes(q);
+                  const matchResponse = (log.rawResponse || '').toLowerCase().includes(q);
+                  const matchBooks = (log.recommendedBooks || []).some(
+                    (b) => b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q)
+                  );
+                  if (!matchUser && !matchClass && !matchPrompt && !matchResponse && !matchBooks) {
+                    return false;
+                  }
+                }
+                return true;
+              })
+              .map((log) => {
+                const isSelected = selectedLog?.id === log.id;
+                const isGemini = log.engine === 'gemini' || (log.modelName && log.modelName.includes('gemini'));
+
+                return (
+                  <div
+                    key={log.id}
+                    className={`bg-white rounded-2xl border transition shadow-2xs overflow-hidden ${
+                      isSelected ? 'border-indigo-500 ring-2 ring-indigo-100' : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    {/* Log Row Header */}
+                    <div className="p-4 flex items-center justify-between flex-wrap gap-3">
+                      <div className="flex items-center gap-3">
+                        <div
+                          className={`w-3 h-3 rounded-full shrink-0 ${
+                            log.success ? 'bg-emerald-500 ring-4 ring-emerald-100' : 'bg-rose-500 ring-4 ring-rose-100'
+                          }`}
+                          title={log.success ? 'موفق' : 'دارای خطا'}
+                        />
+
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-black text-slate-900">
+                              {log.userName || 'کاربر مهمان'}
+                            </span>
+                            {log.userClass && (
+                              <span className="text-[10px] px-2 py-0.5 bg-slate-100 text-slate-600 rounded-md font-bold">
+                                {log.userClass}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[10px] px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1 ${
+                                isGemini
+                                  ? 'bg-linear-to-r from-indigo-100 to-sky-100 text-indigo-900 border border-indigo-200'
+                                  : 'bg-slate-100 text-slate-700 border border-slate-200'
+                              }`}
+                            >
+                              <Sparkles className="w-3 h-3 text-indigo-600" />
+                              <span>{isGemini ? 'Gemini 3.5 Flash' : log.modelName}</span>
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 bg-amber-50 text-amber-800 rounded-md font-bold border border-amber-200">
+                              {log.featureTitle || log.feature}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-3 text-[10px] text-slate-400 mt-1 font-mono">
+                            <span>{log.timestampFa}</span>
+                            <span>•</span>
+                            <span className="text-indigo-600 font-bold">{log.latencyMs}ms</span>
+                            {log.candidatesCount !== undefined && log.candidatesCount > 0 && (
+                              <>
+                                <span>•</span>
+                                <span>{log.candidatesCount} کتاب در قفسه</span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right Action: Expand/Collapse */}
+                      <button
+                        type="button"
+                        onClick={() => setSelectedLog(isSelected ? null : log)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                          isSelected
+                            ? 'bg-indigo-600 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {isSelected ? (
+                          <>
+                            <EyeOff className="w-3.5 h-3.5" />
+                            <span>بستن جزئیات</span>
+                          </>
+                        ) : (
+                          <>
+                            <Eye className="w-3.5 h-3.5" />
+                            <span>مشاهده پرامپت و پاسخ</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Book recommendations badge list preview */}
+                    {log.recommendedBooks && log.recommendedBooks.length > 0 && (
+                      <div className="px-4 pb-3 flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[10px] text-slate-400 font-bold">کتاب‌های پیشنهادی:</span>
+                        {log.recommendedBooks.map((b, i) => (
+                          <span
+                            key={i}
+                            className="text-[10px] bg-slate-50 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200 font-bold flex items-center gap-1"
+                          >
+                            <BookOpen className="w-2.5 h-2.5 text-indigo-600" />
+                            <span>«{b.title}» ({b.author})</span>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Expanded Deep Diagnostic Inspection Drawer */}
+                    {isSelected && (
+                      <div className="border-t border-slate-200 bg-slate-50/70 p-4 space-y-4 animate-in fade-in duration-150">
+                        {/* 1. Prompt Sent to Model */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <FileText className="w-3.5 h-3.5 text-indigo-600" />
+                              <span>متن کامل ارسالی به هوش مصنوعی (پرامپت و قفسه کاندیداها):</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleCopy(log.prompt);
+                                setCopiedText(`prompt-${log.id}`);
+                                setTimeout(() => setCopiedText(''), 2000);
+                              }}
+                              className="text-[10px] px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              {copiedText === `prompt-${log.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span className="text-emerald-700">کپی شد</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>کپی پرامپت</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <pre className="p-3 bg-slate-900 text-slate-100 rounded-xl font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto select-all">
+                            {log.prompt || 'پرامپتی ثبت نشده است.'}
+                          </pre>
+                        </div>
+
+                        {/* 2. Raw AI Response */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-yellow-500" />
+                              <span>پاسخ خام دریافتی از هوش مصنوعی:</span>
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleCopy(log.rawResponse || '');
+                                setCopiedText(`resp-${log.id}`);
+                                setTimeout(() => setCopiedText(''), 2000);
+                              }}
+                              className="text-[10px] px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:text-indigo-600 font-bold flex items-center gap-1 cursor-pointer"
+                            >
+                              {copiedText === `resp-${log.id}` ? (
+                                <>
+                                  <Check className="w-3 h-3 text-emerald-600" />
+                                  <span className="text-emerald-700">کپی شد</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3 h-3" />
+                                  <span>کپی پاسخ</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                          <pre className="p-3 bg-white text-slate-800 border border-slate-200 rounded-xl font-mono text-[11px] leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto select-all">
+                            {log.rawResponse || 'پاسخ خامی ثبت نشده است.'}
+                          </pre>
+                        </div>
+
+                        {/* 3. Reasons for recommended books */}
+                        {log.recommendedBooks && log.recommendedBooks.length > 0 && (
+                          <div className="space-y-2 pt-2 border-t border-slate-200">
+                            <span className="text-xs font-bold text-slate-800 block">
+                              دلایل معرفی کتاب‌ها به دانش‌آموز:
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {log.recommendedBooks.map((rb, idx) => (
+                                <div key={idx} className="p-2.5 bg-white rounded-xl border border-slate-200 text-xs space-y-1">
+                                  <strong className="text-indigo-950 font-bold block">
+                                    {idx + 1}. «{rb.title}» اثر {rb.author}
+                                  </strong>
+                                  <p className="text-[11px] text-slate-600 leading-relaxed">
+                                    {rb.reason || 'بدون توضیح اضافی.'}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 4. Endpoint info */}
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1">
+                          <span>اندپوینت فعال: {log.endpointUrl}</span>
+                          {log.errorMessage && (
+                            <span className="text-rose-600 font-sans font-bold">خطا: {log.errorMessage}</span>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        )}
       </div>
     </div>
   );
