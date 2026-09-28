@@ -171,7 +171,7 @@ interface AppContextType {
   claimEventReward: (eventId: string) => Promise<{ success: boolean; message: string; user?: User; progress?: UserEventProgress }>;
   grantFreeLoans: (userId: string, count: number, reason?: string) => Promise<{ success: boolean; message: string; user?: User }>;
   acknowledgeFreeLoanReward: () => Promise<void>;
-  updateUserBirthday: (birthMonth: number, birthDay: number) => Promise<{ success: boolean; message?: string }>;
+  updateUserBirthday: (birthMonth: number, birthDay: number, targetUserId?: string, forceAdminOverride?: boolean) => Promise<{ success: boolean; message?: string; user?: User }>;
   claimBirthdayReward: () => Promise<{ success: boolean; rewardCount?: number; message?: string }>;
   requestBookLoan: (
     bookId: string,
@@ -1599,14 +1599,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   // Update User Birthday
-  const updateUserBirthday = async (birthMonth: number, birthDay: number) => {
-    if (!currentUser) return { success: false, message: 'لطفاً وارد حساب کاربری شوید' };
+  const updateUserBirthday = async (
+    birthMonth: number,
+    birthDay: number,
+    targetUserId?: string,
+    forceAdminOverride?: boolean
+  ) => {
+    const effectiveUserId = targetUserId || currentUser?.id;
+    if (!effectiveUserId) return { success: false, message: 'شناسه کاربر مشخص نیست' };
     try {
-      const res = await api.updateBirthday(currentUser.id, birthMonth, birthDay);
+      const isForce = forceAdminOverride ?? (currentUser?.role === 'admin');
+      const res = await api.updateBirthday(effectiveUserId, birthMonth, birthDay, isForce);
       if (res.success && res.user) {
-        setCurrentUser(res.user);
-        localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
-        setUsers((prev) => prev.map((u) => (u.id === currentUser.id ? res.user! : u)));
+        if (currentUser && currentUser.id === effectiveUserId) {
+          setCurrentUser(res.user);
+          localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(res.user));
+        }
+        setUsers((prev) => prev.map((u) => (u.id === effectiveUserId ? res.user! : u)));
       }
       return res;
     } catch (err: any) {

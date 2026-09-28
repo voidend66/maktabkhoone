@@ -1958,26 +1958,45 @@ export const AdminAiSettingsTab: React.FC = () => {
                   <div className="space-y-2">
                     <span className="text-[11px] font-black text-slate-700 block">کتاب‌های برگزیده مدل:</span>
                     {simulationResult.recommendedBooks && simulationResult.recommendedBooks.length > 0 ? (
-                      simulationResult.recommendedBooks.map(({ book, reason }: any, idx: number) => (
-                        <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs flex items-start gap-2.5">
-                          <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shrink-0 mt-0.5">
-                            {idx + 1}
-                          </span>
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-black text-slate-900 text-xs">
-                                {book.title} <span className="text-slate-500 font-normal">({book.author})</span>
-                              </span>
-                              <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">
-                                {book.id}
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-700 mt-1 bg-white p-2 rounded-lg border border-slate-100 leading-relaxed">
-                              💡 <strong>دلیل معرفی مدل:</strong> {reason}
+                      simulationResult.recommendedBooks.map(({ book, reason, isDiscovery, discoveryBadge }: any, idx: number) => {
+                        const isWildcard = isDiscovery === true || idx === 2;
+                        return (
+                          <div
+                            key={idx}
+                            className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                              isWildcard
+                                ? 'bg-amber-50/70 border-amber-300 ring-1 ring-amber-200/50'
+                                : 'bg-slate-50 border-slate-200'
+                            }`}
+                          >
+                            <span className={`w-6 h-6 rounded-full text-white flex items-center justify-center text-xs font-black shrink-0 mt-0.5 ${
+                              isWildcard ? 'bg-amber-600' : 'bg-indigo-600'
+                            }`}>
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center justify-between gap-2 flex-wrap">
+                                <span className="font-black text-slate-900 text-xs">
+                                  {book.title} <span className="text-slate-500 font-normal">({book.author})</span>
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  {isWildcard && (
+                                    <span className="text-[10px] bg-purple-100 text-purple-800 font-bold px-2 py-0.5 rounded-md border border-purple-200">
+                                      {discoveryBadge || '✨ کشف افق تازه'}
+                                    </span>
+                                  )}
+                                  <span className="text-[10px] bg-slate-200 px-1.5 py-0.5 rounded text-slate-700 font-mono">
+                                    {book.id}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="text-[11px] text-slate-700 mt-1 bg-white p-2 rounded-lg border border-slate-100 leading-relaxed">
+                                💡 <strong>{isWildcard ? 'توضیح تنوع‌بخشی و افق تازه:' : 'دلیل معرفی مدل:'}</strong> {reason}
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     ) : (
                       <p className="text-xs text-slate-500 p-3 bg-slate-50 rounded-xl border border-dashed border-slate-200">
                         کتابی استخراج نشد.
@@ -2278,10 +2297,17 @@ export const AdminAiSettingsTab: React.FC = () => {
                         {log.recommendedBooks.map((b, i) => (
                           <span
                             key={i}
-                            className="text-[10px] bg-slate-50 text-slate-800 px-2 py-0.5 rounded-md border border-slate-200 font-bold flex items-center gap-1"
+                            className={`text-[10px] px-2 py-0.5 rounded-md border font-bold flex items-center gap-1 ${
+                              b.isDiscovery || i === 2
+                                ? 'bg-amber-50 text-amber-900 border-amber-200'
+                                : 'bg-slate-50 text-slate-800 border-slate-200'
+                            }`}
                           >
-                            <BookOpen className="w-2.5 h-2.5 text-indigo-600" />
+                            <BookOpen className={`w-2.5 h-2.5 ${b.isDiscovery || i === 2 ? 'text-amber-600' : 'text-indigo-600'}`} />
                             <span>«{b.title}» ({b.author})</span>
+                            {(b.isDiscovery || i === 2) && (
+                              <span className="text-[9px] bg-purple-100 text-purple-800 px-1 rounded">✨ افق تازه</span>
+                            )}
                           </span>
                         ))}
                       </div>

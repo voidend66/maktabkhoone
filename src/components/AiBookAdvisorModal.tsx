@@ -495,89 +495,147 @@ export const AiBookAdvisorModal: React.FC<AiBookAdvisorModalProps> = ({
                 </h4>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {result.recommendedBooks.map(({ book, reason }, idx) => (
-                    <div
-                      key={book.id || idx}
-                      className="p-4 rounded-3xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md transition-all flex flex-col justify-between space-y-3 group"
-                    >
-                      <div className="flex gap-3.5">
-                        {/* Book Cover */}
-                        <div
-                          onClick={() => onSelectBook(book)}
-                          className="w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs shrink-0 cursor-pointer relative group-hover:scale-102 transition"
-                        >
-                          <img
-                            src={getSafeImageUrl(book.coverImage, 'book')}
-                            alt={book.title}
-                            onError={(e) => {
-                              (e.currentTarget as HTMLImageElement).src = DEFAULT_BOOK_COVER;
-                            }}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
+                  {result.recommendedBooks.map(({ book, reason, isDiscovery, discoveryBadge }, idx) => {
+                    const isWildcard = isDiscovery === true || (idx === 2 && result.recommendedBooks.length >= 3);
+                    return (
+                      <div
+                        key={book.id || idx}
+                        className={`p-4 rounded-3xl border transition-all flex flex-col justify-between space-y-3 group ${
+                          isWildcard
+                            ? 'md:col-span-2 bg-gradient-to-br from-amber-50/70 via-purple-50/40 to-indigo-50/40 border-amber-300/80 shadow-xs hover:border-amber-400 hover:shadow-md ring-1 ring-amber-200/50'
+                            : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md'
+                        }`}
+                      >
+                        {/* Discovery / Match Indicator Banner */}
+                        {isWildcard ? (
+                          <div className="flex items-center justify-between gap-2 p-2.5 bg-gradient-to-r from-amber-100/90 via-purple-100/80 to-indigo-100/80 rounded-2xl border border-amber-200/70 text-amber-950 text-xs">
+                            <div className="flex items-center gap-2 font-black">
+                              <span className="text-base leading-none">✨</span>
+                              <span className="text-purple-950 font-black">{discoveryBadge || 'پیشنهاد غافلگیرکننده و کشف افق تازه'}</span>
+                            </div>
+                            <span className="text-[10px] bg-white/90 text-amber-900 font-bold px-2 py-0.5 rounded-lg border border-amber-200 shadow-2xs">
+                              فرصت کشف دنیای جدید 🧭
+                            </span>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[11px] font-black text-indigo-900 bg-indigo-50 border border-indigo-100 px-2.5 py-0.5 rounded-lg flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 animate-pulse" />
+                              <span>پیشنهاد {idx + 1}: منطبق بر سلیقه و مود انتخابی شما 🎯</span>
+                            </span>
+                          </div>
+                        )}
 
-                        {/* Book Info */}
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <span className="text-[10px] font-bold text-indigo-700 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md inline-block">
-                            {book.category}
-                          </span>
-
-                          <h5
+                        <div className="flex gap-3.5">
+                          {/* Book Cover */}
+                          <div
                             onClick={() => onSelectBook(book)}
-                            className="text-xs sm:text-sm font-black text-slate-900 hover:text-indigo-600 transition truncate cursor-pointer"
-                            title={book.title}
+                            className="w-20 sm:w-24 aspect-[3/4] rounded-xl overflow-hidden bg-slate-100 border border-slate-200/80 shadow-xs shrink-0 cursor-pointer relative group-hover:scale-102 transition"
                           >
-                            {book.title}
-                          </h5>
+                            <img
+                              src={getSafeImageUrl(book.coverImage, 'book')}
+                              alt={book.title}
+                              onError={(e) => {
+                                (e.currentTarget as HTMLImageElement).src = DEFAULT_BOOK_COVER;
+                              }}
+                              className="w-full h-full object-cover"
+                            />
+                            {isWildcard && (
+                              <div className="absolute top-1 right-1 bg-amber-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-md shadow-xs">
+                                متنوع
+                              </div>
+                            )}
+                          </div>
 
-                          <p className="text-[11px] text-slate-500 font-semibold truncate">
-                            نویسنده: <span className="text-slate-700">{book.author}</span>
-                          </p>
+                          {/* Book Info */}
+                          <div className="min-w-0 flex-1 space-y-1">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md inline-block ${
+                              isWildcard
+                                ? 'text-purple-800 bg-purple-50 border border-purple-200'
+                                : 'text-indigo-700 bg-indigo-50 border border-indigo-100'
+                            }`}>
+                              {book.category}
+                            </span>
 
-                          {book.pageCount && (
-                            <p className="text-[10px] text-slate-400">
-                              تعداد صفحات: <strong className="text-slate-600">{book.pageCount} صفحه</strong>
+                            <h5
+                              onClick={() => onSelectBook(book)}
+                              className="text-xs sm:text-sm font-black text-slate-900 hover:text-indigo-600 transition truncate cursor-pointer"
+                              title={book.title}
+                            >
+                              {book.title}
+                            </h5>
+
+                            <p className="text-[11px] text-slate-500 font-semibold truncate">
+                              نویسنده: <span className="text-slate-700">{book.author}</span>
                             </p>
-                          )}
 
-                          <p className="text-[10px] text-slate-400">
-                            مالک: <span className="text-slate-600 font-bold">{book.ownerName}</span> ({book.ownerClass})
-                          </p>
+                            {book.pageCount && (
+                              <p className="text-[10px] text-slate-400">
+                                تعداد صفحات: <strong className="text-slate-600">{book.pageCount} صفحه</strong>
+                              </p>
+                            )}
+
+                            <p className="text-[10px] text-slate-400">
+                              مالک: <span className="text-slate-600 font-bold">{book.ownerName}</span> ({book.ownerClass})
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Special Wildcard Note if applicable */}
+                        {isWildcard && (
+                          <div className="p-2.5 bg-amber-100/60 border border-amber-200/90 rounded-2xl text-[11px] text-amber-900 leading-relaxed font-medium">
+                            <span className="font-extrabold text-amber-950 block mb-0.5">
+                              🔍 نکته کتابدار مکتب‌خانه:
+                            </span>
+                            <p>
+                              این کتاب الزاماً طبق معیارهای مشخص‌شده‌ات نیست، اما به عنوان یک پیشنهاد جدید و متنوع برات انتخاب شده تا با ژانری شگفت‌انگیز آشنا بشی و مطمئناً تجربه‌ای لذت‌بخش و جذاب برات خواهد بود!
+                            </p>
+                          </div>
+                        )}
+
+                        {/* AI Reasoning Bubble */}
+                        <div className={`p-3 rounded-2xl text-[11px] leading-relaxed ${
+                          isWildcard
+                            ? 'bg-white/80 border border-purple-200/80 text-purple-950'
+                            : 'bg-amber-50/70 border border-amber-200/80 text-amber-950'
+                        }`}>
+                          <span className={`font-extrabold block mb-0.5 flex items-center gap-1 ${
+                            isWildcard ? 'text-purple-900' : 'text-amber-900'
+                          }`}>
+                            <span>{isWildcard ? '🧭 چرا این تجربه متفاوت بهت پیشنهاد شد؟' : '💡 چرا این کتاب برات عالیه؟'}</span>
+                          </span>
+                          <p>{reason}</p>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                          <button
+                            onClick={() => {
+                              onClose();
+                              onRequestLoan(book.id);
+                            }}
+                            className={`flex-1 py-2 px-3 text-white text-xs font-black rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5 ${
+                              isWildcard
+                                ? 'bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700'
+                                : 'bg-indigo-600 hover:bg-indigo-700'
+                            }`}
+                          >
+                            <BookOpen className="w-3.5 h-3.5" />
+                            <span>درخواست امانت 📖</span>
+                          </button>
+
+                          <button
+                            onClick={() => onSelectBook(book)}
+                            className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1"
+                            title="مشاهده جزئیات بیشتر کتاب"
+                          >
+                            <span>جزئیات</span>
+                            <ChevronLeft className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-
-                      {/* AI Reasoning Bubble */}
-                      <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl text-[11px] text-amber-950 leading-relaxed">
-                        <span className="font-extrabold text-amber-900 block mb-0.5 flex items-center gap-1">
-                          <span>💡 چرا این کتاب برات عالیه؟</span>
-                        </span>
-                        <p>{reason}</p>
-                      </div>
-
-                      {/* Action Buttons */}
-                      <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
-                        <button
-                          onClick={() => {
-                            onClose();
-                            onRequestLoan(book.id);
-                          }}
-                          className="flex-1 py-2 px-3 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black rounded-xl shadow-xs transition cursor-pointer flex items-center justify-center gap-1.5"
-                        >
-                          <BookOpen className="w-3.5 h-3.5" />
-                          <span>درخواست امانت 📖</span>
-                        </button>
-
-                        <button
-                          onClick={() => onSelectBook(book)}
-                          className="py-2 px-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition cursor-pointer flex items-center justify-center gap-1"
-                          title="مشاهده جزئیات بیشتر کتاب"
-                        >
-                          <span>جزئیات</span>
-                          <ChevronLeft className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>

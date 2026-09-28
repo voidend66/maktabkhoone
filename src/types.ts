@@ -378,6 +378,8 @@ export interface LocalAiConfig {
 export interface RecommendedBook {
   book: Book;
   reason: string;
+  isDiscovery?: boolean;
+  discoveryBadge?: string;
 }
 
 export interface AiRecommendationRequest {
@@ -408,10 +410,7 @@ export interface AiRecommendationResult {
   success: boolean;
   message: string;
   greeting?: string;
-  recommendedBooks: Array<{
-    book: Book;
-    reason: string;
-  }>;
+  recommendedBooks: RecommendedBook[];
   candidatesCount: number;
   isAiGenerated: boolean;
   latencyMs?: number;
@@ -456,7 +455,7 @@ export interface AiInteractionLog {
   systemInstruction?: string;
   rawResponse?: string;
   recommendationsCount?: number;
-  recommendedBooks?: Array<{ id: string; title: string; author: string; reason?: string }>;
+  recommendedBooks?: Array<{ id: string; title: string; author: string; reason?: string; isDiscovery?: boolean; discoveryBadge?: string }>;
   candidatesCount?: number;
   latencyMs: number;
   success: boolean;

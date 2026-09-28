@@ -120,11 +120,11 @@ export const api = {
     return await res.json();
   },
 
-  async updateBirthday(id: string, birthMonth: number, birthDay: number) {
+  async updateBirthday(id: string, birthMonth: number, birthDay: number, forceAdminOverride?: boolean) {
     const res = await fetch(`${API_BASE}/users/${id}/birthday`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ birthMonth, birthDay })
+      body: JSON.stringify({ birthMonth, birthDay, forceAdminOverride })
     });
     return await res.json();
   },

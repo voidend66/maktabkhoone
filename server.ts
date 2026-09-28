@@ -6378,7 +6378,7 @@ async function startServer() {
     let isAiGenerated = false;
     let latencyMs = 0;
     let greeting = 'سلام کتاب‌خوان پرتلاش مکتب‌خانه! بر اساس سلیقه و علایقت، این کتاب‌های عالی رو برات گلچین کردم:';
-    let recommendationsResult: Array<{ book: any; reason: string }> = [];
+    let recommendationsResult: Array<{ book: any; reason: string; isDiscovery?: boolean; discoveryBadge?: string }> = [];
 
     let targetModelName = (body?.modelName || aiConfig.modelName || 'qwen2.5:3b').trim();
     let rawEndpointUsed = (body?.endpointUrl || aiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate').trim();
@@ -6438,13 +6438,29 @@ ${booksListPrompt}
 📌 پروفایل دانش‌آموز، سوابق واقعی و الگوهای یادگیری:
 ${userContextList}
 
-ماموریت: از میان لیست ارائه‌شده، ۲ الی ۳ کتاب برتر را با تحلیل دقیق سوابق و تنوع‌بخشی انتخاب کن و خروجی را فقط و فقط به صورت یک شیء JSON معتبر به شکل زیر تولید کن:
+ماموریت: از میان قفسه کتاب‌های ارائه‌شده، دقیقاً ۳ کتاب انتخاب کن:
+۱. کتاب اول و دوم (پیشنهادهای مستقیم و منطبق): دو کتاب برتر که دقیقاً با سلیقه، سبک و مود انتخابی کاربر («${moodLabel}»${customPrompt ? ` با درخواست: "${customPrompt}"` : ''}) و سوابق او همخوانی کامل دارند.
+۲. کتاب سوم (کشف افق تازه / پیشنهاد متنوع و غافلگیرکننده): یک کتاب بسیار پرکشش، جذاب و تحسین‌شده از ژانری متفاوت و خارج از انتخاب روتین کاربر برای گسترش دایره مطالعاتی. در فیلد reason برای این کتاب سوم، با لحنی صمیمانه اشاره کن که «گرچه این کتاب شاید دقیقاً طبق سلیقه اعلامی‌ات نباشد، اما یک پیشنهاد غافلگیرکننده و جدید است که می‌تواند تجربه‌ای تازه و هیجان‌انگیز برایت بسازد».
+
+خروجی را فقط و فقط به صورت یک شیء JSON معتبر به شکل زیر تولید کن:
 {
   "greeting": "سلام صمیمی و پرانرژی فارسی به دانش‌آموز...",
   "recommendations": [
     {
-      "bookId": "شناسه دقیق کتاب از قفسه",
-      "reason": "دلیل شیوا و انگیزه‌بخش فارسی که چرا این کتاب خاص را برای او انتخاب کرده‌ای."
+      "bookId": "شناسه دقیق کتاب اول",
+      "reason": "دلیل شیوا که چرا این کتاب دقیقاً طبق سلیقه و مود انتخابی اوست.",
+      "isDiscovery": false
+    },
+    {
+      "bookId": "شناسه دقیق کتاب دوم",
+      "reason": "دلیل دوم برای انطباق با سلیقه و سوابق او.",
+      "isDiscovery": false
+    },
+    {
+      "bookId": "شناسه دقیق کتاب سوم",
+      "reason": "دلیل انگیزه‌بخش با اشاره به این که این پیشنهاد متفاوت و جدید برای کشف افق تازه عالی است.",
+      "isDiscovery": true,
+      "discoveryBadge": "✨ پیشنهاد غافلگیرکننده و کشف افق تازه"
     }
   ]
 }`;
@@ -6470,13 +6486,18 @@ ${userContextList}
             greeting = parsedOutput.greeting;
           }
 
+          let recIdx = 0;
           for (const rec of parsedOutput.recommendations) {
             const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
             if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
+              const isDiscovery = rec.isDiscovery === true || recIdx === 2;
               recommendationsResult.push({
                 book: foundBook,
-                reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
+                reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`,
+                isDiscovery,
+                discoveryBadge: isDiscovery ? (rec.discoveryBadge || '✨ پیشنهاد غافلگیرکننده و کشف افق تازه') : undefined
               });
+              recIdx++;
             }
           }
 
@@ -6539,13 +6560,18 @@ ${userContextList}
                 greeting = parsedOutput.greeting;
               }
 
+              let oRecIdx = 0;
               for (const rec of parsedOutput.recommendations) {
                 const foundBook = candidates.find((c) => c.id === rec.bookId) || allBooks.find((b) => b.id === rec.bookId);
                 if (foundBook && !recommendationsResult.some((r) => r.book.id === foundBook.id)) {
+                  const isDiscovery = rec.isDiscovery === true || oRecIdx === 2;
                   recommendationsResult.push({
                     book: foundBook,
-                    reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`
+                    reason: rec.reason || `یک اثر پرطرفدار از ${foundBook.author} در ژانر ${foundBook.category}.`,
+                    isDiscovery,
+                    discoveryBadge: isDiscovery ? (rec.discoveryBadge || '✨ پیشنهاد غافلگیرکننده و کشف افق تازه') : undefined
                   });
+                  oRecIdx++;
                 }
               }
 
@@ -6617,18 +6643,28 @@ ${userContextList}
       }
 
       const topBooks = candidates.slice(0, 3);
-      recommendationsResult = topBooks.map((b) => {
-        let reason = `کتاب «${b.title}» نوشته ${b.author} با دسته‌بندی ${b.category} تطابق بسیار خوبی با سلیقه انتخابی شما دارد.`;
-        if (mood === 'laugh') {
-          reason = `یک ماجرای طنز و پر از شوخی‌های بامزه که مطمئناً خنده به لب‌هایت می‌آورد!`;
-        } else if (mood === 'adventure') {
-          reason = `سفری پر از ماجراجویی و رویدادهای غیرمنتظره که از صفحه اول شما را با خود همراه می‌کند.`;
-        } else if (mood === 'mystery') {
-          reason = `داستانی معمایی و پرپیچ‌وخم که تا صفحه آخر رازهایش شما را کنجکاو نگه می‌دارد.`;
-        } else if (mood === 'thoughtful') {
-          reason = `کتابی عمیق و تفکربرانگیز که تجربیات ارزشمندی از نگاه نویسنده به اشتراک می‌گذارد.`;
+      recommendationsResult = topBooks.map((b, idx) => {
+        const isDiscovery = idx === 2 && topBooks.length >= 3;
+        let reason = isDiscovery
+          ? `این کتاب از دسته‌بندی «${b.category}» گرچه خارج از فیلتر انتخابی شماست، اما یک اثر جذاب برای کشف افق‌های تازه و تجربه‌ای هیجان‌انگیز است!`
+          : `کتاب «${b.title}» نوشته ${b.author} با دسته‌بندی ${b.category} تطابق بسیار خوبی با سلیقه انتخابی شما دارد.`;
+        if (!isDiscovery) {
+          if (mood === 'laugh') {
+            reason = `یک ماجرای طنز و پر از شوخی‌های بامزه که مطمئناً خنده به لب‌هایت می‌آورد!`;
+          } else if (mood === 'adventure') {
+            reason = `سفری پر از ماجراجویی و رویدادهای غیرمنتظره که از صفحه اول شما را با خود همراه می‌کند.`;
+          } else if (mood === 'mystery') {
+            reason = `داستانی معمایی و پرپیچ‌وخم که تا صفحه آخر رازهایش شما را کنجکاو نگه می‌دارد.`;
+          } else if (mood === 'thoughtful') {
+            reason = `کتابی عمیق و تفکربرانگیز که تجربیات ارزشمندی از نگاه نویسنده به اشتراک می‌گذارد.`;
+          }
         }
-        return { book: b, reason };
+        return {
+          book: b,
+          reason,
+          isDiscovery,
+          discoveryBadge: isDiscovery ? '✨ پیشنهاد غافلگیرکننده و کشف افق تازه' : undefined
+        };
       });
     }
 
@@ -6652,7 +6688,9 @@ ${userContextList}
           id: r.book.id,
           title: r.book.title,
           author: r.book.author,
-          reason: r.reason
+          reason: r.reason,
+          isDiscovery: r.isDiscovery,
+          discoveryBadge: r.discoveryBadge
         })),
         candidatesCount: candidates.length,
         latencyMs,
