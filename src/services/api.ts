@@ -823,6 +823,33 @@ export const api = {
     }
   },
 
+  async testGeminiConnection(params?: {
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    geminiTimeoutSeconds?: number;
+  }): Promise<{
+    success: boolean;
+    latencyMs?: number | null;
+    endpointUrl?: string;
+    responseSample?: string;
+    message: string;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/ai/test-gemini-connection`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params || {})
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        latencyMs: null,
+        message: err.message || 'خطا در برقراری ارتباط با سرور سایت'
+      };
+    }
+  },
+
   async checkAiHealth(params?: Partial<LocalAiConfig>): Promise<AiHealthCheckResult> {
     try {
       const res = await fetch(`${API_BASE}/ai/health-check`, {
@@ -854,6 +881,9 @@ export const api = {
     messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
     modelName?: string;
     endpointUrl?: string;
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    targetEngine?: 'gemini' | 'ollama';
     systemPrompt?: string;
     temperature?: number;
     numPredict?: number;

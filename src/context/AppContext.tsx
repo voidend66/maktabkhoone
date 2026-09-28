@@ -186,12 +186,26 @@ interface AppContextType {
     engine?: string;
     proxyUsed?: string | null;
   }>;
+  testGeminiConnection: (params?: {
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    geminiTimeoutSeconds?: number;
+  }) => Promise<{
+    success: boolean;
+    latencyMs?: number | null;
+    endpointUrl?: string;
+    responseSample?: string;
+    message: string;
+  }>;
   checkAiHealth: (params?: Partial<LocalAiConfig>) => Promise<AiHealthCheckResult>;
   chatWithAi: (params: {
     message: string;
     messages?: { role: 'user' | 'assistant' | 'system'; content: string }[];
     modelName?: string;
     endpointUrl?: string;
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    targetEngine?: 'gemini' | 'ollama';
     systemPrompt?: string;
     temperature?: number;
     numPredict?: number;
@@ -1617,6 +1631,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return await api.testAiConnection(params);
   };
 
+  const testGeminiConnection = async (params?: {
+    geminiEndpointUrl?: string;
+    geminiModelName?: string;
+    geminiTimeoutSeconds?: number;
+  }) => {
+    return await api.testGeminiConnection(params);
+  };
+
   const checkAiHealth = async (params?: Partial<LocalAiConfig>) => {
     return await api.checkAiHealth(params);
   };
@@ -1717,6 +1739,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         revertBookCover,
         enrichBookFromIranKetab,
         testAiConnection,
+        testGeminiConnection,
         checkAiHealth,
         chatWithAi,
         getAiBookRecommendations,

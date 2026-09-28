@@ -345,6 +345,9 @@ export interface GoogleDriveConfig {
 
 export interface LocalAiConfig {
   enabled: boolean;
+  geminiEndpointUrl?: string; // e.g. "http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent"
+  geminiModelName?: string; // e.g. "gemini-3.5-flash-lite"
+  geminiTimeoutSeconds?: number; // e.g. 15
   endpointUrl: string; // e.g. "http://192.168.100.54:11434/api/generate"
   modelName: string; // e.g. "qwen2.5:7b"
   systemPrompt?: string;
@@ -355,11 +358,26 @@ export interface LocalAiConfig {
   maxCandidates: number; // e.g. 14
   timeoutSeconds: number; // e.g. 20
   fallbackEnabled?: boolean; // When false, fallback algorithm is disabled to allow pure AI testing & debugging
+  engineMode?: string;
+  geminiApiKey?: string;
+  geminiModel?: string;
+  proxyUrl?: string;
+  cloudTimeoutSeconds?: number;
   useReadingHistory?: boolean; // Personalized reading history
   excludeAlreadyRead?: boolean; // Don't recommend already read books
   useCollaborativeFiltering?: boolean; // Classmate collaborative filtering
   usePostReadFeedback?: boolean; // Post-read rating feedback loop
   diversityFactor?: number; // Serendipity factor (0 to 50%)
+  enableHistoryAnalysis?: boolean;
+  enableCollaborativeFiltering?: boolean;
+  serendipityFactor?: number;
+  enablePostReturnReviewPrompt?: boolean;
+  enableSimilarBooksDiscovery?: boolean;
+}
+
+export interface RecommendedBook {
+  book: Book;
+  reason: string;
 }
 
 export interface AiRecommendationRequest {
@@ -373,6 +391,9 @@ export interface AiRecommendationRequest {
   noTimeout?: boolean;
   modelName?: string;
   endpointUrl?: string;
+  geminiEndpointUrl?: string;
+  geminiModelName?: string;
+  targetEngine?: 'gemini' | 'ollama';
 }
 
 export interface AiRecommendationResult {

@@ -5794,9 +5794,75 @@ async function startServer() {
     }
   });
 
+  app.post('/api/ai/test-gemini-connection', async (req: Request, res: Response): Promise<any> => {
+    try {
+      const config: any = dbService.getSystemConfig().aiConfig || {};
+      const endpointUrl = (req.body?.geminiEndpointUrl || config.geminiEndpointUrl || process.env.CUSTOM_GEMINI_ENDPOINT || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent').trim();
+      const timeoutSec = Math.max(3, Number(req.body?.geminiTimeoutSeconds || config.geminiTimeoutSeconds || 15));
+
+      const startTime = Date.now();
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutSec * 1000);
+
+      const payload = {
+        contents: [
+          {
+            parts: [
+              { text: "سلام! لطفا در یک کلمه بگو آماده‌ای؟" }
+            ]
+          }
+        ]
+      };
+
+      const response = await fetch(endpointUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+
+      clearTimeout(timer);
+      const latencyMs = Date.now() - startTime;
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => '');
+        return res.json({
+          success: false,
+          latencyMs,
+          message: `پاسخ ناموفق از سرور Gemini (کد ${response.status}): ${errorText.slice(0, 150)}`
+        });
+      }
+
+      const data: any = await response.json();
+      let extractedText = '';
+      if (typeof data.text === 'string') extractedText = data.text;
+      else if (data.candidates?.[0]?.content?.parts?.[0]?.text) extractedText = data.candidates[0].content.parts[0].text;
+      else extractedText = JSON.stringify(data).slice(0, 120);
+
+      return res.json({
+        success: true,
+        latencyMs,
+        endpointUrl,
+        responseSample: extractedText,
+        message: `اتصال به سرور Gemini 3.5 Flash Lite (${endpointUrl}) با موفقیت برقرار شد. زمان پاسخ: ${latencyMs} میلی‌ثانیه`
+      });
+    } catch (err: any) {
+      const isTimeout = err.name === 'AbortError';
+      const errorMsg = isTimeout
+        ? 'مهلت زمان اتصال به پایان رسید (Timeout). بررسی کنید سرور و پورت ۵۰۰۰ در دسترس شبکه باشد.'
+        : (err.message || 'خطا در برقراری ارتباط');
+
+      return res.json({
+        success: false,
+        latencyMs: null,
+        message: `عدم برقراری ارتباط با سرور ابری Gemini: ${errorMsg}`
+      });
+    }
+  });
+
   app.post('/api/ai/chat', async (req: Request, res: Response): Promise<any> => {
     try {
-      const config = dbService.getSystemConfig().aiConfig || {
+      const config: any = dbService.getSystemConfig().aiConfig || {
         enabled: true,
         endpointUrl: 'http://192.168.100.54:11434/api/generate',
         modelName: 'qwen2.5:7b',
@@ -5827,6 +5893,42 @@ async function startServer() {
       }
       formattedMessages.push({ role: 'user', content: userMessage });
 
+      // 1. Primary Engine for Chatbot: Gemini 3.5 Flash Lite
+      const targetEngine = req.body?.targetEngine || 'gemini';
+      if (targetEngine === 'gemini') {
+        const geminiEndpointUrl = (req.body?.geminiEndpointUrl || config.geminiEndpointUrl || process.env.CUSTOM_GEMINI_ENDPOINT || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent').trim();
+        const geminiModel = (req.body?.geminiModelName || config.geminiModelName || 'gemini-3.5-flash-lite').trim();
+        const geminiTimeoutMs = Math.max(3000, Number(req.body?.timeoutSeconds || config.geminiTimeoutSeconds || 20) * 1000);
+
+        try {
+          const chatStartTime = Date.now();
+          console.log(`🤖 [Chatbot] ارسال پیام به Gemini 3.5 Flash Lite (${geminiEndpointUrl})...`);
+
+          let conversationContext = '';
+          if (history.length > 0) {
+            conversationContext = 'تاریخچه گفتگوی پیشین:\n' + history.map((m: any) => {
+              const roleName = m.role === 'user' ? 'کاربر' : 'کتابدار مکتب‌خانه';
+              return `${roleName}: ${m.content}`;
+            }).join('\n') + '\n\n';
+          }
+          const promptForGemini = `${conversationContext}پیام جدید کاربر: ${userMessage}`;
+
+          const replyText = await generateGeminiText(promptForGemini, systemPrompt, geminiEndpointUrl, geminiTimeoutMs);
+          const latencyMs = Date.now() - chatStartTime;
+
+          return res.json({
+            success: true,
+            reply: replyText.trim(),
+            latencyMs,
+            model: geminiModel,
+            engine: 'gemini'
+          });
+        } catch (geminiChatErr: any) {
+          console.warn('⚠️ Gemini Chatbot failed, attempting fallback if enabled:', geminiChatErr?.message);
+        }
+      }
+
+      // 2. Secondary Engine: Ollama Local
       const startTime = Date.now();
       const controller = new AbortController();
       const timeoutDuration = (req.body?.timeoutSeconds || config.timeoutSeconds || 90) * 1000;
@@ -6224,12 +6326,16 @@ ${userContextList}
       // 1. Primary: Gemini 3.5 Flash Lite
       try {
         const startTime = Date.now();
-        console.log('🤖 [AI Recommendation] در حال درخواست پیشنهاد کتاب از Gemini 3.5 Flash Lite...');
-        rawAiResponseText = await generateGeminiText(userPrompt, systemPromptUsed);
+        const geminiTargetUrl = (body?.geminiEndpointUrl || (body?.endpointUrl && body.endpointUrl.includes('5000') ? body.endpointUrl : undefined) || aiConfig.geminiEndpointUrl || process.env.CUSTOM_GEMINI_ENDPOINT || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent').trim();
+        const geminiModel = (body?.geminiModelName || (body?.modelName && body.modelName.includes('gemini') ? body.modelName : undefined) || aiConfig.geminiModelName || 'gemini-3.5-flash-lite').trim();
+        const geminiTimeoutMs = body?.noTimeout ? 60000 : Math.max(3000, Number(aiConfig.geminiTimeoutSeconds || 15) * 1000);
+
+        console.log(`🤖 [AI Recommendation] در حال درخواست پیشنهاد کتاب از ${geminiModel} (${geminiTargetUrl})...`);
+        rawAiResponseText = await generateGeminiText(userPrompt, systemPromptUsed, geminiTargetUrl, geminiTimeoutMs);
         latencyMs = Date.now() - startTime;
         httpStatusCode = 200;
-        targetModelName = 'gemini-3.5-flash-lite';
-        targetGenerateUrl = process.env.CUSTOM_GEMINI_ENDPOINT || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent';
+        targetModelName = geminiModel;
+        targetGenerateUrl = geminiTargetUrl;
 
         parsedOutput = extractJson(rawAiResponseText);
         if (parsedOutput && Array.isArray(parsedOutput.recommendations) && parsedOutput.recommendations.length > 0) {

@@ -71,10 +71,13 @@ const SYSTEM_PROMPT_PRESETS = [
 ];
 
 export const AdminAiSettingsTab: React.FC = () => {
-  const { systemConfig, updateSystemConfig, testAiConnection, checkAiHealth, chatWithAi, getAiBookRecommendations } = useApp();
+  const { systemConfig, updateSystemConfig, testAiConnection, testGeminiConnection, checkAiHealth, chatWithAi, getAiBookRecommendations } = useApp();
 
   const currentAiConfig = systemConfig?.aiConfig || {
     enabled: true,
+    geminiEndpointUrl: 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent',
+    geminiModelName: 'gemini-3.5-flash-lite',
+    geminiTimeoutSeconds: 15,
     endpointUrl: 'http://192.168.100.54:11434/api/generate',
     modelName: 'qwen2.5:7b',
     systemPrompt: SYSTEM_PROMPT_PRESETS[0].prompt,
@@ -89,6 +92,15 @@ export const AdminAiSettingsTab: React.FC = () => {
 
   const [enabled, setEnabled] = useState<boolean>(currentAiConfig.enabled ?? true);
   const [fallbackEnabled, setFallbackEnabled] = useState<boolean>(currentAiConfig.fallbackEnabled ?? false);
+  const [geminiEndpointUrl, setGeminiEndpointUrl] = useState<string>(
+    currentAiConfig.geminiEndpointUrl || 'http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent'
+  );
+  const [geminiModelName, setGeminiModelName] = useState<string>(
+    currentAiConfig.geminiModelName || 'gemini-3.5-flash-lite'
+  );
+  const [geminiTimeoutSeconds, setGeminiTimeoutSeconds] = useState<number>(
+    currentAiConfig.geminiTimeoutSeconds || 15
+  );
   const [endpointUrl, setEndpointUrl] = useState<string>(currentAiConfig.endpointUrl || 'http://192.168.100.54:11434/api/generate');
   const [modelName, setModelName] = useState<string>(currentAiConfig.modelName || 'qwen2.5:7b');
   const [systemPrompt, setSystemPrompt] = useState<string>(
@@ -108,6 +120,15 @@ export const AdminAiSettingsTab: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState('');
+
+  // Gemini Test State
+  const [isTestingGemini, setIsTestingGemini] = useState(false);
+  const [geminiTestResult, setGeminiTestResult] = useState<{
+    success: boolean;
+    latencyMs?: number | null;
+    message: string;
+    responseSample?: string;
+  } | null>(null);
 
   // Ping Test State
   const [isTesting, setIsTesting] = useState(false);
@@ -131,8 +152,10 @@ export const AdminAiSettingsTab: React.FC = () => {
   const [simElapsedSeconds, setSimElapsedSeconds] = useState<number>(0);
   const [simulationResult, setSimulationResult] = useState<any>(null);
   const [simSubTab, setSimSubTab] = useState<'recommendations' | 'candidates' | 'prompt' | 'raw_response' | 'diagnostics'>('candidates');
+  const [playgroundEngine, setPlaygroundEngine] = useState<'gemini' | 'ollama'>('gemini');
 
   // Live Chatbot State
+  const [chatEngine, setChatEngine] = useState<'gemini' | 'ollama'>('gemini');
   const [chatMessages, setChatMessages] = useState<Array<{
     id: string;
     role: 'user' | 'assistant';
@@ -143,7 +166,7 @@ export const AdminAiSettingsTab: React.FC = () => {
     {
       id: 'init-1',
       role: 'assistant',
-      content: 'سلام جناب مدیر مکتب‌خانه! من مدل هوش مصنوعی محلی Qwen 2.5 (نسخه ۷ میلیارد پارامتر) هستم که مستقیماً روی سرور شما در حال اجرا می‌باشم. هر سوال یا متنی دارید بفرمایید تا توانایی گفتگو و سرعت مرا بسنجید!',
+      content: 'سلام جناب مدیر مکتب‌خانه! من مدل هوش مصنوعی Gemini 3.5 Flash Lite هستم که مستقیماً به سرور متصل می‌باشم. هر سوال، متن یا درخواستی دارید بفرمایید تا توانایی گفتگو، استدلال و سرعت مرا بسنجید!',
       timestamp: 'هم‌اکنون'
     }
   ]);
@@ -192,9 +215,12 @@ export const AdminAiSettingsTab: React.FC = () => {
       const res = await chatWithAi({
         message,
         messages: messagesForApi,
-        modelName: modelName.trim(),
-        endpointUrl: endpointUrl.trim(),
-        systemPrompt: 'تو کتابدار دانا، باادب، صمیمی، دلسوز و باهوش مکتب‌خانه هستی. پاسخ‌هایت را به زبان فارسی سلیس، شیوا و دلنشین بنویس.',
+        targetEngine: chatEngine,
+        geminiEndpointUrl: geminiEndpointUrl.trim(),
+        geminiModelName: geminiModelName.trim(),
+        modelName: chatEngine === 'gemini' ? geminiModelName.trim() : modelName.trim(),
+        endpointUrl: chatEngine === 'gemini' ? geminiEndpointUrl.trim() : endpointUrl.trim(),
+        systemPrompt: 'تو کتابدار دانا، باادب، صمیمی، دلسوز و باهوش مکتب‌خانه هستی که بر پایه مدل هوش مصنوعی Gemini 3.5 Flash Lite فعالیت می‌کنی. پاسخ‌هایت را به زبان فارسی سلیس، شیوا، جذاب و مناسب دانش‌آموزان و معلمان بنویس.',
         temperature: 0.6,
         numPredict: 500
       });
@@ -249,6 +275,9 @@ export const AdminAiSettingsTab: React.FC = () => {
 
     const newAiConfig: LocalAiConfig = {
       enabled,
+      geminiEndpointUrl: geminiEndpointUrl.trim(),
+      geminiModelName: geminiModelName.trim(),
+      geminiTimeoutSeconds: Math.max(3, Number(geminiTimeoutSeconds)),
       endpointUrl: endpointUrl.trim(),
       modelName: modelName.trim(),
       systemPrompt: systemPrompt.trim(),
@@ -269,11 +298,31 @@ export const AdminAiSettingsTab: React.FC = () => {
     try {
       const res = await updateSystemConfig({ aiConfig: newAiConfig });
       if (res && res.success) {
-        setSaveSuccessMsg('تنظیمات هوش مصنوعی محلی با موفقیت ذخیره شد.');
+        setSaveSuccessMsg('تنظیمات هوش مصنوعی (Gemini ابری و پشتیبان محلی) با موفقیت ذخیره شد.');
         setTimeout(() => setSaveSuccessMsg(''), 4000);
       }
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleTestGemini = async () => {
+    setIsTestingGemini(true);
+    setGeminiTestResult(null);
+    try {
+      const res = await testGeminiConnection({
+        geminiEndpointUrl: geminiEndpointUrl.trim(),
+        geminiModelName: geminiModelName.trim(),
+        geminiTimeoutSeconds: Number(geminiTimeoutSeconds)
+      });
+      setGeminiTestResult(res);
+    } catch (err: any) {
+      setGeminiTestResult({
+        success: false,
+        message: err.message || 'خطا در ارتباط با سرور ابری Gemini'
+      });
+    } finally {
+      setIsTestingGemini(false);
     }
   };
 
@@ -329,8 +378,11 @@ export const AdminAiSettingsTab: React.FC = () => {
         customPrompt: testPrompt.trim(),
         isTest: true,
         noTimeout: true,
-        modelName: modelName.trim() || 'qwen2.5:3b',
-        endpointUrl: endpointUrl.trim()
+        targetEngine: playgroundEngine,
+        geminiEndpointUrl: geminiEndpointUrl.trim(),
+        geminiModelName: geminiModelName.trim(),
+        modelName: playgroundEngine === 'gemini' ? geminiModelName.trim() : (modelName.trim() || 'qwen2.5:3b'),
+        endpointUrl: playgroundEngine === 'gemini' ? geminiEndpointUrl.trim() : endpointUrl.trim()
       });
       setSimulationResult(res);
     } catch (err: any) {
@@ -354,13 +406,13 @@ export const AdminAiSettingsTab: React.FC = () => {
       {/* Header */}
       <div className="flex items-center justify-between flex-wrap gap-4 pb-5 border-b border-slate-100">
         <div className="flex items-center gap-3.5">
-          <div className="p-3 bg-gradient-to-tr from-sky-500 to-indigo-600 rounded-2xl text-white shadow-md">
-            <Bot className="w-7 h-7" />
+          <div className="p-3 bg-gradient-to-tr from-indigo-600 via-sky-500 to-emerald-500 rounded-2xl text-white shadow-md">
+            <Sparkles className="w-7 h-7" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h3 className="font-black text-slate-900 text-lg sm:text-xl">
-                تنظیمات و سلامت‌سنجی هوش مصنوعی محلی (Ollama & Qwen 7B)
+                تنظیمات هوش مصنوعی و الگوریتم‌های پیشنهاد کتاب (Gemini 3.5 & Hybrid Engine)
               </h3>
               <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${
                 enabled
@@ -371,7 +423,7 @@ export const AdminAiSettingsTab: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-500 mt-1">
-              مدیریت اتصال به سرور پروکسموکس داخلی، تست سلامت‌سنجی ۴ گانه، پارامترهای مدل Qwen و پشتیبان اضطراری
+              مدیریت موتور اصلی ابری (Gemini 3.5 Flash Lite)، الگوریتم‌های تاریخچه و هم‌کلاسی‌ها، ضریب تنوع و پشتیبان محلی
             </p>
           </div>
         </div>
@@ -640,8 +692,118 @@ export const AdminAiSettingsTab: React.FC = () => {
         </div>
       )}
 
+      {/* Gemini Test Result Banner */}
+      {geminiTestResult && (
+        <div className={`p-4 rounded-2xl border text-xs leading-relaxed animate-in fade-in duration-200 flex items-start gap-3 ${
+          geminiTestResult.success
+            ? 'bg-emerald-50 text-emerald-950 border-emerald-200'
+            : 'bg-rose-50 text-rose-950 border-rose-200'
+        }`}>
+          {geminiTestResult.success ? (
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
+          ) : (
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+          )}
+          <div className="space-y-1 min-w-0 flex-1">
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <strong className="font-black text-xs sm:text-sm">
+                {geminiTestResult.success ? '✅ اتصال به سرور Gemini ابری با موفقیت برقرار شد!' : '⚠️ خطا در اتصال به سرور ابری Gemini:'}
+              </strong>
+              {geminiTestResult.latencyMs && (
+                <span className="font-mono text-[11px] bg-white/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                  زمان پاسخ: {geminiTestResult.latencyMs}ms
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] sm:text-xs">{geminiTestResult.message}</p>
+            {geminiTestResult.responseSample && (
+              <p className="text-[10px] text-slate-500 font-mono bg-white/60 p-1.5 rounded-lg border border-slate-200/60 truncate">
+                نمونه پاسخ مدل: {geminiTestResult.responseSample}
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Settings Form */}
       <form onSubmit={handleSave} className="space-y-6">
+        {/* ۱. تنظیمات موتور اصلی: Gemini 3.5 Flash Lite ابری */}
+        <div className="p-5 bg-gradient-to-br from-indigo-50/90 via-sky-50/70 to-emerald-50/60 rounded-3xl border border-indigo-200 shadow-xs space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-2 border-b border-indigo-100">
+            <div className="flex items-center gap-2">
+              <div className="w-7 h-7 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs">
+                <Sparkles className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-sm font-black text-slate-900">موتور اصلی هوش مصنوعی (Gemini Cloud Engine)</h3>
+                <span className="text-[10px] text-slate-500 font-medium">سرویس هوشمند تحلیل داده، استدلال و پیشنهاد کتاب</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black border border-emerald-300 flex items-center gap-1">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                اولویت اول سیستم (Primary)
+              </span>
+              <button
+                type="button"
+                onClick={handleTestGemini}
+                disabled={isTestingGemini}
+                className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+              >
+                {isTestingGemini ? (
+                  <>
+                    <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>در حال پینگ سرور...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-3.5 h-3.5" />
+                    <span>تست آنلاین سرور Gemini</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="md:col-span-2 space-y-1.5">
+              <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-indigo-600" />
+                <span>اندپوینت سرور ابری (آدرس کامل بدون نیاز به کلید و پروکسی)</span>
+              </label>
+              <input
+                type="text"
+                dir="ltr"
+                value={geminiEndpointUrl}
+                onChange={(e) => setGeminiEndpointUrl(e.target.value)}
+                placeholder="http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent"
+                className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono text-slate-900 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+              />
+              <span className="text-[10px] text-slate-500 block">
+                درخواست‌ها به صورت مستقیم به این سرور ارسال شده و پاسخ با سرعت و دقت مدل تحلیل می‌شود.
+              </span>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                <Cpu className="w-3.5 h-3.5 text-indigo-600" />
+                <span>مدل هوش مصنوعی ابری</span>
+              </label>
+              <input
+                type="text"
+                dir="ltr"
+                value={geminiModelName}
+                onChange={(e) => setGeminiModelName(e.target.value)}
+                placeholder="gemini-3.5-flash-lite"
+                className="w-full px-3 py-2 bg-white border border-indigo-200 rounded-xl text-xs font-mono text-slate-900 focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition outline-none"
+              />
+              <div className="flex items-center justify-between text-[10px] text-slate-500 pt-1">
+                <span>تایم‌اوت پاسخ:</span>
+                <span className="font-mono font-bold text-indigo-700">{geminiTimeoutSeconds} ثانیه</span>
+              </div>
+            </div>
+          </div>
+        </div>
         {/* Toggle Switches */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           {/* Main AI Toggle */}
@@ -696,6 +858,17 @@ export const AdminAiSettingsTab: React.FC = () => {
               className="w-5 h-5 accent-amber-600 rounded cursor-pointer"
             />
           </div>
+        </div>
+
+        {/* ۲. تنظیمات موتور پشتیبان محلی (Local Ollama Fallback) */}
+        <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-200">
+          <div className="flex items-center gap-2">
+            <HardDrive className="w-4 h-4 text-slate-600" />
+            <h4 className="text-xs font-black text-slate-800">موتور پشتیبان محلی (Local Ollama Fallback)</h4>
+          </div>
+          <span className="text-[10px] text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-lg border border-slate-200">
+            فقط در صورت عدم دسترسی به سرور ابری فراخوانی می‌شود
+          </span>
         </div>
 
         {/* Server & Model Configuration Inputs */}
@@ -1133,32 +1306,64 @@ export const AdminAiSettingsTab: React.FC = () => {
       <div className="pt-6 border-t border-slate-100 space-y-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-purple-600 text-white rounded-2xl shadow-sm">
-              <MessageSquare className="w-5 h-5" />
+            <div className="p-2.5 bg-gradient-to-tr from-indigo-600 to-sky-500 text-white rounded-2xl shadow-sm">
+              <Sparkles className="w-5 h-5 text-yellow-300" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h4 className="text-base font-black text-slate-900">چت‌بات و کنسول گفتگوی زنده با مدل محلی ({modelName})</h4>
+                <h4 className="text-base font-black text-slate-900">
+                  چت‌بات و کنسول گفتگوی زنده با {chatEngine === 'gemini' ? 'Gemini 3.5 Flash Lite (ابری)' : `مدل محلی (${modelName})`}
+                </h4>
                 <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   <span>آماده گفتگو</span>
                 </span>
               </div>
               <p className="text-[11px] text-slate-500">
-                با ارسال پیام‌های دلخواه، دقت، لحن فارسی و سرعت پاسخ‌دهی پردازنده و کارت گرافیک سرور خود را بسنجید.
+                گفتگوی آنلاین با هوش مصنوعی برای سنجش سرعت، کیفیت پاسخ‌ها و مهارت مشاوره کتابدار مکتب‌خانه.
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={handleClearChat}
-            className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
-            title="پاکسازی تاریخچه گفتگو"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>پاک کردن چت</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Engine Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setChatEngine('gemini')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  chatEngine === 'gemini'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>Gemini 3.5 Flash ⚡️</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setChatEngine('ollama')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  chatEngine === 'ollama'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span>Ollama محلی</span>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClearChat}
+              className="px-3 py-1.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-100 hover:text-rose-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              title="پاکسازی تاریخچه گفتگو"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>پاک کردن چت</span>
+            </button>
+          </div>
         </div>
 
         {/* Quick Prompt Chips */}
@@ -1193,8 +1398,8 @@ export const AdminAiSettingsTab: React.FC = () => {
                 }`}
               >
                 {msg.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                    <Bot className="w-4 h-4" />
+                  <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 via-sky-500 to-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                    <Sparkles className="w-4 h-4 text-yellow-200" />
                   </div>
                 )}
 
@@ -1207,7 +1412,7 @@ export const AdminAiSettingsTab: React.FC = () => {
                 >
                   <div className="flex items-center justify-between gap-3 text-[10px] opacity-70 pb-1 border-b border-black/5">
                     <span className="font-bold">
-                      {msg.role === 'user' ? 'شما (مدیر)' : `دستیار مکتب‌خانه (${modelName})`}
+                      {msg.role === 'user' ? 'شما (مدیر)' : `دستیار مکتب‌خانه (${chatEngine === 'gemini' ? 'Gemini 3.5 Flash' : modelName})`}
                     </span>
                     <div className="flex items-center gap-1.5 font-mono">
                       {msg.latencyMs && (
@@ -1323,14 +1528,44 @@ export const AdminAiSettingsTab: React.FC = () => {
               <Play className="w-4 h-4" />
             </div>
             <div>
-              <h4 className="text-sm font-black text-slate-900">محیط تست زنده و عیب‌یابی عمیق مدل (AI Diagnostic Playground)</h4>
+              <h4 className="text-sm font-black text-slate-900">
+                محیط تست زنده و شبیه‌ساز پیشنهاد کتاب ({playgroundEngine === 'gemini' ? 'Gemini 3.5 Flash Lite' : `مدل محلی ${modelName}`})
+              </h4>
               <p className="text-[11px] text-slate-500">
-                بررسی دقیق کتاب‌های ارسالی به مدل، پرامپت کامل، پاسخ خام سرور Ollama و خروجی استخراج‌شده
+                بررسی دقیق کتاب‌های ارسالی از قفسه، پرامپت ساختاریافته، پاسخ زنده سرور هوش مصنوعی و تحلیل کتاب‌های استخراج‌شده
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Engine Switcher */}
+            <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setPlaygroundEngine('gemini')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  playgroundEngine === 'gemini'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Sparkles className="w-3.5 h-3.5 text-yellow-300" />
+                <span>موتور Gemini 3.5 Flash ⚡️</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPlaygroundEngine('ollama')}
+                className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  playgroundEngine === 'ollama'
+                    ? 'bg-slate-800 text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5" />
+                <span>موتور Ollama محلی</span>
+              </button>
+            </div>
+
             <button
               type="button"
               onClick={() => setFallbackEnabled(!fallbackEnabled)}
@@ -1389,12 +1624,12 @@ export const AdminAiSettingsTab: React.FC = () => {
                 {isSimulating ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                    <span>در حال استنتاج مدل ({simElapsedSeconds} ثانیه)...</span>
+                    <span>در حال استنتاج {playgroundEngine === 'gemini' ? 'Gemini 3.5 Flash' : 'مدل محلی'} ({simElapsedSeconds} ثانیه)...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4 text-yellow-300" />
-                    <span>ارسال به هوش مصنوعی و اجرای آزمون</span>
+                    <span>ارسال به {playgroundEngine === 'gemini' ? 'Gemini 3.5 Flash Lite' : 'مدل محلی'} و اجرای آزمون</span>
                   </>
                 )}
               </button>

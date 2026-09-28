@@ -1082,14 +1082,14 @@ export const AdminPanel: React.FC = () => {
 
         <button
           onClick={() => setActiveTab('ai_settings')}
-          className={`flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+          className={`flex-1 min-w-[160px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
             activeTab === 'ai_settings'
               ? 'bg-indigo-600 text-white shadow-xs'
               : 'text-slate-600 hover:text-slate-900'
           }`}
         >
-          <Bot className="w-4 h-4 text-sky-400" />
-          <span>هوش مصنوعی محلی (Ollama)</span>
+          <Sparkles className="w-4 h-4 text-amber-300" />
+          <span>تنظیمات هوش مصنوعی (Gemini & الگوریتم‌ها)</span>
         </button>
 
         <button

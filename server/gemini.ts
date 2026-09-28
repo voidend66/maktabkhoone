@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const DEFAULT_CUSTOM_ENDPOINT = "http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent";
+export const DEFAULT_CUSTOM_ENDPOINT = "http://192.168.100.54:5000/v1beta/models/gemini-3.5-flash-lite:generateContent";
 
 /**
  * Gemini AI Helper Module
@@ -25,8 +25,8 @@ export function getGeminiClient(): GoogleGenAI | null {
 /**
  * Utility to check if Gemini API (Custom Endpoint or SDK Secret) is configured
  */
-export function isGeminiConfigured(): boolean {
-  const customUrl = process.env.CUSTOM_GEMINI_ENDPOINT || DEFAULT_CUSTOM_ENDPOINT;
+export function isGeminiConfigured(customEndpointOverride?: string): boolean {
+  const customUrl = customEndpointOverride || process.env.CUSTOM_GEMINI_ENDPOINT || DEFAULT_CUSTOM_ENDPOINT;
   const apiKey = process.env.GEMINI_API_KEY;
   return Boolean(customUrl || (apiKey && apiKey !== 'MY_GEMINI_API_KEY' && apiKey.trim().length > 0));
 }
@@ -34,8 +34,13 @@ export function isGeminiConfigured(): boolean {
 /**
  * Text content generator using custom server endpoint as primary, with fallback to GoogleGenAI SDK
  */
-export async function generateGeminiText(prompt: string, systemInstruction?: string): Promise<string> {
-  const endpointUrl = (process.env.CUSTOM_GEMINI_ENDPOINT || DEFAULT_CUSTOM_ENDPOINT).trim();
+export async function generateGeminiText(
+  prompt: string,
+  systemInstruction?: string,
+  endpointOverride?: string,
+  timeoutMs: number = 15000
+): Promise<string> {
+  const endpointUrl = (endpointOverride || process.env.CUSTOM_GEMINI_ENDPOINT || DEFAULT_CUSTOM_ENDPOINT).trim();
 
   // Try Primary: Custom Server Endpoint
   if (endpointUrl) {
@@ -61,7 +66,7 @@ export async function generateGeminiText(prompt: string, systemInstruction?: str
       }
 
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 seconds timeout
+      const timeoutId = setTimeout(() => controller.abort(), Math.max(3000, timeoutMs));
 
       const response = await fetch(endpointUrl, {
         method: "POST",
