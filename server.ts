@@ -1949,6 +1949,50 @@ async function startServer() {
     return res.status(404).json({ error: 'File not found' });
   });
 
+  // Dedicated routes for AI LLMs, Search Engines & Crawlers
+  app.get('/robots.txt', (_req: Request, res: Response): any => {
+    const robotsPath = path.join(process.cwd(), 'public', 'robots.txt');
+    if (fs.existsSync(robotsPath)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.sendFile(robotsPath);
+    }
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    return res.send("User-agent: *\nAllow: /\nSitemap: /sitemap.xml\n");
+  });
+
+  app.get('/llms.txt', (_req: Request, res: Response): any => {
+    const llmsPath = path.join(process.cwd(), 'public', 'llms.txt');
+    if (fs.existsSync(llmsPath)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.sendFile(llmsPath);
+    }
+    return res.status(404).send('Not Found');
+  });
+
+  app.get('/llms-full.txt', (_req: Request, res: Response): any => {
+    const llmsFullPath = path.join(process.cwd(), 'public', 'llms-full.txt');
+    if (fs.existsSync(llmsFullPath)) {
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.sendFile(llmsFullPath);
+    }
+    return res.status(404).send('Not Found');
+  });
+
+  app.get('/sitemap.xml', (_req: Request, res: Response): any => {
+    const sitemapPath = path.join(process.cwd(), 'public', 'sitemap.xml');
+    if (fs.existsSync(sitemapPath)) {
+      res.setHeader('Content-Type', 'application/xml; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      return res.sendFile(sitemapPath);
+    }
+    return res.status(404).send('Not Found');
+  });
+
+  app.use('/.well-known', express.static(path.join(process.cwd(), 'public', '.well-known')));
+
   /**
    * --------------------------------------------------------------------------
    * API: آپلود مستقیم فایل تصویر بر روی سرور و بازگرداندن URL واقعی

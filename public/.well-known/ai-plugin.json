@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "name_for_human": "سامانه کتابخانه مکتب‌خونه",
+  "name_for_model": "maktabkhaneh_library",
+  "description_for_human": "سامانه هوشمند اشتراک‌گذاری، امانت کتاب و لیگ کتابخوانی مدارس",
+  "description_for_model": "MaktabKhaneh is an educational school library and peer-to-peer book lending platform with reading leagues, AI book advisory powered by Gemini, and real-time class catalog sync.",
+  "auth": {
+    "type": "none"
+  },
+  "api": {
+    "type": "openapi",
+    "url": "/api/docs"
+  },
+  "logo_url": "/assets/logo.png",
+  "contact_email": "support@maktabkhune.ir",
+  "legal_info_url": "/?tab=rules"
+}
