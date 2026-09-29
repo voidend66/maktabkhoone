@@ -23,6 +23,7 @@ import {
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
 import { api } from '../services/api';
 import { DEFAULT_BOOK_COVER, getSafeImageUrl } from '../utils/coverPresets';
+import { resolveUserClassName, normalizeClassString } from '../utils/classUtils';
 
 const INITIAL_BANK_CARD: BankCardInfo = {
   cardNumber: '6037-9918-9876-5432',
@@ -145,8 +146,10 @@ interface AppContextType {
   ) => void;
   reportDamageAndSuspendUser: (requestId: string, borrowerId: string, reason: string, damagePhotoUrl?: string) => void;
   addSchoolClass: (classData: { name: string; grade: string; isExternal?: boolean }) => void;
-  updateSchoolClass: (id: string, name: string, grade: string) => void;
+  updateSchoolClass: (id: string, name: string, grade: string, isExternal?: boolean) => Promise<{ success: boolean; message?: string }>;
+  syncClassNamesAcrossDatabase: (oldClassName: string, newClassName: string) => Promise<{ success: boolean; message?: string }>;
   deleteSchoolClass: (id: string) => void;
+  resolveClassName: (rawClassNameOrId?: string, fallback?: string) => string;
   addBookReview: (bookId: string, rating: number, comment: string) => void;
   deleteBookReview: (bookId: string, reviewId: string) => Promise<{ success: boolean; message?: string }>;
   deleteFeedback: (feedbackId: string) => Promise<{ success: boolean; message?: string }>;
@@ -1264,10 +1267,92 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
-  const updateSchoolClass = (id: string, name: string, grade: string) => {
+  const updateSchoolClass = async (id: string, name: string, grade: string, isExternal?: boolean): Promise<{ success: boolean; message?: string }> => {
+    const targetClass = schoolClasses.find((c) => c.id === id);
+    const oldName = targetClass?.name ? targetClass.name.trim() : '';
+    const newName = name.trim();
+
+    // Optimistically update class in state
     setSchoolClasses((prev) =>
-      prev.map((c) => (c.id === id ? { ...c, name, grade } : c))
+      prev.map((c) => (c.id === id ? { ...c, name: newName, grade, isExternal: isExternal ?? c.isExternal } : c))
     );
+
+    // If name changed, dynamically cascade across all users, books, requests, and reviews in UI state immediately!
+    if (oldName && newName && oldName !== newName) {
+      const normOld = normalizeClassString(oldName);
+      setUsers((prev) =>
+        prev.map((u) => {
+          const uClass = (u.className || (u as any).schoolClass || '').trim();
+          if (uClass === oldName || uClass === id || normalizeClassString(uClass) === normOld) {
+            return { ...u, className: newName };
+          }
+          return u;
+        })
+      );
+
+      setBooks((prev) =>
+        prev.map((b) => {
+          let updatedBook = { ...b };
+          const bClass = (b.ownerClass || '').trim();
+          if (bClass === oldName || bClass === id || normalizeClassString(bClass) === normOld) {
+            updatedBook.ownerClass = newName;
+          }
+          if (b.reviews && Array.isArray(b.reviews)) {
+            updatedBook.reviews = b.reviews.map((rev) => {
+              const revClass = (rev.userClass || '').trim();
+              if (revClass === oldName || revClass === id || normalizeClassString(revClass) === normOld) {
+                return { ...rev, userClass: newName };
+              }
+              return rev;
+            });
+          }
+          return updatedBook;
+        })
+      );
+
+      setRequests((prev) =>
+        prev.map((r) => {
+          let updated = { ...r };
+          const reqClass = (r.requesterClass || '').trim();
+          if (reqClass === oldName || reqClass === id || normalizeClassString(reqClass) === normOld) {
+            updated.requesterClass = newName;
+          }
+          const ownClass = (r.ownerClass || '').trim();
+          if (ownClass === oldName || ownClass === id || normalizeClassString(ownClass) === normOld) {
+            updated.ownerClass = newName;
+          }
+          return updated;
+        })
+      );
+
+      if (currentUser) {
+        const curClass = (currentUser.className || (currentUser as any).schoolClass || '').trim();
+        if (curClass === oldName || curClass === id || normalizeClassString(curClass) === normOld) {
+          const updatedUser = { ...currentUser, className: newName };
+          setCurrentUser(updatedUser);
+          localStorage.setItem(LOCAL_STORAGE_KEY_CURRENT_USER, JSON.stringify(updatedUser));
+        }
+      }
+    }
+
+    try {
+      const res = await api.updateClass(id, newName, grade, isExternal);
+      await refreshData();
+      return { success: true, message: 'کلاس و تمامی مشخصات دانش‌آموزان مرتبط با موفقیت به‌روزرسانی شد.' };
+    } catch (e: any) {
+      console.error('Error updating class on server:', e);
+      return { success: false, message: e.message || 'خطا در ارتباط با سرور' };
+    }
+  };
+
+  const syncClassNamesAcrossDatabase = async (oldClassName: string, newClassName: string): Promise<{ success: boolean; message?: string }> => {
+    try {
+      const res = await api.syncClassNames(oldClassName, newClassName);
+      await refreshData();
+      return { success: true, message: res.message || 'همگام‌سازی کلاس‌ها با موفقیت انجام شد.' };
+    } catch (e: any) {
+      return { success: false, message: e.message || 'خطا در همگام‌سازی کلاس‌ها' };
+    }
   };
 
   const deleteSchoolClass = async (id: string) => {
@@ -1439,68 +1524,98 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem(LOCAL_STORAGE_KEY_CURRENT_USER);
   };
 
+  const resolveClassName = (rawClassNameOrId?: string, fallback: string = 'نامشخص'): string => {
+    return resolveUserClassName(rawClassNameOrId, schoolClasses, fallback);
+  };
+
+  const mappedUsers = useMemo(() => {
+    return users.map((u) => {
+      const resolvedClass = resolveUserClassName(u.className || (u as any).schoolClass, schoolClasses);
+      return {
+        ...u,
+        className: resolvedClass
+      };
+    });
+  }, [users, schoolClasses]);
+
+  const dynamicCurrentUser = useMemo(() => {
+    if (!currentUser) return null;
+    return {
+      ...currentUser,
+      className: resolveUserClassName(currentUser.className || (currentUser as any).schoolClass, schoolClasses)
+    };
+  }, [currentUser, schoolClasses]);
+
   const mappedBooks = useMemo(() => {
     return books.map((book) => {
       let updatedBook = { ...book };
-      const owner = users.find((u) => u.id === book.ownerId);
+      const owner = mappedUsers.find((u) => u.id === book.ownerId);
       if (owner) {
         updatedBook.ownerName = owner.name;
         updatedBook.ownerAvatar = owner.avatar;
-        updatedBook.ownerClass = owner.className || (owner as any).schoolClass || book.ownerClass;
+        updatedBook.ownerClass = owner.className || resolveUserClassName(book.ownerClass, schoolClasses);
+      } else if (book.ownerClass) {
+        updatedBook.ownerClass = resolveUserClassName(book.ownerClass, schoolClasses);
       }
       if (book.borrowerId) {
-        const borrower = users.find((u) => u.id === book.borrowerId);
+        const borrower = mappedUsers.find((u) => u.id === book.borrowerId);
         if (borrower) {
           updatedBook.borrowerName = borrower.name;
         }
       }
       const updatedReviews = (book.reviews || []).map((review) => {
         let updatedReview = { ...review };
-        const reviewer = users.find((u) => u.id === review.userId);
+        const reviewer = mappedUsers.find((u) => u.id === review.userId);
         if (reviewer) {
           updatedReview.userName = reviewer.name;
           updatedReview.userAvatar = reviewer.avatar;
-          updatedReview.userClass = reviewer.className || (reviewer as any).schoolClass || review.userClass;
+          updatedReview.userClass = reviewer.className || resolveUserClassName(review.userClass, schoolClasses);
+        } else if (review.userClass) {
+          updatedReview.userClass = resolveUserClassName(review.userClass, schoolClasses);
         }
         return updatedReview;
       });
       updatedBook.reviews = updatedReviews;
       return updatedBook;
     });
-  }, [books, users]);
+  }, [books, mappedUsers, schoolClasses]);
 
   const mappedRequests = useMemo(() => {
     return requests.map((req) => {
       let updatedReq = { ...req };
-      const owner = users.find((u) => u.id === req.ownerId);
+      const owner = mappedUsers.find((u) => u.id === req.ownerId);
       if (owner) {
         updatedReq.ownerName = owner.name;
-        updatedReq.ownerClass = owner.className || (owner as any).schoolClass || req.ownerClass;
+        updatedReq.ownerClass = owner.className || resolveUserClassName(req.ownerClass, schoolClasses);
+      } else if (req.ownerClass) {
+        updatedReq.ownerClass = resolveUserClassName(req.ownerClass, schoolClasses);
       }
-      const borrower = users.find((u) => u.id === req.borrowerId);
+      const borrower = mappedUsers.find((u) => u.id === req.borrowerId);
       if (borrower) {
         updatedReq.borrowerName = borrower.name;
-        updatedReq.borrowerClass = borrower.className || (borrower as any).schoolClass || req.borrowerClass;
+        updatedReq.borrowerClass = borrower.className || resolveUserClassName(req.borrowerClass, schoolClasses);
         updatedReq.borrowerPhone = borrower.phone || req.borrowerPhone;
+      } else if (req.borrowerClass) {
+        updatedReq.borrowerClass = resolveUserClassName(req.borrowerClass, schoolClasses);
       }
       return updatedReq;
     });
-  }, [requests, users]);
+  }, [requests, mappedUsers, schoolClasses]);
 
   const mappedFeedbacks = useMemo(() => {
     return feedbacks.map((fb) => {
       let updatedFb = { ...fb };
-      const fromUser = users.find((u) => u.id === fb.fromUserId);
+      const fromUser = mappedUsers.find((u) => u.id === fb.fromUserId);
       if (fromUser) {
         updatedFb.fromUserName = fromUser.name;
       }
-      const toUser = users.find((u) => u.id === fb.toUserId);
+      const toUser = mappedUsers.find((u) => u.id === fb.toUserId);
       if (toUser) {
         updatedFb.toUserName = toUser.name;
       }
       return updatedFb;
     });
-  }, [feedbacks, users]);
+  }, [feedbacks, mappedUsers]);
 
   // Active Events
   const activeEvents = useMemo(() => {
@@ -1736,8 +1851,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   return (
     <AppContext.Provider
       value={{
-        currentUser,
-        users,
+        currentUser: dynamicCurrentUser,
+        users: mappedUsers,
         books: mappedBooks,
         requests: mappedRequests,
         schoolClasses,
@@ -1745,6 +1860,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         bankCardInfo,
         systemConfig,
         isLoading,
+        resolveClassName,
         loginUser,
         loginWithBale,
         loginWithOtpPhone: loginWithBale,
@@ -1774,6 +1890,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         reportDamageAndSuspendUser,
         addSchoolClass,
         updateSchoolClass,
+        syncClassNamesAcrossDatabase,
         deleteSchoolClass,
         addBookReview,
         deleteBookReview,

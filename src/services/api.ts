@@ -377,6 +377,24 @@ export const api = {
     return await res.json();
   },
 
+  async updateClass(id: string, name: string, grade?: string, isExternal?: boolean) {
+    const res = await fetch(`${API_BASE}/classes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, grade, isExternal })
+    });
+    return await res.json();
+  },
+
+  async syncClassNames(oldClassName: string, newClassName: string) {
+    const res = await fetch(`${API_BASE}/classes/sync-students`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ oldClassName, newClassName })
+    });
+    return await res.json();
+  },
+
   async deleteClass(id: string) {
     const res = await fetch(`${API_BASE}/classes/${id}`, { method: 'DELETE' });
     return await res.json();

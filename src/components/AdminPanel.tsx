@@ -94,6 +94,7 @@ export const AdminPanel: React.FC = () => {
     schoolClasses,
     addSchoolClass,
     updateSchoolClass,
+    syncClassNamesAcrossDatabase,
     deleteSchoolClass,
     bankCardInfo,
     updateBankCardInfo,
@@ -887,16 +888,47 @@ export const AdminPanel: React.FC = () => {
     setIsExternal(false);
   };
 
+  const [classSaveFeedback, setClassSaveFeedback] = useState<string | null>(null);
+  const [syncOldName, setSyncOldName] = useState('');
+  const [syncNewName, setSyncNewName] = useState('');
+  const [isSyncingClasses, setIsSyncingClasses] = useState(false);
+  const [syncResultMsg, setSyncResultMsg] = useState<{ success: boolean; text: string } | null>(null);
+
   const startEdit = (c: { id: string; name: string; grade: string }) => {
     setEditingId(c.id);
     setEditName(c.name);
     setEditGrade(c.grade);
   };
 
-  const saveEdit = (id: string) => {
+  const saveEdit = async (id: string) => {
     if (!editName.trim()) return;
-    updateSchoolClass(id, editName.trim(), editGrade);
+    const res = await updateSchoolClass(id, editName.trim(), editGrade);
     setEditingId(null);
+    if (res && res.success) {
+      setClassSaveFeedback(res.message || 'نام کلاس و تمامی دانش‌آموزان مرتبط با موفقیت به‌روزرسانی شد ✓');
+      setTimeout(() => setClassSaveFeedback(null), 4000);
+    }
+  };
+
+  const handleSyncMismatchedClasses = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!syncOldName.trim() || !syncNewName.trim()) return;
+    setIsSyncingClasses(true);
+    setSyncResultMsg(null);
+    try {
+      const res = await syncClassNamesAcrossDatabase(syncOldName.trim(), syncNewName.trim());
+      if (res && res.success) {
+        setSyncResultMsg({ success: true, text: res.message || 'همگام‌سازی انجام شد ✓' });
+        setSyncOldName('');
+        setTimeout(() => setSyncResultMsg(null), 4000);
+      } else {
+        setSyncResultMsg({ success: false, text: res.message || 'خطا در همگام‌سازی' });
+      }
+    } catch (err: any) {
+      setSyncResultMsg({ success: false, text: err.message || 'خطا در برقراری ارتباط' });
+    } finally {
+      setIsSyncingClasses(false);
+    }
   };
 
   return (
@@ -3451,7 +3483,19 @@ export const AdminPanel: React.FC = () => {
 
           {/* Classes Table */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-xs space-y-4">
-            <h3 className="font-bold text-slate-900 text-base">لیست کلاس‌های فعال مدرسه ({schoolClasses.length} کلاس):</h3>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <h3 className="font-bold text-slate-900 text-base">لیست کلاس‌های فعال مدرسه ({schoolClasses.length} کلاس):</h3>
+              <span className="text-xs text-slate-500 font-medium">
+                💡 با ویرایش نام هر کلاس، نام کلاس تمام دانش‌آموزان و کتاب‌های مرتبط به صورت خودکار به‌روزرسانی می‌شود.
+              </span>
+            </div>
+
+            {classSaveFeedback && (
+              <div className="p-3 bg-emerald-100 border border-emerald-300 text-emerald-950 rounded-xl text-xs font-bold flex items-center gap-2 animate-in fade-in">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>{classSaveFeedback}</span>
+              </div>
+            )}
 
             <div className="overflow-x-auto">
               <table className="w-full text-right text-xs">
@@ -3459,12 +3503,15 @@ export const AdminPanel: React.FC = () => {
                   <tr>
                     <th className="p-3">نام کلاس</th>
                     <th className="p-3">پایه تحصیلی</th>
+                    <th className="p-3">تعداد دانش‌آموزان</th>
                     <th className="p-3">نوع کلاس</th>
                     <th className="p-3 text-center">ویرایش / حذف</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {schoolClasses.map((c) => (
+                  {schoolClasses.map((c) => {
+                    const studentCount = users.filter((u) => u.className === c.name && u.role === 'student').length;
+                    return (
                     <tr key={c.id} className="hover:bg-slate-50 transition">
                       <td className="p-3 font-bold text-slate-900">
                         {editingId === c.id ? (
@@ -3490,6 +3537,12 @@ export const AdminPanel: React.FC = () => {
                         ) : (
                           c.grade
                         )}
+                      </td>
+
+                      <td className="p-3">
+                        <span className="bg-indigo-50 text-indigo-700 font-black px-2.5 py-0.5 rounded-full text-xs">
+                          {studentCount} دانش‌آموز
+                        </span>
                       </td>
 
                       <td className="p-3">
@@ -3546,10 +3599,89 @@ export const AdminPanel: React.FC = () => {
                         )}
                       </td>
                     </tr>
-                  ))}
+                  );
+                })}
                 </tbody>
               </table>
             </div>
+          </div>
+
+          {/* Quick Fix / Batch Class Renamer & Synchronizer Tool */}
+          <div className="bg-gradient-to-br from-indigo-50/60 via-slate-50 to-amber-50/40 rounded-3xl p-6 border border-indigo-200/80 shadow-xs space-y-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-xs shrink-0">
+                <RefreshCw className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-black text-slate-900 text-sm">
+                  ابزار اصلاح و همگام‌سازی دسته‌ای نام کلاس‌های قدیمی یا اشتباه:
+                </h4>
+                <p className="text-xs text-slate-600 mt-0.5">
+                  اگر قبلاً نام کلاسی اشتباه بوده و می‌خواهید کلاس تمام دانش‌آموزان به نام جدید منتقل شود، نام قبلی و نام جدید را مشخص کنید:
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleSyncMismatchedClasses} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  نام کلاس قبلی / اشتباه:
+                </label>
+                <input
+                  type="text"
+                  value={syncOldName}
+                  onChange={(e) => setSyncOldName(e.target.value)}
+                  placeholder="مثلاً: کلاس ۵/۱ یا ۱۰ تجربی..."
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 focus:border-indigo-500 outline-hidden"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  نام کلاس جدید جایگزین:
+                </label>
+                <select
+                  value={syncNewName}
+                  onChange={(e) => setSyncNewName(e.target.value)}
+                  className="w-full text-xs p-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-900 focus:border-indigo-500 outline-hidden cursor-pointer"
+                >
+                  <option value="">-- انتخاب کلاس جدید مقصد --</option>
+                  {schoolClasses.map((c) => (
+                    <option key={c.id} value={c.name}>
+                      {c.name} ({c.grade})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  disabled={!syncOldName.trim() || !syncNewName.trim() || isSyncingClasses}
+                  className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-black text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSyncingClasses ? 'animate-spin' : ''}`} />
+                  <span>{isSyncingClasses ? 'در حال همگام‌سازی...' : 'اعمال و همگام‌سازی سراسری'}</span>
+                </button>
+              </div>
+            </form>
+
+            {syncResultMsg && (
+              <div
+                className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 mt-2 ${
+                  syncResultMsg.success
+                    ? 'bg-emerald-100 text-emerald-950 border border-emerald-300'
+                    : 'bg-rose-100 text-rose-950 border border-rose-300'
+                }`}
+              >
+                {syncResultMsg.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span>{syncResultMsg.text}</span>
+              </div>
+            )}
           </div>
         </div>
       )}

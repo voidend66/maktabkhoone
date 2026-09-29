@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
+import { useApp } from '../context/AppContext';
 import { Trophy, Medal, Star, BookOpen, Award, Sparkles, Printer, Eye, ListOrdered, CheckSquare } from 'lucide-react';
 import { houseLogoImg } from './MaktabKhanehBranding';
 
@@ -16,6 +17,7 @@ export const PrintableBoard: React.FC<PrintableBoardProps> = ({
   topRatedUsers,
   onClose
 }) => {
+  const { resolveClassName } = useApp();
   const [printMode, setPrintMode] = useState<'poster' | 'detailed_table'>('poster');
 
   const currentDateFa = new Date().toLocaleDateString('fa-IR', {
@@ -291,7 +293,7 @@ export const PrintableBoard: React.FC<PrintableBoardProps> = ({
                         <tr key={u.id} className="hover:bg-slate-50 border-b border-slate-200">
                           <td className="py-2.5 px-3 border border-slate-200 text-center font-black">{idx + 1}</td>
                           <td className="py-2.5 px-3 border border-slate-200 font-black text-slate-900">{u.name}</td>
-                          <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-slate-600">کلاس {u.className}</td>
+                          <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-slate-600">کلاس {resolveClassName(u.className)}</td>
                           <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-emerald-800">{u.booksContributedCount || 0} جلد</td>
                           <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-indigo-800">{u.booksReadCount || 0} جلد</td>
                           <td className="py-2.5 px-3 border border-slate-200 text-center font-bold text-amber-700">⭐ {u.rating || 5}</td>

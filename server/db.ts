@@ -568,12 +568,53 @@ export function addSystemLogListener(fn: SystemLogListener) {
   logListeners.push(fn);
 }
 
+function normalizeClassString(str: string | undefined | null): string {
+  if (!str) return '';
+  return str
+    .toString()
+    .trim()
+    .replace(/[\u200B-\u200D\uFEFF\s]+/g, '')
+    .replace(/[۰-۹]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 1728))
+    .replace(/[٠-٩]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 1584))
+    .replace(/ي/g, 'ی')
+    .replace(/ك/g, 'ک')
+    .replace(/ة/g, 'ه')
+    .replace(/آ/g, 'ا')
+    .toLowerCase();
+}
+
+function resolveUserClassNameServer(rawClassNameOrId?: string): string {
+  if (!rawClassNameOrId || !rawClassNameOrId.trim()) return 'نامشخص';
+  const raw = rawClassNameOrId.trim();
+  const classes = memoryDb.schoolClasses || [];
+  if (classes.length === 0) return raw;
+
+  const matchById = classes.find((c) => c.id === raw);
+  if (matchById) return matchById.name;
+
+  const matchExact = classes.find((c) => c.name === raw || c.name.trim() === raw);
+  if (matchExact) return matchExact.name;
+
+  const normRaw = normalizeClassString(raw);
+  const matchNorm = classes.find((c) => normalizeClassString(c.name) === normRaw);
+  if (matchNorm) return matchNorm.name;
+
+  const fuzzyMatches = classes.filter((c) => {
+    const normClass = normalizeClassString(c.name);
+    return normClass.includes(normRaw) || normRaw.includes(normClass);
+  });
+  if (fuzzyMatches.length === 1) return fuzzyMatches[0].name;
+
+  return raw;
+}
+
 export const dbService = {
   // .... existing code ...
   // ---- USERS ----
   getAllUsers(): User[] {
     return memoryDb.users.map((u) => ({
       ...u,
+      className: resolveUserClassNameServer(u.className || (u as any).schoolClass),
       medals: Array.isArray(u.medals) ? u.medals : [],
       rating: Number(u.rating) || 5.0,
       ratingsCount: Number(u.ratingsCount) || 0,
@@ -588,6 +629,7 @@ export const dbService = {
     if (!user) return null;
     return {
       ...user,
+      className: resolveUserClassNameServer(user.className || (user as any).schoolClass),
       medals: Array.isArray(user.medals) ? user.medals : [],
       rating: Number(user.rating) || 5.0,
       ratingsCount: Number(user.ratingsCount) || 0,
@@ -1043,10 +1085,114 @@ export const dbService = {
     if (index === -1) return null;
 
     const current = memoryDb.schoolClasses[index];
-    const updated: SchoolClass = { ...current, ...updates };
+    const oldName = (current.name || '').trim();
+    const newName = updates.name ? updates.name.trim() : oldName;
+    const updated: SchoolClass = { ...current, ...updates, name: newName };
     memoryDb.schoolClasses[index] = updated;
+
+    // Dynamically cascade the class name change across all collections!
+    if (oldName && newName && oldName !== newName) {
+      console.log(`[Class Cascade Update] Renaming class from "${oldName}" to "${newName}" across all students, books, and requests...`);
+      const normOld = normalizeClassString(oldName);
+      
+      // 1. Update all Users
+      let updatedUsersCount = 0;
+      memoryDb.users.forEach((u) => {
+        const uClass = (u.className || (u as any).schoolClass || '').trim();
+        if (uClass === oldName || uClass === id || normalizeClassString(uClass) === normOld) {
+          u.className = newName;
+          updatedUsersCount++;
+        }
+      });
+
+      // 2. Update all Books & Reviews
+      memoryDb.books.forEach((b) => {
+        const bClass = (b.ownerClass || '').trim();
+        if (bClass === oldName || bClass === id || normalizeClassString(bClass) === normOld) {
+          b.ownerClass = newName;
+        }
+        if (b.reviews && Array.isArray(b.reviews)) {
+          b.reviews.forEach((rev) => {
+            const revClass = (rev.userClass || '').trim();
+            if (revClass === oldName || revClass === id || normalizeClassString(revClass) === normOld) {
+              rev.userClass = newName;
+            }
+          });
+        }
+      });
+
+      // 3. Update all Requests
+      memoryDb.requests.forEach((r) => {
+        const borClass = (r.borrowerClass || '').trim();
+        if (borClass === oldName || borClass === id || normalizeClassString(borClass) === normOld) {
+          r.borrowerClass = newName;
+        }
+        const ownClass = (r.ownerClass || '').trim();
+        if (ownClass === oldName || ownClass === id || normalizeClassString(ownClass) === normOld) {
+          r.ownerClass = newName;
+        }
+      });
+
+      this.addSystemLog(
+        'info',
+        'تغییر نام کلاس و همگام‌سازی داینامیک دانش‌آموزان',
+        `نام کلاس از «${oldName}» به «${newName}» تغییر یافت و کلاس ${updatedUsersCount} دانش‌آموز به صورت خودکار در کل سامانه و لیگ به‌روزرسانی شد.`
+      );
+    }
+
     saveToDisk();
     return updated;
+  },
+
+  syncClassNamesAcrossDatabase(oldName: string, newName: string): { updatedUsers: number; updatedBooks: number; updatedRequests: number } {
+    const cleanOld = (oldName || '').trim();
+    const cleanNew = (newName || '').trim();
+    if (!cleanOld || !cleanNew || cleanOld === cleanNew) return { updatedUsers: 0, updatedBooks: 0, updatedRequests: 0 };
+    const normOld = normalizeClassString(cleanOld);
+
+    let updatedUsers = 0;
+    let updatedBooks = 0;
+    let updatedRequests = 0;
+
+    memoryDb.users.forEach((u) => {
+      const uClass = (u.className || (u as any).schoolClass || '').trim();
+      if (uClass === cleanOld || normalizeClassString(uClass) === normOld) {
+        u.className = cleanNew;
+        updatedUsers++;
+      }
+    });
+
+    memoryDb.books.forEach((b) => {
+      const bClass = (b.ownerClass || '').trim();
+      if (bClass === cleanOld || normalizeClassString(bClass) === normOld) {
+        b.ownerClass = cleanNew;
+        updatedBooks++;
+      }
+      b.reviews?.forEach((rev) => {
+        const revClass = (rev.userClass || '').trim();
+        if (revClass === cleanOld || normalizeClassString(revClass) === normOld) {
+          rev.userClass = cleanNew;
+        }
+      });
+    });
+
+    memoryDb.requests.forEach((r) => {
+      let matched = false;
+      const borClass = (r.borrowerClass || '').trim();
+      if (borClass === cleanOld || normalizeClassString(borClass) === normOld) {
+        r.borrowerClass = cleanNew;
+        matched = true;
+      }
+      const ownClass = (r.ownerClass || '').trim();
+      if (ownClass === cleanOld || normalizeClassString(ownClass) === normOld) {
+        r.ownerClass = cleanNew;
+        matched = true;
+      }
+      if (matched) updatedRequests++;
+    });
+
+    saveToDisk();
+    return { updatedUsers, updatedBooks, updatedRequests };
   },
 
   deleteClass(id: string): boolean {

@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 export const ReadingLeague: React.FC = () => {
-  const { users, currentUser } = useApp();
+  const { users, currentUser, resolveClassName } = useApp();
   const [showPrintModal, setShowPrintModal] = useState(false);
 
   const studentUsers = users.filter((u) => u.status === 'approved' && u.role === 'student');
@@ -98,7 +98,7 @@ export const ReadingLeague: React.FC = () => {
                 قهرمان کتابخوانی این هفته:
               </span>
               <h3 className="font-extrabold text-lg text-white">{champion.name}</h3>
-              <p className="text-xs text-amber-100">کلاس {champion.className}</p>
+              <p className="text-xs text-amber-100">کلاس {resolveClassName(champion.className)}</p>
             </div>
             <div className="pt-2 border-t border-white/10 flex justify-around text-xs">
               <div>
@@ -150,7 +150,7 @@ export const ReadingLeague: React.FC = () => {
                   />
                   <div>
                     <h4 className="font-bold text-slate-900 text-base">{topContributors[1].name}</h4>
-                    <p className="text-xs text-slate-500">{topContributors[1].className}</p>
+                    <p className="text-xs text-slate-500">{resolveClassName(topContributors[1].className)}</p>
                   </div>
                   <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
                     <span>📚 {topContributors[1].booksContributedCount} کتاب</span>
@@ -172,7 +172,7 @@ export const ReadingLeague: React.FC = () => {
                   />
                   <div>
                     <h4 className="font-black text-slate-900 text-lg">{topContributors[0].name}</h4>
-                    <p className="text-xs text-amber-800 font-bold">{topContributors[0].className}</p>
+                    <p className="text-xs text-amber-800 font-bold">{resolveClassName(topContributors[0].className)}</p>
                   </div>
                   <div className="bg-amber-100/80 p-3 rounded-2xl border border-amber-200 flex justify-around text-xs font-bold text-slate-900">
                     <span>📚 {topContributors[0].booksContributedCount} کتاب</span>
@@ -195,7 +195,7 @@ export const ReadingLeague: React.FC = () => {
                   />
                   <div>
                     <h4 className="font-bold text-slate-900 text-base">{topContributors[2].name}</h4>
-                    <p className="text-xs text-slate-500">{topContributors[2].className}</p>
+                    <p className="text-xs text-slate-500">{resolveClassName(topContributors[2].className)}</p>
                   </div>
                   <div className="bg-slate-50 p-2.5 rounded-2xl border border-slate-100 flex justify-around text-xs">
                     <span>📚 {topContributors[2].booksContributedCount} کتاب</span>
@@ -244,7 +244,7 @@ export const ReadingLeague: React.FC = () => {
                       />
                       <div>
                         <div className="font-bold text-slate-800">{u.name}</div>
-                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                        <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
 
@@ -292,7 +292,7 @@ export const ReadingLeague: React.FC = () => {
                       />
                       <div>
                         <div className="font-bold text-slate-800">{u.name}</div>
-                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                        <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
 
@@ -340,7 +340,7 @@ export const ReadingLeague: React.FC = () => {
                       />
                       <div>
                         <div className="font-bold text-slate-800">{u.name}</div>
-                        <div className="text-[10px] text-slate-400">{u.className}</div>
+                        <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
 

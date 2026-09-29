@@ -4631,12 +4631,65 @@ async function startServer() {
     if (!name || !grade) return res.status(400).json({ success: false, message: 'نام و پایه کلاس الزامی است.' });
     const newClass: SchoolClass = {
       id: `c_${Date.now()}`,
-      name,
-      grade,
+      name: name.trim(),
+      grade: grade.trim(),
       isExternal: Boolean(isExternal)
     };
     const created = dbService.createClass(newClass);
     res.json({ success: true, class: created });
+  });
+
+  app.put('/api/classes/:id', (req: Request, res: Response): any => {
+    const { name, grade, isExternal } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'نام کلاس الزامی است.' });
+    }
+
+    const updated = dbService.updateClass(req.params.id, {
+      name: name.trim(),
+      grade: grade ? grade.trim() : undefined,
+      isExternal: isExternal !== undefined ? Boolean(isExternal) : undefined
+    });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'کلاس مورد نظر یافت نشد.' });
+    }
+
+    res.json({ success: true, class: updated });
+  });
+
+  app.post('/api/classes/:id/update', (req: Request, res: Response): any => {
+    const { name, grade, isExternal } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ success: false, message: 'نام کلاس الزامی است.' });
+    }
+
+    const updated = dbService.updateClass(req.params.id, {
+      name: name.trim(),
+      grade: grade ? grade.trim() : undefined,
+      isExternal: isExternal !== undefined ? Boolean(isExternal) : undefined
+    });
+
+    if (!updated) {
+      return res.status(404).json({ success: false, message: 'کلاس مورد نظر یافت نشد.' });
+    }
+
+    res.json({ success: true, class: updated });
+  });
+
+  // Admin endpoint to sync / replace an old class name with a new class name across all students
+  app.post('/api/classes/sync-students', (req: Request, res: Response): any => {
+    const { oldClassName, newClassName } = req.body;
+    if (!oldClassName || !newClassName) {
+      return res.status(400).json({ success: false, message: 'نام کلاس قبلی و نام جدید الزامی است.' });
+    }
+
+    const result = dbService.syncClassNamesAcrossDatabase(oldClassName, newClassName);
+    res.json({
+      success: true,
+      message: `همگام‌سازی انجام شد: کلاس ${result.updatedUsers} دانش‌آموز، ${result.updatedBooks} کتاب و ${result.updatedRequests} درخواست به‌روزرسانی شد.`,
+      result
+    });
   });
 
   app.delete('/api/classes/:id', (req: Request, res: Response): any => {
