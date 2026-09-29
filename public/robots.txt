@@ -1,83 +1,46 @@
-# ==============================================================================
-# Robots.txt for MaktabKhaneh (مکتب‌خونه)
-# Designed for full indexing and unrestricted AI/LLM evaluation & discovery
-# ==============================================================================
-
-# 1. Default for all Web Crawlers & Search Engines
 User-agent: *
-Allow: /
-Crawl-delay: 0
+Disallow:
 
-# 2. OpenAI / ChatGPT Bots
 User-agent: GPTBot
-Allow: /
+Disallow:
 
 User-agent: ChatGPT-User
-Allow: /
-
-# 3. Google AI & Search Crawlers
-User-agent: Google-Extended
-Allow: /
+Disallow:
 
 User-agent: Googlebot
-Allow: /
+Disallow:
 
-User-agent: Googlebot-Image
-Allow: /
+User-agent: Google-Extended
+Disallow:
 
-# 4. Anthropic / Claude Crawlers
 User-agent: ClaudeBot
-Allow: /
+Disallow:
 
 User-agent: Claude-Web
-Allow: /
+Disallow:
 
 User-agent: Anthropic-ai
-Allow: /
+Disallow:
 
-# 5. Perplexity AI
 User-agent: PerplexityBot
-Allow: /
+Disallow:
 
-# 6. Microsoft / Bing
-User-agent: Bingbot
-Allow: /
-
-# 7. Common Crawl & General AI Scrapers
-User-agent: CCBot
-Allow: /
-
-# 8. Apple AI & Siri
 User-agent: Applebot
-Allow: /
+Disallow:
 
-User-agent: Applebot-Extended
-Allow: /
+User-agent: Bingbot
+Disallow:
 
-# 9. Meta / Facebook AI
+User-agent: CCBot
+Disallow:
+
 User-agent: Meta-ExternalAgent
-Allow: /
+Disallow:
 
-User-agent: FacebookBot
-Allow: /
-
-# 10. Cohere AI
 User-agent: Cohere-ai
-Allow: /
+Disallow:
 
-# 11. Diffbot & Others
 User-agent: Diffbot
-Allow: /
+Disallow:
 
-User-agent: Omgilibot
-Allow: /
-
-User-agent: YouBot
-Allow: /
-
-# Sitemap and LLM context manifests
 Sitemap: /sitemap.xml
-
-# LLM Directives (llmstxt.org standard)
-# LLM-Summary: /llms.txt
-# LLM-Full: /llms-full.txt

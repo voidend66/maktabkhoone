@@ -1909,7 +1909,7 @@ export async function handleIncomingBaleMessage(message: any) {
 async function startServer() {
   const app = express();
 
-  // CORS
+  // CORS & Unrestricted Bot Crawling Headers
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
@@ -1917,6 +1917,7 @@ async function startServer() {
       'Access-Control-Allow-Headers',
       'Origin, X-Requested-With, Content-Type, Accept, Authorization'
     );
+    res.header('X-Robots-Tag', 'all, index, follow');
     if (_req.method === 'OPTIONS') {
       return res.sendStatus(200);
     }
