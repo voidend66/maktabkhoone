@@ -28,7 +28,6 @@ import {
 } from 'lucide-react';
 import { CamScannerModal } from './CamScannerModal';
 import { ExtractedMetadataModal } from './ExtractedMetadataModal';
-import { getMedalDefinitionById } from '../data/medalsData';
 
 interface BookDetailModalProps {
   book: Book | null;
@@ -429,31 +428,23 @@ export const BookDetailModal: React.FC<BookDetailModalProps> = ({
               </div>
             </div>
 
-            {/* Medals preview with 3D badges */}
+            {/* Medals preview */}
             {owner?.medals && owner.medals.length > 0 && (
-              <div className="flex items-center gap-1.5 bg-white/95 px-3 py-1.5 rounded-2xl border border-emerald-100 shadow-2xs">
-                {owner.medals.slice(0, 4).map((m) => {
-                  const def = getMedalDefinitionById(m.id);
-                  const img = m.imageUrl || def?.imageUrl;
-                  return (
-                    <div
-                      key={m.id}
-                      title={`${m.title} (${m.tierTitle || def?.tierTitle || 'نشان افتخار'}): ${m.description}`}
-                      className="w-7 h-7 rounded-lg overflow-hidden ring-1 ring-amber-300 shadow-2xs hover:scale-110 transition-transform cursor-pointer"
-                    >
-                      {img ? (
-                        <img src={img} alt={m.title} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-sm flex items-center justify-center h-full">{m.icon}</span>
-                      )}
-                    </div>
-                  );
-                })}
-                {owner.medals.length > 4 && (
-                  <span className="text-[10px] font-bold text-slate-400">
-                    +{owner.medals.length - 4}
-                  </span>
-                )}
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {owner.medals.map((m) => (
+                  <div
+                    key={m.id}
+                    title={`🏅 ${m.title}\n✨ خاصیت: ${m.specialPerk || m.description}`}
+                    className="flex items-center gap-1 bg-white px-2 py-1 rounded-xl border border-amber-200/80 shadow-2xs hover:scale-105 transition cursor-help text-xs font-bold text-slate-800"
+                  >
+                    {m.imageUrl ? (
+                      <img src={m.imageUrl} alt={m.title} className="w-4 h-4 rounded-md object-cover" />
+                    ) : (
+                      <span>{m.icon || '🏅'}</span>
+                    )}
+                    <span className="text-[11px]">{m.title}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>

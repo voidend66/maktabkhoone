@@ -1,7 +1,85 @@
 export type UserStatus = 'approved' | 'pending' | 'suspended' | 'rejected';
 export type UserRole = 'student' | 'admin';
 
-export type MedalTier = 'bronze' | 'silver' | 'gold' | 'diamond' | 'mythic';
+export type MedalTier = 'bronze' | 'silver' | 'gold' | 'platinum' | 'diamond' | 'legendary';
+
+export type MedalConditionType =
+  | 'books_contributed'
+  | 'books_read'
+  | 'successful_loans'
+  | 'high_rating'
+  | 'reviews_written'
+  | 'multi_category'
+  | 'speed_return'
+  | 'league_top'
+  | 'custom_manual'
+  | 'compound_rules';
+
+export interface SecondaryCondition {
+  id: string;
+  type: MedalConditionType;
+  threshold: number;
+  description?: string;
+  unit?: string;
+}
+
+export interface MedalCriteria {
+  type: MedalConditionType;
+  threshold: number; // e.g., 5
+  description: string; // e.g., "ثبت و اهدای حداقل ۵ جلد کتاب به کتابخانه"
+  extraParam?: string;
+  compoundOperator?: 'AND' | 'OR';
+  secondaryConditions?: SecondaryCondition[];
+  minRating?: number;
+  minRatingsCount?: number;
+  speedHoursLimit?: number;
+  minCategoriesCount?: number;
+  targetRole?: 'all' | 'student' | 'admin';
+}
+
+export interface MedalReward {
+  freeLoanQuota: number; // e.g., 1 or 2 free loans
+  leaguePoints: number; // e.g., 100 points
+  leagueMultiplier?: number; // e.g., 1.25 for 1.25x multiplier
+  systemBadgeType?:
+    | 'trusted_shield'
+    | 'fast_reader'
+    | 'crown'
+    | 'diamond_frame'
+    | 'golden_star'
+    | 'hall_of_fame'
+    | 'ai_vip'
+    | 'custom';
+  unlockAiFeature?: boolean;
+  priorityReservation?: boolean;
+  allowFreeLoanWithoutFee?: boolean;
+  title: string; // e.g., "۲ سهمیه امانت رایگان + ۱۰۰ امتیاز لیگ"
+  perkDescription?: string; // e.g., "نشان طلایی در کنار نام کاربری و اولویت در نوبت امانت"
+}
+
+export interface SystemMedal {
+  id: string;
+  title: string;
+  occasion: string; // مناسبت و رویداد دریافت مدال
+  specialPerk: string; // خاصیت و امتیاز ممتاز مدال
+  description: string;
+  tier: MedalTier; // برنز، نقره، طلا، پلاتین، الماس، اسطوره‌ای
+  level: number; // 1 to 5
+  icon: string; // Emoji or icon tag
+  imageUrl?: string; // Uploaded custom image URL or Base64
+  color: string; // Tailwind color classes for badges
+  bgGradient: string; // Gradient class for cards & banners
+  criteria: MedalCriteria;
+  reward: MedalReward;
+  badgeLabel?: string; // Custom badge text override (e.g. اسطوره‌ای • سطح ۵ (ویژه مدیریت))
+  isCustom?: boolean;
+  targetAudience?: 'all' | 'students' | 'admins_only';
+  isActive: boolean;
+  order: number;
+  earnedCount?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
 
 export interface Medal {
   id: string;
@@ -9,17 +87,14 @@ export interface Medal {
   icon: string;
   description: string;
   color: string;
-  // Extended 3D and achievement metadata
-  imageUrl?: string;
   tier?: MedalTier;
-  tierTitle?: string;
-  level?: number; // 1 to 5
-  property?: string; // خاصیت و امتیاز متمایز این نشان
-  occasion?: string; // مناسبت و فلسفه نماد
-  criteriaDesc?: string; // شرط دریافت خودکار
-  awardedAt?: string;
-  awardedBy?: 'auto' | 'admin';
-  adminNote?: string;
+  level?: number;
+  imageUrl?: string;
+  occasion?: string;
+  specialPerk?: string;
+  earnedAt?: string;
+  grantedBy?: 'auto_system' | 'admin_manual';
+  note?: string;
 }
 
 export interface User {
@@ -157,7 +232,6 @@ export interface LendingRequest {
   createdAt: string;
   createdAtTimestamp?: number;
   acceptedAt?: string;
-  returnedAt?: string;
   rejectionReason?: string;
   ownerFeedbackGiven?: boolean;
   borrowerFeedbackGiven?: boolean;

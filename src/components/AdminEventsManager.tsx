@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { SystemEvent, UserEventProgress, User } from '../types';
+import { SystemEvent, UserEventProgress, User, EventStatus } from '../types';
 import {
   getCurrentJalaliDate,
   PERSIAN_MONTHS,
@@ -295,7 +295,7 @@ export const AdminEventsManager: React.FC = () => {
   const [rewardDescription, setRewardDescription] = useState('۲ سهمیه امانت کتاب کاملاً رایگان بدون کارمزد');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [durationDays, setDurationDays] = useState<number>(14);
-  const [status, setStatus] = useState<'draft' | 'active' | 'archived'>('active');
+  const [status, setStatus] = useState<EventStatus>('active');
   const [publishToBaleOnCreate, setPublishToBaleOnCreate] = useState(true);
 
   // Action status feedbacks

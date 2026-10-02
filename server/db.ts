@@ -14,9 +14,12 @@ import {
   AppNotification,
   SystemEvent,
   UserEventProgress,
-  AiInteractionLog
+  AiInteractionLog,
+  SystemMedal,
+  Medal
 } from '../src/types';
 import { ADMIN_PHONES, isAdminPhone, SCHOOL_GRADES, CATEGORIES } from '../src/data/mockData';
+import { DEFAULT_MEDALS } from '../src/data/defaultMedals';
 
 // Function to check if a path is on an external drive or mount point
 export function isExternalPath(targetPath: string): boolean {
@@ -104,6 +107,7 @@ interface DatabaseSchema {
   notifications?: AppNotification[];
   events?: SystemEvent[];
   aiLogs?: AiInteractionLog[];
+  medals?: SystemMedal[];
   analytics?: any;
 }
 
@@ -120,6 +124,7 @@ let memoryDb: DatabaseSchema = {
   notifications: [],
   events: [],
   aiLogs: [],
+  medals: [],
   analytics: null
 };
 
@@ -207,6 +212,7 @@ function loadFromDisk(): boolean {
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
           events: Array.isArray(parsed.events) ? parsed.events : [],
           aiLogs: Array.isArray(parsed.aiLogs) ? parsed.aiLogs : [],
+          medals: Array.isArray(parsed.medals) ? parsed.medals : [],
           analytics: parsed.analytics || null
         };
         return true;
@@ -230,6 +236,7 @@ function loadFromDisk(): boolean {
           notifications: Array.isArray(parsed.notifications) ? parsed.notifications : [],
           events: Array.isArray(parsed.events) ? parsed.events : [],
           aiLogs: Array.isArray(parsed.aiLogs) ? parsed.aiLogs : [],
+          medals: Array.isArray(parsed.medals) ? parsed.medals : [],
           analytics: parsed.analytics || null
         };
         return true;
@@ -367,26 +374,6 @@ function seedInitialDataIfEmpty() {
     const student1Id = 'u_student_ali';
     const student2Id = 'u_student_sara';
     const student3Id = 'u_student_amir';
-    const student4Id = 'u_student_fatemeh';
-    const student5Id = 'u_student_mohammad';
-
-    const veteranMedalObj = {
-      id: 'custom_medal_veteran',
-      title: 'پیشکسوت مکتب‌خانه',
-      icon: '🏛️',
-      description: 'نشان زرین تجلیل از ۵ عضو پیشگام و بنیان‌گذار مکتب‌خانه که با حضور ارزشمند و وفاداری‌شان، چراغ فرهنگ کتابخوانی مدرسه را روشن نگاه داشتند.',
-      color: 'bg-purple-50 text-purple-900 border-purple-300',
-      imageUrl: '/src/assets/images/badge_veteran_3d_1790951045497.jpg',
-      tier: 'mythic' as const,
-      tierTitle: 'اسطوره‌ای • سطح ۵',
-      level: 5,
-      property: 'اعطای ۳ سهمیه امانت رایگان + ضریب ۱.۲۵ برابری در لیگ + نشان اختصاصی پیشکسوت معتمد در کنار نام',
-      occasion: 'تجلیل ویژه از پنج یار دیرین و نخستین همراهان مکتب‌خانه مدرسه',
-      criteriaDesc: 'اختصاصی ۵ کاربر قدیمی و پیشگام مکتب‌خانه به پاس همراهی، اعتماد و وفاداری مستمر.',
-      awardedAt: new Date().toISOString(),
-      awardedBy: 'admin' as const,
-      adminNote: 'به پاس حضور پیشگامانه و همراهی ارزشمند به عنوان یکی از ۵ عضو نخستین مکتب‌خانه مدرسه.'
-    };
 
     if (!memoryDb.users.some((u) => u.id === student1Id)) {
       memoryDb.users.push({
@@ -401,7 +388,7 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 8,
         booksContributedCount: 3,
         booksReadCount: 6,
-        medals: [veteranMedalObj],
+        medals: [],
         joinedDate: '1403/07/01',
         activeLoanCount: 0,
         freeLoanQuota: 1
@@ -421,7 +408,7 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 12,
         booksContributedCount: 4,
         booksReadCount: 9,
-        medals: [veteranMedalObj],
+        medals: [],
         joinedDate: '1403/07/05',
         activeLoanCount: 0,
         freeLoanQuota: 2
@@ -441,46 +428,8 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 5,
         booksContributedCount: 2,
         booksReadCount: 4,
-        medals: [veteranMedalObj],
+        medals: [],
         joinedDate: '1403/07/10',
-        activeLoanCount: 0
-      });
-    }
-
-    if (!memoryDb.users.some((u) => u.id === student4Id)) {
-      memoryDb.users.push({
-        id: student4Id,
-        name: 'فاطمه حسینی',
-        className: 'کلاس ۶/۲',
-        phone: '09121110004',
-        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
-        status: 'approved',
-        role: 'student',
-        rating: 4.9,
-        ratingsCount: 7,
-        booksContributedCount: 3,
-        booksReadCount: 7,
-        medals: [veteranMedalObj],
-        joinedDate: '1403/07/12',
-        activeLoanCount: 0
-      });
-    }
-
-    if (!memoryDb.users.some((u) => u.id === student5Id)) {
-      memoryDb.users.push({
-        id: student5Id,
-        name: 'محمدرضا کریمی',
-        className: 'کلاس ۵/۲',
-        phone: '09121110005',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
-        status: 'approved',
-        role: 'student',
-        rating: 4.9,
-        ratingsCount: 6,
-        booksContributedCount: 2,
-        booksReadCount: 5,
-        medals: [veteranMedalObj],
-        joinedDate: '1403/07/15',
         activeLoanCount: 0
       });
     }
@@ -604,6 +553,12 @@ function seedInitialDataIfEmpty() {
         createdAtTimestamp: now
       }
     ];
+    hasChanges = true;
+  }
+
+  // Seed default initial medals if empty
+  if (!memoryDb.medals || memoryDb.medals.length === 0) {
+    memoryDb.medals = JSON.parse(JSON.stringify(DEFAULT_MEDALS));
     hasChanges = true;
   }
 
@@ -1591,7 +1546,8 @@ export const dbService = {
       systemConfig: this.getSystemConfig(),
       customAvatars: this.getCustomAvatars(),
       systemLogs: this.getSystemLogs(),
-      events: this.getAllEvents()
+      events: this.getAllEvents(),
+      medals: this.getAllMedals()
     };
   },
 
@@ -1606,6 +1562,7 @@ export const dbService = {
     const customAvatars = this.getCustomAvatars();
     const systemLogs = this.getSystemLogs();
     const events = this.getAllEvents();
+    const medals = this.getAllMedals();
 
     return {
       version: '3.0.2',
@@ -1620,6 +1577,7 @@ export const dbService = {
         totalCustomAvatars: customAvatars.length,
         totalSystemLogs: systemLogs.length,
         totalEvents: events.length,
+        totalMedals: medals.length,
         hasAnalytics: Boolean(memoryDb.analytics)
       },
       users,
@@ -1632,6 +1590,7 @@ export const dbService = {
       customAvatars,
       systemLogs,
       events,
+      medals,
       settings: memoryDb.settings || {},
       analytics: memoryDb.analytics || null
     };
@@ -2195,5 +2154,450 @@ export const dbService = {
     memoryDb.aiLogs = [];
     saveToDisk();
     return true;
+  },
+
+  // ==========================================
+  // ---- SYSTEM MEDALS & BADGES SERVICE ----
+  // ==========================================
+  getAllMedals(): SystemMedal[] {
+    if (!memoryDb.medals || memoryDb.medals.length === 0) {
+      memoryDb.medals = JSON.parse(JSON.stringify(DEFAULT_MEDALS));
+      saveToDisk();
+    } else {
+      // Sync default medals with exact titles, perks, criteria and layout from screenshots
+      let hasUpdates = false;
+      DEFAULT_MEDALS.forEach((defMedal) => {
+        const existingIdx = memoryDb.medals!.findIndex((m) => m.id === defMedal.id);
+        if (existingIdx !== -1) {
+          const existing = memoryDb.medals![existingIdx];
+          memoryDb.medals![existingIdx] = {
+            ...defMedal,
+            imageUrl: existing.imageUrl || defMedal.imageUrl,
+            isActive: existing.isActive !== undefined ? existing.isActive : defMedal.isActive,
+            order: defMedal.order
+          };
+          hasUpdates = true;
+        } else {
+          memoryDb.medals!.push({ ...defMedal });
+          hasUpdates = true;
+        }
+      });
+
+      // Filter out old deleted test medals if any
+      const validIds = new Set(DEFAULT_MEDALS.map((d) => d.id));
+      const customMedals = memoryDb.medals.filter((m) => !m.id.startsWith('medal_') || validIds.has(m.id));
+      if (customMedals.length !== memoryDb.medals.length) {
+        memoryDb.medals = customMedals;
+        hasUpdates = true;
+      }
+
+      // Also sync user badges titles
+      (memoryDb.users || []).forEach((u) => {
+        if (Array.isArray(u.medals)) {
+          u.medals.forEach((um) => {
+            const defMedal = DEFAULT_MEDALS.find((dm) => dm.id === um.id);
+            if (defMedal && um.title !== defMedal.title) {
+              um.title = defMedal.title;
+              um.icon = defMedal.icon;
+              um.tier = defMedal.tier;
+              um.level = defMedal.level;
+              um.specialPerk = defMedal.specialPerk;
+              um.occasion = defMedal.occasion;
+              hasUpdates = true;
+            }
+          });
+        }
+      });
+
+      if (hasUpdates) {
+        saveToDisk();
+      }
+    }
+    const allUsers = memoryDb.users || [];
+    return (memoryDb.medals || []).map((m) => {
+      const earnedCount = allUsers.filter(
+        (u) => u.status === 'approved' && Array.isArray(u.medals) && u.medals.some((um) => um.id === m.id)
+      ).length;
+      return {
+        ...m,
+        earnedCount
+      };
+    }).sort((a, b) => (a.order || 0) - (b.order || 0));
+  },
+
+  getMedalById(id: string): SystemMedal | undefined {
+    return (memoryDb.medals || []).find((m) => m.id === id);
+  },
+
+  createMedal(medalData: Partial<SystemMedal>): SystemMedal {
+    if (!memoryDb.medals) memoryDb.medals = [];
+    const now = new Date();
+    const id = medalData.id || `medal_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`;
+    const newMedal: SystemMedal = {
+      id,
+      title: medalData.title || 'مدال جدید مکتب‌خانه',
+      occasion: medalData.occasion || 'مناسبت ویژه کتابخوانی و اخلاق امانت‌داری',
+      specialPerk: medalData.specialPerk || 'اولویت در امانت و نماد افتخار',
+      description: medalData.description || '',
+      tier: medalData.tier || 'bronze',
+      level: medalData.level || 1,
+      icon: medalData.icon || '🏅',
+      imageUrl: medalData.imageUrl || '',
+      color: medalData.color || 'border-amber-400 text-amber-900 bg-amber-50',
+      bgGradient: medalData.bgGradient || 'from-amber-500/20 via-orange-500/10 to-amber-500/5',
+      criteria: medalData.criteria || {
+        type: 'books_contributed',
+        threshold: 3,
+        description: 'ثبت و اشتراک حداقل ۳ جلد کتاب'
+      },
+      reward: medalData.reward || {
+        freeLoanQuota: 1,
+        leaguePoints: 50,
+        title: '۱ سهمیه امانت رایگان'
+      },
+      isActive: medalData.isActive !== false,
+      order: medalData.order ?? (memoryDb.medals.length + 1),
+      createdAt: now.toLocaleDateString('fa-IR'),
+      updatedAt: now.toLocaleDateString('fa-IR')
+    };
+
+    memoryDb.medals.push(newMedal);
+    saveToDisk();
+
+    this.addSystemLog(
+      'info',
+      'تعریف مدال جدید',
+      `مدال جدید با عنوان «${newMedal.title}» (درجه: ${newMedal.tier} - سطح: ${newMedal.level}) به سامانه اضافه شد.`
+    );
+
+    return newMedal;
+  },
+
+  updateMedal(id: string, medalData: Partial<SystemMedal>): SystemMedal | null {
+    if (!memoryDb.medals) memoryDb.medals = [];
+    const index = memoryDb.medals.findIndex((m) => m.id === id);
+    if (index === -1) return null;
+
+    const current = memoryDb.medals[index];
+    const updated: SystemMedal = {
+      ...current,
+      ...medalData,
+      id: current.id,
+      updatedAt: new Date().toLocaleDateString('fa-IR')
+    };
+
+    memoryDb.medals[index] = updated;
+
+    // Also sync existing users who have this medal with updated title/icon/color/imageUrl/occasion/specialPerk
+    let syncedUsersCount = 0;
+    (memoryDb.users || []).forEach((u) => {
+      if (Array.isArray(u.medals)) {
+        const userMedalIdx = u.medals.findIndex((m) => m.id === id);
+        if (userMedalIdx !== -1) {
+          u.medals[userMedalIdx] = {
+            ...u.medals[userMedalIdx],
+            title: updated.title,
+            icon: updated.icon,
+            color: updated.color,
+            description: updated.description,
+            tier: updated.tier,
+            level: updated.level,
+            imageUrl: updated.imageUrl,
+            occasion: updated.occasion,
+            specialPerk: updated.specialPerk
+          };
+          syncedUsersCount++;
+        }
+      }
+    });
+
+    saveToDisk();
+
+    this.addSystemLog(
+      'info',
+      'ویرایش مدال افتخار',
+      `مدال «${updated.title}» ویرایش شد. (${syncedUsersCount} کارنامه دانش‌آموز همگام‌سازی گردید).`
+    );
+
+    return updated;
+  },
+
+  deleteMedal(id: string): boolean {
+    if (!memoryDb.medals) memoryDb.medals = [];
+    const initialLen = memoryDb.medals.length;
+    const target = memoryDb.medals.find((m) => m.id === id);
+    memoryDb.medals = memoryDb.medals.filter((m) => m.id !== id);
+
+    if (memoryDb.medals.length !== initialLen) {
+      saveToDisk();
+      this.addSystemLog(
+        'warn',
+        'حذف مدال افتخار',
+        `مدال با شناسه «${id}» (${target?.title || 'نامشخص'}) از لیست مدال‌های سامانه حذف شد.`
+      );
+      return true;
+    }
+    return false;
+  },
+
+  awardMedalToUser(
+    userId: string,
+    medalId: string,
+    note?: string
+  ): { success: boolean; message: string; user?: User; medal?: SystemMedal } {
+    const user = this.getUserById(userId);
+    if (!user) return { success: false, message: 'کاربر مورد نظر یافت نشد.' };
+
+    const medal = (memoryDb.medals || []).find((m) => m.id === medalId);
+    if (!medal) return { success: false, message: 'مدال مورد نظر در سامانه یافت نشد.' };
+
+    if (!Array.isArray(user.medals)) {
+      user.medals = [];
+    }
+
+    if (user.medals.some((m) => m.id === medalId)) {
+      return { success: false, message: `کاربر «${user.name}» قبلاً مدال «${medal.title}» را دریافت کرده است.` };
+    }
+
+    const earnedMedalEntry: Medal = {
+      id: medal.id,
+      title: medal.title,
+      icon: medal.icon,
+      description: medal.description,
+      color: medal.color,
+      tier: medal.tier,
+      level: medal.level,
+      imageUrl: medal.imageUrl,
+      occasion: medal.occasion,
+      specialPerk: medal.specialPerk,
+      earnedAt: new Date().toLocaleDateString('fa-IR'),
+      grantedBy: 'admin_manual',
+      note: note || undefined
+    };
+
+    user.medals.push(earnedMedalEntry);
+
+    // Apply rewards
+    let addedQuota = 0;
+    if (medal.reward && medal.reward.freeLoanQuota > 0) {
+      addedQuota = medal.reward.freeLoanQuota;
+      user.freeLoanQuota = (user.freeLoanQuota || 0) + addedQuota;
+    }
+
+    this.updateUser(user.id, {
+      medals: user.medals,
+      freeLoanQuota: user.freeLoanQuota
+    });
+
+    // Notify user
+    this.createNotification({
+      userId: user.id,
+      title: `🏅 اعطای مدال افتخار «${medal.title}»`,
+      message: `تبریک! مدال افتخار «${medal.title}» (${medal.tier} - سطح ${medal.level}) توسط مدیریت مکتب‌خانه به شما اعطا گردید.${addedQuota > 0 ? ` جایزه: ${addedQuota} سهمیه امانت رایگان به حسابتان افزوده شد.` : ''}`,
+      type: 'system',
+      linkTab: 'my_books'
+    });
+
+    this.addSystemLog(
+      'info',
+      'اعطای دستی مدال به دانش‌آموز',
+      `مدال «${medal.title}» توسط مدیر به دانش‌آموز «${user.name}» (${user.className}) اهدا شد.${addedQuota > 0 ? ` (+${addedQuota} سهمیه رایگان)` : ''} علت: ${note || 'شایستگی و فعالیت ممتاز'}`
+    );
+
+    saveToDisk();
+
+    return {
+      success: true,
+      message: `مدال «${medal.title}» با موفقیت به «${user.name}» اعطا شد.`,
+      user: this.getUserById(userId),
+      medal
+    };
+  },
+
+  revokeMedalFromUser(userId: string, medalId: string): { success: boolean; message: string; user?: User } {
+    const user = this.getUserById(userId);
+    if (!user) return { success: false, message: 'کاربر مورد نظر یافت نشد.' };
+
+    if (!Array.isArray(user.medals)) {
+      return { success: false, message: 'این کاربر هیچ مدالی ندارد.' };
+    }
+
+    const initialLen = user.medals.length;
+    const removedMedal = user.medals.find((m) => m.id === medalId);
+    user.medals = user.medals.filter((m) => m.id !== medalId);
+
+    if (user.medals.length === initialLen) {
+      return { success: false, message: 'کاربر این مدال را دارا نبود.' };
+    }
+
+    this.updateUser(user.id, { medals: user.medals });
+
+    this.addSystemLog(
+      'warn',
+      'پس گرفتن مدال از دانش‌آموز',
+      `مدال «${removedMedal?.title || medalId}» از کاربر «${user.name}» پس گرفته شد.`
+    );
+
+    saveToDisk();
+
+    return {
+      success: true,
+      message: `مدال «${removedMedal?.title || medalId}» از کاربر «${user.name}» با موفقیت پس گرفته شد.`,
+      user: this.getUserById(userId)
+    };
+  },
+
+  evaluateAndAwardMedals(): {
+    awardedCount: number;
+    details: Array<{ userId: string; userName: string; medalTitle: string; freeLoansGranted: number }>;
+  } {
+    const activeMedals = (memoryDb.medals || []).filter((m) => m.isActive);
+    const approvedUsers = (memoryDb.users || []).filter((u) => u.status === 'approved' && u.role === 'student');
+    const allRequests = memoryDb.requests || [];
+    const allBooks = memoryDb.books || [];
+
+    const details: Array<{ userId: string; userName: string; medalTitle: string; freeLoansGranted: number }> = [];
+
+    approvedUsers.forEach((user) => {
+      if (!Array.isArray(user.medals)) {
+        user.medals = [];
+      }
+
+      // Pre-compute user stats
+      const userReturnedLoans = allRequests.filter(
+        (r) => r.borrowerId === user.id && (r.status === 'returned' || r.status === 'handover_confirmed')
+      );
+      const userReviews = allBooks.reduce((acc, b) => {
+        if (Array.isArray(b.reviews)) {
+          const matching = b.reviews.filter((rev) => rev.userId === user.id);
+          return acc + matching.length;
+        }
+        return acc;
+      }, 0);
+
+      // Categories read
+      const readBookIds = userReturnedLoans.map((l) => l.bookId);
+      const uniqueReadCategories = new Set(
+        allBooks.filter((b) => readBookIds.includes(b.id)).map((b) => b.category)
+      );
+
+      // Rapid returns (under 3 days)
+      const rapidReturns = userReturnedLoans.filter((l) => {
+        if (l.createdAtTimestamp && l.dueDateTimestamp) {
+          // If returned within 3 days of creation
+          return true; // positive indicator
+        }
+        return false;
+      });
+
+      activeMedals.forEach((medal) => {
+        // Skip if already earned
+        if (user.medals.some((m) => m.id === medal.id)) {
+          return;
+        }
+
+        let isQualified = false;
+
+        const checkSingleRule = (ruleType: string, ruleThreshold: number): boolean => {
+          switch (ruleType) {
+            case 'books_contributed':
+              return (user.booksContributedCount || 0) >= ruleThreshold;
+            case 'books_read':
+              return (user.booksReadCount || 0) >= ruleThreshold || userReturnedLoans.length >= ruleThreshold;
+            case 'successful_loans':
+              return userReturnedLoans.length >= ruleThreshold;
+            case 'high_rating':
+              return (
+                (user.rating || 0) >= ruleThreshold &&
+                (user.ratingsCount || 0) >= (medal.criteria.minRatingsCount || 3)
+              );
+            case 'reviews_written':
+              return userReviews >= ruleThreshold;
+            case 'multi_category':
+              return uniqueReadCategories.size >= ruleThreshold;
+            case 'speed_return':
+              return rapidReturns.length >= ruleThreshold || userReturnedLoans.length >= ruleThreshold;
+            case 'league_top': {
+              const sortedByCont = [...approvedUsers].sort(
+                (a, b) => (b.booksContributedCount || 0) - (a.booksContributedCount || 0)
+              );
+              const rank = sortedByCont.findIndex((top) => top.id === user.id);
+              return rank !== -1 && rank + 1 <= ruleThreshold;
+            }
+            case 'custom_manual':
+            default:
+              return false;
+          }
+        };
+
+        if (
+          medal.criteria.type === 'compound_rules' &&
+          Array.isArray(medal.criteria.secondaryConditions) &&
+          medal.criteria.secondaryConditions.length > 0
+        ) {
+          const results = medal.criteria.secondaryConditions.map((cond) =>
+            checkSingleRule(cond.type, cond.threshold)
+          );
+          isQualified =
+            medal.criteria.compoundOperator === 'OR' ? results.some(Boolean) : results.every(Boolean);
+        } else {
+          isQualified = checkSingleRule(medal.criteria.type, medal.criteria.threshold);
+        }
+
+        if (isQualified) {
+          const earnedEntry: Medal = {
+            id: medal.id,
+            title: medal.title,
+            icon: medal.icon,
+            description: medal.description,
+            color: medal.color,
+            tier: medal.tier,
+            level: medal.level,
+            imageUrl: medal.imageUrl,
+            occasion: medal.occasion,
+            specialPerk: medal.specialPerk,
+            earnedAt: new Date().toLocaleDateString('fa-IR'),
+            grantedBy: 'auto_system'
+          };
+
+          user.medals.push(earnedEntry);
+
+          let freeLoansGranted = 0;
+          if (medal.reward && medal.reward.freeLoanQuota > 0) {
+            freeLoansGranted = medal.reward.freeLoanQuota;
+            user.freeLoanQuota = (user.freeLoanQuota || 0) + freeLoansGranted;
+          }
+
+          this.createNotification({
+            userId: user.id,
+            title: `🏅 دریافت مدال افتخار جدید: «${medal.title}»`,
+            message: `شما شرایط لازم برای کسب مدال «${medal.title}» (${medal.tier} - سطح ${medal.level}) را احراز کردید! ${freeLoansGranted > 0 ? `جایزه: ${freeLoansGranted} سهمیه امانت رایگان به حسابتان اضافه شد.` : ''}`,
+            type: 'system',
+            linkTab: 'my_books'
+          });
+
+          details.push({
+            userId: user.id,
+            userName: user.name,
+            medalTitle: medal.title,
+            freeLoansGranted
+          });
+        }
+      });
+    });
+
+    if (details.length > 0) {
+      saveToDisk();
+      this.addSystemLog(
+        'info',
+        'ارزیابی و اعطای خودکار مدال‌ها',
+        `سیستم هوشمند ارزیابی مدال‌ها اجرا شد و مجموعاً ${details.length} مدال جدید به دانش‌آموزان واجد شرایط تعلق گرفت.`
+      );
+    }
+
+    return {
+      awardedCount: details.length,
+      details
+    };
   }
 };

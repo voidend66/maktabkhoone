@@ -14,11 +14,14 @@ import {
   TrendingUp,
   Flame,
   Backpack,
-  Lightbulb
+  Lightbulb,
+  Shield,
+  Gift
 } from 'lucide-react';
+import { TIER_CONFIG } from '../data/defaultMedals';
 
 export const ReadingLeague: React.FC = () => {
-  const { users, currentUser, resolveClassName } = useApp();
+  const { users, currentUser, resolveClassName, medals } = useApp();
   const [showPrintModal, setShowPrintModal] = useState(false);
 
   const studentUsers = users.filter((u) => u.status === 'approved' && u.role === 'student');
@@ -243,17 +246,7 @@ export const ReadingLeague: React.FC = () => {
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-800">{u.name}</span>
-                          {u.medals && u.medals.length > 0 && (
-                            <span
-                              title={`${u.medals.length} نشان افتخار فعال`}
-                              className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-200 shadow-2xs"
-                            >
-                              🏆 {u.medals.length}
-                            </span>
-                          )}
-                        </div>
+                        <div className="font-bold text-slate-800">{u.name}</div>
                         <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
@@ -301,17 +294,7 @@ export const ReadingLeague: React.FC = () => {
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-bold text-slate-800">{u.name}</span>
-                          {u.medals && u.medals.length > 0 && (
-                            <span
-                              title={`${u.medals.length} نشان افتخار فعال`}
-                              className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-200 shadow-2xs"
-                            >
-                              🏆 {u.medals.length}
-                            </span>
-                          )}
-                        </div>
+                        <div className="font-bold text-slate-800">{u.name}</div>
                         <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
@@ -370,6 +353,74 @@ export const ReadingLeague: React.FC = () => {
                   </div>
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* Medals & Achievements Showcase Section in League */}
+          <div className="bg-gradient-to-br from-amber-500/10 via-white to-orange-500/10 rounded-3xl p-6 sm:p-8 border-2 border-amber-300 shadow-sm space-y-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <Award className="w-6 h-6 text-amber-600" />
+                  <h3 className="text-xl font-black text-slate-900">
+                    ویترین ۱۰ نشان و درجه افتخار مکتب‌خانه 🏅
+                  </h3>
+                </div>
+                <p className="text-xs text-slate-600">
+                  با اشتراک کتاب، مطالعه مستمر، امانتداری صادقانه و نقدنویسی، این نشان‌های افتخار را کسب کرده و جوایز ویژه آن را دریافت کنید!
+                </p>
+              </div>
+
+              <span className="text-xs bg-amber-500 text-slate-950 font-black px-3 py-1.5 rounded-full shadow-xs">
+                از رده برنز تا اسطوره‌ای
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+              {medals.map((medal) => {
+                const tierInfo = TIER_CONFIG[medal.tier] || TIER_CONFIG.bronze;
+
+                return (
+                  <div
+                    key={medal.id}
+                    className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-xs hover:shadow-md hover:border-amber-400 transition-all space-y-3 flex flex-col justify-between"
+                  >
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className={`text-[10px] font-black px-2 py-0.5 rounded-md ${tierInfo.badge}`}>
+                          {tierInfo.label} • لول {medal.level}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-bold">
+                          #{medal.order}
+                        </span>
+                      </div>
+
+                      <div className="w-14 h-14 rounded-2xl bg-amber-50 mx-auto flex items-center justify-center overflow-hidden ring-2 ring-amber-100 shadow-2xs">
+                        {medal.imageUrl ? (
+                          <img
+                            src={medal.imageUrl}
+                            alt={medal.title}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <span className="text-2xl">{medal.icon || '🏅'}</span>
+                        )}
+                      </div>
+
+                      <div className="text-center space-y-1">
+                        <h4 className="font-black text-slate-900 text-xs line-clamp-1">{medal.title}</h4>
+                        <p className="text-[10px] text-amber-800 line-clamp-2 leading-tight">
+                          {medal.specialPerk}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-100 text-[10px] text-emerald-700 font-bold text-center">
+                      🎁 {medal.reward.title}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         </>

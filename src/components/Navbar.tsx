@@ -52,10 +52,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 }) => {
   const {
     currentUser,
-    setCurrentUser,
     logoutUser,
     users,
-    switchUserRoleDemo,
     requests,
     notifications,
     markNotificationRead,

@@ -5,14 +5,13 @@ import { api } from '../services/api';
 import { AnalyticsDashboard } from './AnalyticsDashboard';
 import { GoogleDriveBackupSection } from './GoogleDriveBackupSection';
 import { AdminEventsManager } from './AdminEventsManager';
+import { AdminMedalsManager } from './AdminMedalsManager';
 import { CamScannerModal } from './CamScannerModal';
 import { AddBookModal } from './AddBookModal';
 import { ExtractedMetadataModal } from './ExtractedMetadataModal';
 import { AdminAiSettingsTab } from './AdminAiSettingsTab';
-import { AdminMedalsTab } from './AdminMedalsTab';
 import { Book } from '../types';
 import {
-  Award,
   Bot,
   Activity,
   ShieldAlert,
@@ -73,6 +72,7 @@ import {
   Folder,
   FolderUp,
   Gift,
+  Award,
   Crop,
   Undo2,
   MoreVertical,
@@ -89,7 +89,6 @@ export const AdminPanel: React.FC = () => {
     approveUser,
     rejectUser,
     deleteUser,
-    updateUser,
     deleteBook,
     deleteBookReview,
     deleteFeedback,
@@ -115,6 +114,7 @@ export const AdminPanel: React.FC = () => {
     sendBaleMessageToStudent,
     refreshData,
     events,
+    medals,
     grantFreeLoans,
     updateBook,
     revertBookCover,
@@ -174,7 +174,7 @@ export const AdminPanel: React.FC = () => {
 
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [activeTab, setActiveTab] = useState<
-    'pending_users' | 'events' | 'medals' | 'analytics' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
+    'pending_users' | 'events' | 'medals' | 'analytics' | 'bank_card' | 'lending_history' | 'reviews_feedbacks' | 'system_settings' | 'ai_settings' | 'all_books' | 'all_users' | 'class_management' | 'system_logs' | 'avatars'
   >('pending_users');
   const [reviewsSubTab, setReviewsSubTab] = useState<'book_reviews' | 'user_feedbacks'>('book_reviews');
   const [userStatusFilter, setUserStatusFilter] = useState<'approved' | 'suspended' | 'rejected'>('approved');
@@ -1055,13 +1055,12 @@ export const AdminPanel: React.FC = () => {
           onClick={() => setActiveTab('medals')}
           className={`relative flex-1 min-w-[150px] py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
             activeTab === 'medals'
-              ? 'bg-gradient-to-r from-amber-500 to-indigo-600 text-white shadow-md font-black'
-              : 'text-amber-900 hover:text-amber-950 bg-amber-50/90 border border-amber-200'
+              ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-slate-950 shadow-md font-black'
+              : 'text-slate-700 hover:text-amber-950 bg-amber-50/70 border border-amber-200'
           }`}
         >
           <Award className="w-4 h-4 text-amber-600" />
-          <span>✨ نشان‌ها و مدال‌ها (۱۰ نشان)</span>
-          <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse absolute top-2 left-2" />
+          <span>🏅 مدال‌ها و نشان‌ها ({medals.length})</span>
         </button>
 
         <button
@@ -1215,16 +1214,10 @@ export const AdminPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Tab: 3D Medals & Badges Management */}
+      {/* Tab: Medals & Badges Management */}
       {activeTab === 'medals' && (
         <div className="space-y-4 animate-in fade-in duration-200">
-          <AdminMedalsTab
-            users={users}
-            requests={requests}
-            books={books}
-            onRefreshData={refreshData}
-            onUpdateUser={(updated) => updateUser(updated.id, updated)}
-          />
+          <AdminMedalsManager />
         </div>
       )}
 

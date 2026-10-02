@@ -11,7 +11,7 @@ import starImg from '../assets/images/badge_star_3d_1790930181717.jpg';
 import crownImg from '../assets/images/badge_crown_3d_1790930196160.jpg';
 import phoenixImg from '../assets/images/badge_phoenix_3d_1790930209065.jpg';
 import veteranImg from '../assets/images/badge_veteran_3d_1790951045497.jpg';
-import leaderImg from '../assets/images/badge_leader_insignia_3d_1790960819304.jpg';
+import leaderImg from '../assets/images/badge_leader_minimal_3d_1790961312478.jpg';
 
 export interface MedalDefinition {
   id: string;

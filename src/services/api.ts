@@ -15,7 +15,8 @@ import {
   AiRecommendationRequest,
   AiRecommendationResult,
   AiHealthCheckResult,
-  AiInteractionLog
+  AiInteractionLog,
+  SystemMedal
 } from '../types';
 
 const API_BASE = '/api';
@@ -31,6 +32,7 @@ export interface BootstrapResponse {
   customAvatars?: CustomAvatar[];
   systemLogs?: any[];
   events?: SystemEvent[];
+  medals?: SystemMedal[];
 }
 
 export const api = {
@@ -1033,6 +1035,105 @@ export const api = {
         candidatesCount: 0,
         isAiGenerated: false
       };
+    }
+  },
+
+  // ==========================================
+  // Medals & Badges APIs
+  // ==========================================
+  async getMedals(): Promise<SystemMedal[]> {
+    try {
+      const res = await fetch(`${API_BASE}/medals`);
+      if (!res.ok) throw new Error('Failed to fetch medals');
+      const data = await res.json();
+      return data.medals || [];
+    } catch (err) {
+      console.error('Error fetching medals:', err);
+      return [];
+    }
+  },
+
+  async createMedal(medalData: Partial<SystemMedal>): Promise<{ success: boolean; medal?: SystemMedal; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(medalData)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در تعریف مدال' };
+    }
+  },
+
+  async updateMedal(id: string, medalData: Partial<SystemMedal>): Promise<{ success: boolean; medal?: SystemMedal; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(medalData)
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در به‌روزرسانی مدال' };
+    }
+  },
+
+  async deleteMedal(id: string): Promise<{ success: boolean; message?: string }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals/${id}`, {
+        method: 'DELETE'
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در حذف مدال' };
+    }
+  },
+
+  async evaluateMedals(): Promise<{
+    success: boolean;
+    message: string;
+    awardedCount: number;
+    details: Array<{ userId: string; userName: string; medalTitle: string; freeLoansGranted: number }>;
+  }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals/evaluate-all`, {
+        method: 'POST'
+      });
+      return await res.json();
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'خطا در ارزیابی هوشمند مدال‌ها',
+        awardedCount: 0,
+        details: []
+      };
+    }
+  },
+
+  async awardMedalManual(userId: string, medalId: string, note?: string): Promise<{ success: boolean; message: string; user?: User; medal?: SystemMedal }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals/award-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, medalId, note })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در اعطای دستی مدال' };
+    }
+  },
+
+  async revokeMedalManual(userId: string, medalId: string): Promise<{ success: boolean; message: string; user?: User }> {
+    try {
+      const res = await fetch(`${API_BASE}/medals/revoke-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, medalId })
+      });
+      return await res.json();
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در پس گرفتن مدال' };
     }
   }
 };

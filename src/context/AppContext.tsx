@@ -18,9 +18,11 @@ import {
   AiRecommendationRequest,
   AiRecommendationResult,
   AiHealthCheckResult,
-  AiInteractionLog
+  AiInteractionLog,
+  SystemMedal
 } from '../types';
 import { INITIAL_USERS, INITIAL_BOOKS, INITIAL_REQUESTS, INITIAL_CLASSES, isAdminPhone } from '../data/mockData';
+import { DEFAULT_MEDALS } from '../data/defaultMedals';
 import { api } from '../services/api';
 import { DEFAULT_BOOK_COVER, getSafeImageUrl } from '../utils/coverPresets';
 import { resolveUserClassName, normalizeClassString } from '../utils/classUtils';
@@ -176,6 +178,14 @@ interface AppContextType {
   acknowledgeFreeLoanReward: () => Promise<void>;
   updateUserBirthday: (birthMonth: number, birthDay: number, targetUserId?: string, forceAdminOverride?: boolean) => Promise<{ success: boolean; message?: string; user?: User }>;
   claimBirthdayReward: () => Promise<{ success: boolean; rewardCount?: number; message?: string }>;
+  // Medals & Badges
+  medals: SystemMedal[];
+  createMedal: (data: Partial<SystemMedal>) => Promise<{ success: boolean; medal?: SystemMedal; message?: string }>;
+  updateMedal: (id: string, data: Partial<SystemMedal>) => Promise<{ success: boolean; medal?: SystemMedal; message?: string }>;
+  deleteMedal: (id: string) => Promise<{ success: boolean; message?: string }>;
+  evaluateMedalsForUsers: () => Promise<{ success: boolean; message: string; awardedCount: number; details: any[] }>;
+  awardMedalToUser: (userId: string, medalId: string, note?: string) => Promise<{ success: boolean; message: string; user?: User; medal?: SystemMedal }>;
+  revokeMedalFromUser: (userId: string, medalId: string) => Promise<{ success: boolean; message: string; user?: User }>;
   requestBookLoan: (
     bookId: string,
     options?: { useFreeLoan?: boolean; freeEventTitle?: string; freeEventId?: string }
@@ -245,6 +255,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [customAvatars, setCustomAvatars] = useState<CustomAvatar[]>([]);
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [events, setEvents] = useState<SystemEvent[]>([]);
+  const [medals, setMedals] = useState<SystemMedal[]>(DEFAULT_MEDALS);
 
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     try {
@@ -282,6 +293,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
         if (data.events) {
           setEvents(data.events);
+        }
+        if (data.medals && data.medals.length > 0) {
+          setMedals(data.medals);
         }
       }
     } catch (err) {
@@ -1772,6 +1786,87 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   };
 
+  // Medals & Badges Actions
+  const createMedal = async (data: Partial<SystemMedal>) => {
+    try {
+      const res = await api.createMedal(data);
+      if (res.success && res.medal) {
+        setMedals((prev) => [...prev, res.medal!]);
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در تعریف مدال' };
+    }
+  };
+
+  const updateMedal = async (id: string, data: Partial<SystemMedal>) => {
+    try {
+      const res = await api.updateMedal(id, data);
+      if (res.success && res.medal) {
+        setMedals((prev) => prev.map((m) => (m.id === id ? res.medal! : m)));
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در ویرایش مدال' };
+    }
+  };
+
+  const deleteMedal = async (id: string) => {
+    try {
+      const res = await api.deleteMedal(id);
+      if (res.success) {
+        setMedals((prev) => prev.filter((m) => m.id !== id));
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در حذف مدال' };
+    }
+  };
+
+  const evaluateMedalsForUsers = async () => {
+    try {
+      const res = await api.evaluateMedals();
+      if (res.success) {
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err.message || 'خطا در ارزیابی خودکار مدال‌ها',
+        awardedCount: 0,
+        details: []
+      };
+    }
+  };
+
+  const awardMedalToUser = async (userId: string, medalId: string, note?: string) => {
+    try {
+      const res = await api.awardMedalManual(userId, medalId, note);
+      if (res.success) {
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در اعطای دستی مدال' };
+    }
+  };
+
+  const revokeMedalFromUser = async (userId: string, medalId: string) => {
+    try {
+      const res = await api.revokeMedalManual(userId, medalId);
+      if (res.success) {
+        await refreshData();
+      }
+      return res;
+    } catch (err: any) {
+      return { success: false, message: err.message || 'خطا در پس گرفتن مدال' };
+    }
+  };
+
   const testAiConnection = async (params?: Partial<LocalAiConfig> & { testTarget?: 'gemini' | 'ollama' }) => {
     return await api.testAiConnection(params);
   };
@@ -1918,6 +2013,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         acknowledgeFreeLoanReward,
         updateUserBirthday,
         claimBirthdayReward,
+        medals,
+        createMedal,
+        updateMedal,
+        deleteMedal,
+        evaluateMedalsForUsers,
+        awardMedalToUser,
+        revokeMedalFromUser,
         updateBook,
         revertBookCover,
         enrichBookFromIranKetab,
