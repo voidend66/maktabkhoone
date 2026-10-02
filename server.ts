@@ -237,6 +237,25 @@ export function isMasterTestCode(phone?: string): boolean {
   );
 }
 
+// Supreme Leader Medal for School Managers / Admins
+export const SUPREME_LEADER_MEDAL_OBJ = {
+  id: 'badge_supreme_leader',
+  title: 'راهبر مکتب‌خانه',
+  icon: '🏛️',
+  description: 'خاص‌ترین، والاترین و برترین نشان مکتب‌خانه؛ نشان زرین افتخار و خرد ویژه مدیران و راهبران عالی که سکان‌دار دانایی، اعتماد، پاسداری از امانت‌ها و شکوفایی فرهنگی مدرسه هستند.',
+  color: 'bg-amber-50 text-amber-900 border-amber-300',
+  imageUrl: '/src/assets/images/badge_leader_insignia_3d_1790960819304.jpg',
+  tier: 'mythic' as const,
+  tierTitle: 'اسطوره‌ای • سطح ۵ (ویژه مدیریت)',
+  level: 5,
+  property: 'بالاترین اختیارات راهبری سامانه + نشان زرین اختصاصی راهبری دانایی در سراسر سامانه + امضای دیجیتال رسمی اعتبار الواح و مدارک + دسترسی به تالار فرماندهی کتابخانه.',
+  occasion: 'پاسداشت رهبری خردمندانه، مدیریت امور کتابخانه، نظارت راهبردی و تدبیر اندیشمندانه در گسترش فرهنگ مطالعه مدرسه.',
+  criteriaDesc: 'منحصراً ویژه مدیران رسمی سامانه مکتب‌خانه (اعطای اختصاصی بر پایه نقش و مسئولیت مدیریت کتابخانه).',
+  awardedAt: '1403/07/01T00:00:00.000Z',
+  awardedBy: 'auto' as const,
+  adminNote: 'اعطای عالی‌ترین نشان افتخار سامانه به عنوان مدیر و راهبر ارشد مکتب‌خانه.'
+};
+
 /**
  * ایجاد یا بازیابی اکانت مدیر تست سامانه با کد 001100
  */
@@ -254,15 +273,7 @@ export function getOrCreateMasterTestAdmin(): User {
       ratingsCount: 1,
       booksContributedCount: 0,
       booksReadCount: 0,
-      medals: [
-        {
-          id: 'm_admin_crown',
-          title: 'راهبر کل سامانه',
-          icon: '👑',
-          description: 'دسترسی نامحدود مدیریت و تست سیستم',
-          color: 'bg-amber-100 text-amber-800 border-amber-300'
-        }
-      ],
+      medals: [SUPREME_LEADER_MEDAL_OBJ],
       joinedDate: new Date().toLocaleDateString('fa-IR'),
       avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=MasterTestAdmin',
       status: 'approved'
@@ -2461,15 +2472,7 @@ async function startServer() {
         ratingsCount: 1,
         booksContributedCount: 0,
         booksReadCount: 0,
-        medals: isSystemAdmin ? [
-          {
-            id: 'm_admin_crown',
-            title: 'راهبر کتابخانه',
-            icon: '👑',
-            description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
-            color: 'bg-amber-100 text-amber-800 border-amber-300'
-          }
-        ] : [],
+        medals: isSystemAdmin ? [SUPREME_LEADER_MEDAL_OBJ] : [],
         joinedDate: new Date().toLocaleDateString('fa-IR'),
         avatar: isSystemAdmin
           ? 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminCrown'
@@ -2544,15 +2547,7 @@ async function startServer() {
             ratingsCount: 1,
             booksContributedCount: 0,
             booksReadCount: 0,
-            medals: [
-              {
-                id: 'm_admin_crown',
-                title: 'راهبر کتابخانه',
-                icon: '👑',
-                description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
-                color: 'bg-amber-100 text-amber-800 border-amber-300'
-              }
-            ],
+            medals: [SUPREME_LEADER_MEDAL_OBJ],
             joinedDate: new Date().toLocaleDateString('fa-IR'),
             avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=AdminCrown',
             status: 'approved'
@@ -2623,15 +2618,7 @@ async function startServer() {
         ratingsCount: 0,
         booksContributedCount: (data.initialBooks || []).length,
         booksReadCount: 0,
-        medals: isAdmin ? [
-          {
-            id: 'm_admin_crown',
-            title: 'راهبر کتابخانه',
-            icon: '👑',
-            description: 'مدیریت و سرپرستی کتابخانه مکتب‌خانه',
-            color: 'bg-amber-100 text-amber-800 border-amber-300'
-          }
-        ] : [
+        medals: isAdmin ? [SUPREME_LEADER_MEDAL_OBJ] : [
           {
             id: 'm_starter',
             title: 'عضو جدید کتابخانه',
@@ -2776,12 +2763,13 @@ async function startServer() {
 
   app.put('/api/users/:id', (req: Request, res: Response): any => {
     try {
-      const { name, className, avatar, password } = req.body || {};
+      const { name, className, avatar, password, medals } = req.body || {};
       const updates: Partial<User> = {};
       if (name) updates.name = name;
       if (className) updates.className = className;
       if (avatar) updates.avatar = avatar;
       if (password) updates.password = password;
+      if (Array.isArray(medals)) updates.medals = medals;
 
       const existingUser = dbService.getUserById(req.params.id);
       if (existingUser && existingUser.status === 'rejected') {
@@ -2804,6 +2792,124 @@ async function startServer() {
     } catch (err: any) {
       console.error('Update User Error:', err);
       res.status(500).json({ success: false, message: 'خطا در به‌روزرسانی اطلاعات کاربر.' });
+    }
+  });
+
+  // Custom Medals & Admin Badges Maintenance
+  function ensureMedalsAndAdminPrivileges() {
+    try {
+      // 1. Ensure Veteran Medal definition exists in custom_medals (Strictly manual only)
+      const veteranMedalData = {
+        id: 'custom_medal_veteran',
+        title: 'پیشکسوت مکتب‌خانه',
+        titleEn: 'Maktab Pioneer Veteran',
+        icon: '🏛️',
+        imageUrl: '/src/assets/images/badge_veteran_3d_1790951045497.jpg',
+        tier: 'mythic' as const,
+        tierTitle: 'اسطوره‌ای • سطح ۵',
+        level: 5,
+        description: 'نشان زرین تجلیل از ۵ عضو پیشگام و بنیان‌گذار مکتب‌خانه که با حضور ارزشمند و وفاداری‌شان، چراغ فرهنگ کتابخوانی مدرسه را روشن نگاه داشتند.',
+        occasion: 'تجلیل ویژه از پنج یار دیرین و نخستین همراهان مکتب‌خانه مدرسه',
+        property: 'اعطای ۳ سهمیه امانت رایگان + ضریب ۱.۲۵ برابری در لیگ + نشان اختصاصی پیشکسوت معتمد در کنار نام',
+        criteriaDesc: 'اختصاصی ۵ کاربر قدیمی و پیشگام مکتب‌خانه به پاس همراهی، اعتماد و وفاداری مستمر (صرفاً دستی توسط مدیر).',
+        isCustom: true,
+        createdAt: '1403/07/01T00:00:00.000Z',
+        rules: { awardType: 'manual_only' },
+        perks: {
+          freeLoanCredits: 3,
+          leagueMultiplier: 1.25,
+          bonusLeaguePoints: 250,
+          honoraryTitle: 'پیشکسوت مکتب‌خانه',
+          verifiedShield: true,
+          pinnedReviews: true,
+          certificateEligible: true,
+          customPerkText: 'اعطای ۳ سهمیه امانت رایگان + ضریب ۱.۲۵ برابری در لیگ + نشان اختصاصی پیشکسوت معتمد در کنار نام'
+        }
+      };
+
+      const raw = dbService.getSetting('custom_medals');
+      let medals = raw ? JSON.parse(raw) : [];
+      const mIdx = medals.findIndex((m: any) => m.id === veteranMedalData.id);
+      if (mIdx === -1) {
+        medals.push(veteranMedalData);
+      } else {
+        // Enforce strictly manual awarding
+        medals[mIdx] = {
+          ...medals[mIdx],
+          rules: { awardType: 'manual_only' },
+          criteriaDesc: 'اختصاصی ۵ کاربر قدیمی و پیشگام مکتب‌خانه به پاس همراهی، اعتماد و وفاداری مستمر (صرفاً دستی توسط مدیر).'
+        };
+      }
+      dbService.setSetting('custom_medals', JSON.stringify(medals));
+
+      // 2. Award or refresh Supreme Leader medal exclusively for all managers / admins
+      const allUsers = dbService.getAllUsers();
+      allUsers.forEach((u) => {
+        if (u.role === 'admin') {
+          const userMedals = u.medals || [];
+          const cleaned = userMedals.filter((m: any) => m.id !== 'm_admin_crown' && m.id !== 'badge_supreme_leader');
+          dbService.updateUser(u.id, { medals: [SUPREME_LEADER_MEDAL_OBJ, ...cleaned] });
+        }
+      });
+    } catch (err) {
+      console.error('Error ensuring medals and admin privileges:', err);
+    }
+  }
+
+  ensureMedalsAndAdminPrivileges();
+
+  app.get('/api/medals/custom', (_req: Request, res: Response): any => {
+    try {
+      const raw = dbService.getSetting('custom_medals');
+      const medals = raw ? JSON.parse(raw) : [];
+      res.json({ success: true, medals });
+    } catch (err) {
+      console.error('Get Custom Medals Error:', err);
+      res.status(500).json({ success: false, medals: [] });
+    }
+  });
+
+  app.post('/api/medals/custom', (req: Request, res: Response): any => {
+    try {
+      const medal = req.body;
+      if (!medal || !medal.title) {
+        return res.status(400).json({ success: false, message: 'عنوان مدال الزامی است.' });
+      }
+      const raw = dbService.getSetting('custom_medals');
+      const medals = raw ? JSON.parse(raw) : [];
+      const id = medal.id || `custom_medal_${Date.now()}`;
+      const newMedal = {
+        ...medal,
+        id,
+        isCustom: true,
+        createdAt: new Date().toISOString()
+      };
+      const existingIdx = medals.findIndex((m: any) => m.id === id);
+      if (existingIdx >= 0) {
+        medals[existingIdx] = newMedal;
+      } else {
+        medals.push(newMedal);
+      }
+      dbService.setSetting('custom_medals', JSON.stringify(medals));
+      dbService.addSystemLog('info', 'مدال جدید ایجاد شد', `مدال «${newMedal.title}» توسط مدیر ایجاد شد.`);
+      res.json({ success: true, medal: newMedal });
+    } catch (err: any) {
+      console.error('Create Custom Medal Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در ایجاد مدال سفارشی.' });
+    }
+  });
+
+  app.delete('/api/medals/custom/:id', (req: Request, res: Response): any => {
+    try {
+      const raw = dbService.getSetting('custom_medals');
+      let medals = raw ? JSON.parse(raw) : [];
+      medals = medals.filter((m: any) => m.id !== req.params.id);
+      dbService.setSetting('custom_medals', JSON.stringify(medals));
+      dbService.addSystemLog('info', 'مدال سفارشی حذف شد', `شناسه مدال: ${req.params.id}`);
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete Custom Medal Error:', err);
+      res.status(500).json({ success: false, message: 'خطا در حذف مدال سفارشی.' });
     }
   });
 
@@ -4542,6 +4648,7 @@ async function startServer() {
     const role = feedback?.role || 'borrower_to_owner';
     const updates: Partial<LendingRequest> = {
       status: 'returned',
+      returnedAt: new Date().toISOString(),
       ...(role === 'borrower_to_owner' ? { borrowerFeedbackGiven: true } : { ownerFeedbackGiven: true })
     };
 

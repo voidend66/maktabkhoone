@@ -367,6 +367,26 @@ function seedInitialDataIfEmpty() {
     const student1Id = 'u_student_ali';
     const student2Id = 'u_student_sara';
     const student3Id = 'u_student_amir';
+    const student4Id = 'u_student_fatemeh';
+    const student5Id = 'u_student_mohammad';
+
+    const veteranMedalObj = {
+      id: 'custom_medal_veteran',
+      title: 'پیشکسوت مکتب‌خانه',
+      icon: '🏛️',
+      description: 'نشان زرین تجلیل از ۵ عضو پیشگام و بنیان‌گذار مکتب‌خانه که با حضور ارزشمند و وفاداری‌شان، چراغ فرهنگ کتابخوانی مدرسه را روشن نگاه داشتند.',
+      color: 'bg-purple-50 text-purple-900 border-purple-300',
+      imageUrl: '/src/assets/images/badge_veteran_3d_1790951045497.jpg',
+      tier: 'mythic' as const,
+      tierTitle: 'اسطوره‌ای • سطح ۵',
+      level: 5,
+      property: 'اعطای ۳ سهمیه امانت رایگان + ضریب ۱.۲۵ برابری در لیگ + نشان اختصاصی پیشکسوت معتمد در کنار نام',
+      occasion: 'تجلیل ویژه از پنج یار دیرین و نخستین همراهان مکتب‌خانه مدرسه',
+      criteriaDesc: 'اختصاصی ۵ کاربر قدیمی و پیشگام مکتب‌خانه به پاس همراهی، اعتماد و وفاداری مستمر.',
+      awardedAt: new Date().toISOString(),
+      awardedBy: 'admin' as const,
+      adminNote: 'به پاس حضور پیشگامانه و همراهی ارزشمند به عنوان یکی از ۵ عضو نخستین مکتب‌خانه مدرسه.'
+    };
 
     if (!memoryDb.users.some((u) => u.id === student1Id)) {
       memoryDb.users.push({
@@ -381,7 +401,7 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 8,
         booksContributedCount: 3,
         booksReadCount: 6,
-        medals: [],
+        medals: [veteranMedalObj],
         joinedDate: '1403/07/01',
         activeLoanCount: 0,
         freeLoanQuota: 1
@@ -401,7 +421,7 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 12,
         booksContributedCount: 4,
         booksReadCount: 9,
-        medals: [],
+        medals: [veteranMedalObj],
         joinedDate: '1403/07/05',
         activeLoanCount: 0,
         freeLoanQuota: 2
@@ -421,8 +441,46 @@ function seedInitialDataIfEmpty() {
         ratingsCount: 5,
         booksContributedCount: 2,
         booksReadCount: 4,
-        medals: [],
+        medals: [veteranMedalObj],
         joinedDate: '1403/07/10',
+        activeLoanCount: 0
+      });
+    }
+
+    if (!memoryDb.users.some((u) => u.id === student4Id)) {
+      memoryDb.users.push({
+        id: student4Id,
+        name: 'فاطمه حسینی',
+        className: 'کلاس ۶/۲',
+        phone: '09121110004',
+        avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'student',
+        rating: 4.9,
+        ratingsCount: 7,
+        booksContributedCount: 3,
+        booksReadCount: 7,
+        medals: [veteranMedalObj],
+        joinedDate: '1403/07/12',
+        activeLoanCount: 0
+      });
+    }
+
+    if (!memoryDb.users.some((u) => u.id === student5Id)) {
+      memoryDb.users.push({
+        id: student5Id,
+        name: 'محمدرضا کریمی',
+        className: 'کلاس ۵/۲',
+        phone: '09121110005',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'student',
+        rating: 4.9,
+        ratingsCount: 6,
+        booksContributedCount: 2,
+        booksReadCount: 5,
+        medals: [veteranMedalObj],
+        joinedDate: '1403/07/15',
         activeLoanCount: 0
       });
     }

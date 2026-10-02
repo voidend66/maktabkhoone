@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 import { AddBookModal } from './AddBookModal';
 import { EditProfileModal } from './EditProfileModal';
@@ -7,6 +7,16 @@ import { formatPersianBirthday } from '../utils/jalaliDate';
 import { BookCard } from './BookCard';
 import { Book } from '../types';
 import { MaktabKhanehHouseLogo, SloganBadge } from './MaktabKhanehBranding';
+import {
+  OFFICIAL_MEDALS,
+  getMedalDefinitionById,
+  MedalDefinition,
+  CustomMedalData,
+  createDefinitionFromCustomMedal,
+  computeStudentLeagueRank
+} from '../data/medalsData';
+import { Badge3D } from './Badge3D';
+import { BadgeDetailModal } from './BadgeDetailModal';
 import {
   User,
   BookPlus,
@@ -35,10 +45,37 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
   onSelectBook,
   onRequestLoan
 }) => {
-  const { currentUser, books, deleteBook, deleteUser, logoutUser } = useApp();
+  const { currentUser, users, books, requests, deleteBook, deleteUser, logoutUser } = useApp();
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [showSetBirthdayModal, setShowSetBirthdayModal] = useState(false);
+  const [showTrophyModal, setShowTrophyModal] = useState(false);
+  const [selectedBadgeForDetail, setSelectedBadgeForDetail] = useState<{
+    def: MedalDefinition;
+    isUnlocked: boolean;
+    progress?: any;
+    awardedAt?: string;
+    adminNote?: string;
+  } | null>(null);
+
+  // Load custom medals
+  const [customMedals, setCustomMedals] = useState<CustomMedalData[]>([]);
+
+  useEffect(() => {
+    fetch('/api/medals/custom')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.success && Array.isArray(data.medals)) {
+          setCustomMedals(data.medals);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const allMedalDefs = useMemo(() => {
+    const customDefs = customMedals.map(createDefinitionFromCustomMedal);
+    return [...OFFICIAL_MEDALS, ...customDefs];
+  }, [customMedals]);
 
   const handleAddBookClick = () => {
     if (currentUser?.status !== 'approved') {
@@ -455,32 +492,181 @@ export const MyBooksAndProfile: React.FC<MyBooksAndProfileProps> = ({
             </span>
           </div>
 
-          <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-            <span className="text-[11px] text-slate-500 block">افتخارات و نشان‌ها:</span>
+          <div
+            onClick={() => setShowTrophyModal(true)}
+            className="bg-slate-50 hover:bg-amber-50/60 p-3 rounded-xl border border-slate-100 hover:border-amber-200 cursor-pointer transition-all group"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] text-slate-500 block">افتخارات و نشان‌ها:</span>
+              <span className="text-[10px] text-amber-600 font-bold group-hover:underline">ویترین ۳بعدی</span>
+            </div>
             <span className="text-lg font-black text-indigo-700">
               {(currentUser.medals || []).length} نشان
             </span>
           </div>
         </div>
 
-        {/* Compact Badges Row */}
-        {(currentUser.medals && currentUser.medals.length > 0) && (
-          <div className="pt-2 flex items-center gap-2 flex-wrap">
-            <span className="text-[11px] font-bold text-slate-500 flex items-center gap-1">
-              <Award className="w-3.5 h-3.5 text-amber-500" /> نشان‌های فعال:
+        {/* 3D Badges Preview Showcase Row */}
+        <div className="pt-3 border-t border-slate-100 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-black text-slate-700 flex items-center gap-1.5">
+              <Award className="w-4 h-4 text-amber-500" />
+              <span>ویترین افتخارات و مدال‌های سه‌بعدی:</span>
             </span>
-            {currentUser.medals.map((medal) => (
-              <div
-                key={medal.id}
-                className={`px-2.5 py-1 rounded-xl border text-[11px] font-bold flex items-center gap-1 ${medal.color}`}
-              >
-                <span>{medal.icon}</span>
-                <span>{medal.title}</span>
-              </div>
-            ))}
+            <button
+              onClick={() => setShowTrophyModal(true)}
+              className="text-[11px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1"
+            >
+              <span>مشاهده تالار ۱۰ نشان</span>
+              <span>←</span>
+            </button>
           </div>
-        )}
+
+          {(currentUser.medals && currentUser.medals.length > 0) ? (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 pt-1">
+              {currentUser.medals.map((userMedal) => {
+                const def =
+                  allMedalDefs.find((d) => d.id === userMedal.id) ||
+                  getMedalDefinitionById(userMedal.id);
+                if (!def) return null;
+                return (
+                  <Badge3D
+                    key={userMedal.id}
+                    definition={def}
+                    isUnlocked={true}
+                    size="sm"
+                    awardedAt={userMedal.awardedAt}
+                    adminNote={userMedal.adminNote}
+                    onClick={() =>
+                      setSelectedBadgeForDetail({
+                        def,
+                        isUnlocked: true,
+                        awardedAt: userMedal.awardedAt,
+                        adminNote: userMedal.adminNote
+                      })
+                    }
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div
+              onClick={() => setShowTrophyModal(true)}
+              className="p-4 rounded-2xl bg-amber-50/50 border border-dashed border-amber-200 text-center cursor-pointer hover:bg-amber-50 transition-colors"
+            >
+              <Award className="w-6 h-6 text-amber-500 mx-auto mb-1 animate-pulse" />
+              <p className="text-xs font-bold text-amber-950">
+                هنوز نشانی باز نکرده‌اید!
+              </p>
+              <p className="text-[11px] text-amber-700 mt-0.5">
+                با خواندن اولین کتاب یا اهدای کتاب به مدرسه، نشان‌های سه‌بعدی افتخار را باز کنید. (کلیک برای مشاهده شروط ۱۰ نشان)
+              </p>
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Trophy Case Modal (All 10 Badges with Unlocked & Locked Progress) */}
+      {showTrophyModal && currentUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/75 backdrop-blur-md animate-in fade-in duration-200">
+          <div
+            className="relative w-full max-w-4xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[90vh]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="p-6 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white flex items-center justify-between">
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-400/20 text-amber-300 border border-amber-400/30 text-xs font-bold mb-1.5">
+                  <Award className="w-3.5 h-3.5" />
+                  <span>تالار افتخارات مکتب‌خونه</span>
+                </div>
+                <h3 className="text-xl font-black">
+                  ویترین ۱۰ نشان و دستاورد دانش‌آموزی
+                </h3>
+                <p className="text-xs text-slate-300 mt-0.5">
+                  شما تاکنون {(currentUser.medals || []).length} از ۱۰ نشان را کسب کرده‌اید. برای مشاهده جزئیات روی هر نشان کلیک کنید.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowTrophyModal(false)}
+                className="p-2 rounded-full bg-white/10 hover:bg-white/20 text-white transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Badges Grid */}
+            <div className="p-6 overflow-y-auto space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                {allMedalDefs.map((def) => {
+                  const userMedal = (currentUser.medals || []).find((m) => m.id === def.id);
+                  const isUnlocked = !!userMedal;
+
+                  const userBorrowed = requests.filter((r) => r.borrowerId === currentUser.id);
+                  const userOwned = books.filter((b) => b.ownerId === currentUser.id);
+                  const userReviews = books
+                    .flatMap((b) => b.reviews || [])
+                    .filter((rev) => rev.userId === currentUser.id);
+                  const leagueRank = computeStudentLeagueRank(currentUser.id, users);
+
+                  const progress = def.calculateProgress({
+                    user: currentUser,
+                    borrowedRequests: userBorrowed,
+                    ownedBooks: userOwned,
+                    userReviews,
+                    leagueRank,
+                    allBooks: books
+                  });
+
+                  return (
+                    <Badge3D
+                      key={def.id}
+                      definition={def}
+                      isUnlocked={isUnlocked}
+                      progress={progress}
+                      size="sm"
+                      awardedAt={userMedal?.awardedAt}
+                      adminNote={userMedal?.adminNote}
+                      onClick={() =>
+                        setSelectedBadgeForDetail({
+                          def,
+                          isUnlocked,
+                          progress,
+                          awardedAt: userMedal?.awardedAt,
+                          adminNote: userMedal?.adminNote
+                        })
+                      }
+                    />
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+              <span>نشان‌های کسب‌شده امتیازات و ویژگی‌های خاصی در سامانه فعال می‌کنند.</span>
+              <button
+                onClick={() => setShowTrophyModal(false)}
+                className="px-5 py-2 bg-slate-900 text-white rounded-xl font-bold"
+              >
+                بستن تالار
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Badge Detail Modal */}
+      {selectedBadgeForDetail && (
+        <BadgeDetailModal
+          definition={selectedBadgeForDetail.def}
+          isUnlocked={selectedBadgeForDetail.isUnlocked}
+          progress={selectedBadgeForDetail.progress}
+          awardedAt={selectedBadgeForDetail.awardedAt}
+          adminNote={selectedBadgeForDetail.adminNote}
+          onClose={() => setSelectedBadgeForDetail(null)}
+        />
+      )}
 
       {/* Add Book Modal */}
       {showAddModal && <AddBookModal onClose={() => setShowAddModal(false)} />}

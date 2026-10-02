@@ -243,7 +243,17 @@ export const ReadingLeague: React.FC = () => {
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div>
-                        <div className="font-bold text-slate-800">{u.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800">{u.name}</span>
+                          {u.medals && u.medals.length > 0 && (
+                            <span
+                              title={`${u.medals.length} نشان افتخار فعال`}
+                              className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-200 shadow-2xs"
+                            >
+                              🏆 {u.medals.length}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>
@@ -291,7 +301,17 @@ export const ReadingLeague: React.FC = () => {
                         className="w-8 h-8 rounded-full object-cover"
                       />
                       <div>
-                        <div className="font-bold text-slate-800">{u.name}</div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-slate-800">{u.name}</span>
+                          {u.medals && u.medals.length > 0 && (
+                            <span
+                              title={`${u.medals.length} نشان افتخار فعال`}
+                              className="inline-flex items-center gap-0.5 text-[9px] font-black text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-md border border-amber-200 shadow-2xs"
+                            >
+                              🏆 {u.medals.length}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-[10px] text-slate-400">{resolveClassName(u.className)}</div>
                       </div>
                     </div>

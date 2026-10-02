@@ -1,46 +1,68 @@
-User-agent: *
-Disallow:
+# ==============================================================================
+# تمامی هوش مصنوعی‌ها و ربات‌ها اجازه دسترسی ۱۰۰٪ و کامل به سایت را دارند
+# Full Access & Indexing Allowed for All AI Models, Crawlers & Search Engines
+# ==============================================================================
 
+# 1. دسترسی عمومی به تمام صفحات برای همه ربات‌ها
+User-agent: *
+Allow: /
+
+# 2. اجازه دسترسی کامل به هوش مصنوعی ChatGPT و OpenAI
 User-agent: GPTBot
-Disallow:
+Allow: /
 
 User-agent: ChatGPT-User
-Disallow:
+Allow: /
+
+# 3. اجازه دسترسی کامل به هوش مصنوعی گوگل و Gemini
+User-agent: Google-Extended
+Allow: /
 
 User-agent: Googlebot
-Disallow:
+Allow: /
 
-User-agent: Google-Extended
-Disallow:
+User-agent: Googlebot-Image
+Allow: /
 
+# 4. اجازه دسترسی کامل به هوش مصنوعی کلود (Claude / Anthropic)
 User-agent: ClaudeBot
-Disallow:
+Allow: /
 
 User-agent: Claude-Web
-Disallow:
+Allow: /
 
 User-agent: Anthropic-ai
-Disallow:
+Allow: /
 
+# 5. اجازه دسترسی کامل به هوش مصنوعی Perplexity
 User-agent: PerplexityBot
-Disallow:
+Allow: /
 
-User-agent: Applebot
-Disallow:
-
+# 6. اجازه دسترسی کامل به بینگ و Copilot
 User-agent: Bingbot
-Disallow:
+Allow: /
 
-User-agent: CCBot
-Disallow:
+# 7. اجازه دسترسی به سایر ربات‌ها و مدل‌های زبانی هوش مصنوعی
+User-agent: Applebot
+Allow: /
+
+User-agent: Applebot-Extended
+Allow: /
 
 User-agent: Meta-ExternalAgent
-Disallow:
+Allow: /
 
 User-agent: Cohere-ai
-Disallow:
+Allow: /
+
+User-agent: CCBot
+Allow: /
 
 User-agent: Diffbot
-Disallow:
+Allow: /
 
+User-agent: Omgilibot
+Allow: /
+
+# نقشه سایت
 Sitemap: /sitemap.xml

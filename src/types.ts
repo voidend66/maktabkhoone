@@ -1,12 +1,25 @@
 export type UserStatus = 'approved' | 'pending' | 'suspended' | 'rejected';
 export type UserRole = 'student' | 'admin';
 
+export type MedalTier = 'bronze' | 'silver' | 'gold' | 'diamond' | 'mythic';
+
 export interface Medal {
   id: string;
   title: string;
   icon: string;
   description: string;
   color: string;
+  // Extended 3D and achievement metadata
+  imageUrl?: string;
+  tier?: MedalTier;
+  tierTitle?: string;
+  level?: number; // 1 to 5
+  property?: string; // خاصیت و امتیاز متمایز این نشان
+  occasion?: string; // مناسبت و فلسفه نماد
+  criteriaDesc?: string; // شرط دریافت خودکار
+  awardedAt?: string;
+  awardedBy?: 'auto' | 'admin';
+  adminNote?: string;
 }
 
 export interface User {
@@ -144,6 +157,7 @@ export interface LendingRequest {
   createdAt: string;
   createdAtTimestamp?: number;
   acceptedAt?: string;
+  returnedAt?: string;
   rejectionReason?: string;
   ownerFeedbackGiven?: boolean;
   borrowerFeedbackGiven?: boolean;
